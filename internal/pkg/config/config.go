@@ -9,10 +9,10 @@ import (
 )
 
 type Config struct {
-	YDB        YDBConfig        `yaml:"ydb"`
-	Postgres   PostgresConfig   `yaml:"postgres"`
-	Parser     ParserConfig     `yaml:"parser"`
-	Calculator CalculatorConfig `yaml:"calculator"`
+	YDB            YDBConfig            `yaml:"ydb"`
+	Postgres       PostgresConfig       `yaml:"postgres"`
+	Parser         ParserConfig         `yaml:"parser"`
+	ValueCalculator ValueCalculatorConfig `yaml:"value_calculator"`
 }
 
 type YDBConfig struct {
@@ -32,9 +32,17 @@ type ParserConfig struct {
 	Timeout   time.Duration `yaml:"timeout"`
 }
 
-type CalculatorConfig struct {
-	MinProfitPercent float64 `yaml:"min_profit_percent"`
-	MaxCombinations  int     `yaml:"max_combinations"`
+type ValueCalculatorConfig struct {
+	ReferenceMethod      string    `yaml:"reference_method"`
+	MinValuePercent      float64   `yaml:"min_value_percent"`
+	MaxRiskPercent       float64   `yaml:"max_risk_percent"`
+	MinStake             int       `yaml:"min_stake"`
+	MaxStake             int       `yaml:"max_stake"`
+	CheckInterval        string    `yaml:"check_interval"`
+	TestInterval         string    `yaml:"test_interval"`
+	Sports               []string  `yaml:"sports"`
+	Markets              []string  `yaml:"markets"`
+	ReferenceBookmakers  []string  `yaml:"reference_bookmakers"`
 }
 
 func Load(configPath string) (*Config, error) {

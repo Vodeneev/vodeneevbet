@@ -14,6 +14,19 @@ parser:
   user_agent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
   timeout: 30s
 
-calculator:
-  min_profit_percent: 1.0  # Минимальный процент прибыли для арба
-  max_combinations: 1000    # Максимальное количество комбинаций для проверки
+value_calculator:
+  # Настройки Value Bet
+  reference_method: "average_top5"  # "pinnacle" или "average_top5"
+  min_value_percent: 15.0           # Минимальная разница в процентах
+  max_risk_percent: 5.0            # Максимальный риск
+  min_stake: 1000                  # Минимальная ставка
+  max_stake: 50000                 # Максимальная ставка
+  check_interval: 5m               # Интервал проверки
+  test_interval: 30s               # Интервал для тестирования
+  
+  # Фильтры
+  sports: ["football"]             # Только футбол
+  markets: ["1x2", "total", "handicap"]  # Основные рынки
+  
+  # Топ-5 БК для референса (исключая общие API)
+  reference_bookmakers: ["pinnacle", "betfair", "sbobet", "bet365", "williamhill"]

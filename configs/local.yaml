@@ -27,8 +27,6 @@ parser:
     lang: "ru"
     version: "60312723953"
     test_limit: 0  # Лимит событий для тестирования (0 = без лимита)
-    scope_markets:
-      football: "1600"
 
 value_calculator:
   # Настройки Value Bet

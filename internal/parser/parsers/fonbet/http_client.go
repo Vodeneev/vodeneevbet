@@ -36,12 +36,8 @@ func (c *HTTPClient) GetEvents(sport enums.Sport) ([]byte, error) {
 	q.Set("lang", c.config.Parser.Fonbet.Lang)
 	q.Set("version", c.config.Parser.Fonbet.Version)
 	
-	sportInfo := sport.GetSportInfo()
-	scopeMarket := c.config.Parser.Fonbet.ScopeMarkets[sportInfo.Alias]
-	if scopeMarket == "" {
-		scopeMarket = "1600" // Default to football
-	}
-	q.Set("scopeMarket", scopeMarket)
+	scopeMarket := enums.GetScopeMarket(sport)
+	q.Set("scopeMarket", scopeMarket.String())
 	req.URL.RawQuery = q.Encode()
 
 	req.Header.Set("User-Agent", c.config.Parser.UserAgent)

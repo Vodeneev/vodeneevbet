@@ -53,7 +53,11 @@ func (p *Parser) Stop() error {
 
 func (p *Parser) parseSportEvents(sport enums.Sport) error {
 	sportInfo := sport.GetSportInfo()
-	fmt.Printf("Parsing %s events from Fonbet (scope: %s)...\n", sportInfo.Name, sportInfo.ScopeMarket)
+	scopeMarket := p.config.Parser.Fonbet.ScopeMarkets[sportInfo.Alias]
+	if scopeMarket == "" {
+		scopeMarket = "1600" // Default to football
+	}
+	fmt.Printf("Parsing %s events from Fonbet (scope: %s)...\n", sportInfo.Name, scopeMarket)
 	
 	events, err := p.getSportEvents(sport)
 	if err != nil {

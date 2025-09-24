@@ -36,10 +36,11 @@ type ParserConfig struct {
 }
 
 type FonbetConfig struct {
-	BaseURL   string `yaml:"base_url"`
-	Lang      string `yaml:"lang"`
-	Version   string `yaml:"version"`
-	TestLimit int    `yaml:"test_limit"`
+	BaseURL      string            `yaml:"base_url"`
+	Lang         string            `yaml:"lang"`
+	Version      string            `yaml:"version"`
+	TestLimit    int               `yaml:"test_limit"`
+	ScopeMarkets map[string]string `yaml:"scope_markets"`
 }
 
 type ValueCalculatorConfig struct {

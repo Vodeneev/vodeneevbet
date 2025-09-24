@@ -4,35 +4,57 @@ package enums
 type Sport string
 
 const (
-	Football Sport = "football"
+	Football   Sport = "football"
 	Basketball Sport = "basketball"
-	Tennis Sport = "tennis"
-	Hockey Sport = "hockey"
+	Tennis     Sport = "tennis"
+	Hockey     Sport = "hockey"
 	Volleyball Sport = "volleyball"
-	Baseball Sport = "baseball"
+	Baseball   Sport = "baseball"
 )
 
 // SportInfo contains additional information about a sport
 type SportInfo struct {
-	Name        string
-	ScopeMarket string
-	Alias       string
+	Name  string
+	Alias string
 }
 
-// GetSportInfo returns sport information including scope market
+// GetSportInfo returns sport information
 func (s Sport) GetSportInfo() SportInfo {
 	switch s {
 	case Football:
 		return SportInfo{
-			Name:        "Football",
-			ScopeMarket: "1600",
-			Alias:       "football",
+			Name:  "Football",
+			Alias: "football",
+		}
+	case Basketball:
+		return SportInfo{
+			Name:  "Basketball",
+			Alias: "basketball",
+		}
+	case Tennis:
+		return SportInfo{
+			Name:  "Tennis",
+			Alias: "tennis",
+		}
+	case Hockey:
+		return SportInfo{
+			Name:  "Hockey",
+			Alias: "hockey",
+		}
+	case Volleyball:
+		return SportInfo{
+			Name:  "Volleyball",
+			Alias: "volleyball",
+		}
+	case Baseball:
+		return SportInfo{
+			Name:  "Baseball",
+			Alias: "baseball",
 		}
 	default:
 		return SportInfo{
-			Name:        "Unknown",
-			ScopeMarket: "1600", // Default to football
-			Alias:       "unknown",
+			Name:  "Unknown",
+			Alias: "unknown",
 		}
 	}
 }

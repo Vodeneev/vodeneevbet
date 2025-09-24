@@ -8,19 +8,19 @@ import (
 	"github.com/Vodeneev/vodeneevbet/internal/pkg/models"
 )
 
-// YDBWorkingClient рабочий клиент для YDB (с заглушкой для тестирования)
+// YDBWorkingClient working client for YDB (with stub for testing)
 type YDBWorkingClient struct {
 	config *config.YDBConfig
 }
 
 func NewYDBWorkingClient(cfg *config.YDBConfig) (*YDBWorkingClient, error) {
-	// Проверяем наличие файла ключа
+	// Check if key file exists
 	if cfg.ServiceAccountKeyFile == "" {
 		return nil, fmt.Errorf("service account key file not specified")
 	}
 	
-	// В реальной реализации здесь будет подключение к YDB
-	// Пока что просто проверяем, что файл существует
+	// In real implementation, this would be YDB connection
+	// For now, just check that file exists
 	fmt.Printf("YDB: Connecting to %s\n", cfg.Endpoint)
 	fmt.Printf("YDB: Database: %s\n", cfg.Database)
 	fmt.Printf("YDB: Using key file: %s\n", cfg.ServiceAccountKeyFile)
@@ -30,37 +30,37 @@ func NewYDBWorkingClient(cfg *config.YDBConfig) (*YDBWorkingClient, error) {
 	}, nil
 }
 
-// StoreOdd сохраняет коэффициент (заглушка с логированием)
+// StoreOdd stores odd (stub with logging)
 func (y *YDBWorkingClient) StoreOdd(ctx context.Context, odd *models.Odd) error {
-	// В реальной реализации здесь будет сохранение в YDB
+	// In real implementation, this would be YDB storage
 	fmt.Printf("YDB: Storing odd for match %s from %s: %+v\n", 
 		odd.MatchID, odd.Bookmaker, odd.Outcomes)
 	return nil
 }
 
-// GetOddsByMatch получает коэффициенты (заглушка)
+// GetOddsByMatch gets odds (stub)
 func (y *YDBWorkingClient) GetOddsByMatch(ctx context.Context, matchID string) ([]*models.Odd, error) {
-	// В реальной реализации здесь будет запрос к YDB
+	// In real implementation, this would be YDB query
 	fmt.Printf("YDB: Getting odds for match %s\n", matchID)
 	return []*models.Odd{}, nil
 }
 
-// GetAllMatches получает матчи (заглушка)
+// GetAllMatches gets matches (stub)
 func (y *YDBWorkingClient) GetAllMatches(ctx context.Context) ([]string, error) {
-	// В реальной реализации здесь будет запрос к YDB
+	// In real implementation, this would be YDB query
 	fmt.Println("YDB: Getting all matches")
 	return []string{}, nil
 }
 
-// StoreArbitrage сохраняет арбитраж (заглушка)
+// StoreValueBet stores value bet (stub)
 func (y *YDBWorkingClient) StoreArbitrage(ctx context.Context, arb *models.Arbitrage) error {
-	// В реальной реализации здесь будет сохранение в YDB
+	// In real implementation, this would be YDB storage
 	fmt.Printf("YDB: Storing arbitrage %s with profit %.2f%%\n", 
 		arb.ID, arb.ProfitPercent)
 	return nil
 }
 
-// Close закрывает соединение
+// Close closes connection
 func (y *YDBWorkingClient) Close() error {
 	fmt.Println("YDB: Closing connection")
 	return nil

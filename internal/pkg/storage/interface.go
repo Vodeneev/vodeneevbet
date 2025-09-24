@@ -5,18 +5,18 @@ import (
 	"github.com/Vodeneev/vodeneevbet/internal/pkg/models"
 )
 
-// Storage интерфейс для работы с хранилищем коэффициентов
+// Storage interface for working with odds storage
 type Storage interface {
-	// StoreOdd сохраняет коэффициент
+	// StoreOdd stores odd
 	StoreOdd(ctx context.Context, odd *models.Odd) error
 	
-	// GetOddsByMatch получает все коэффициенты для матча
+	// GetOddsByMatch gets all odds for match
 	GetOddsByMatch(ctx context.Context, matchID string) ([]*models.Odd, error)
 	
 	// GetAllMatches получает все доступные матчи
 	GetAllMatches(ctx context.Context) ([]string, error)
 	
-	// Close закрывает соединение
+	// Close closes connection
 	Close() error
 }
 

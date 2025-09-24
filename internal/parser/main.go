@@ -23,7 +23,7 @@ func main() {
 
 	fmt.Printf("Loading config from: %s\n", configPath)
 	
-	// Загружаем конфигурацию
+	// Load configuration
 	cfg, err := config.Load(configPath)
 	if err != nil {
 		log.Fatalf("Failed to load config: %v", err)
@@ -31,21 +31,21 @@ func main() {
 	
 	fmt.Println("Config loaded successfully")
 
-	// Подключаемся к YDB
+	// Connect to YDB
 	ydbClient, err := storage.NewYDBWorkingClient(&cfg.YDB)
 	if err != nil {
 		log.Fatalf("Failed to connect to YDB: %v", err)
 	}
 	defer ydbClient.Close()
 
-	// Создаем парсер для тестовой БК (пока заглушка)
+	// Create parser for test bookmaker (пока заглушка)
 	parser := parsers.NewTestParser(ydbClient, cfg)
 
-	// Создаем контекст с возможностью отмены
+	// Create context with cancellation
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	// Обработка сигналов для graceful shutdown
+	// Handle signals for graceful shutdown
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
 

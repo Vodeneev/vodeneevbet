@@ -10,7 +10,7 @@ import (
 func main() {
 	fmt.Println("=== Debug Parser ===")
 	
-	// Загружаем конфигурацию
+	// Load configuration
 	cfg, err := config.Load("configs/local.yaml")
 	if err != nil {
 		log.Fatalf("Failed to load config: %v", err)
@@ -20,7 +20,7 @@ func main() {
 	fmt.Printf("YDB endpoint: %s\n", cfg.YDB.Endpoint)
 	fmt.Printf("YDB database: %s\n", cfg.YDB.Database)
 	
-	// Создаем YDB клиент
+	// Create YDB client
 	ydbClient, err := storage.NewYDBSimpleClient(&cfg.YDB)
 	if err != nil {
 		log.Fatalf("Failed to create YDB client: %v", err)

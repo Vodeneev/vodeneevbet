@@ -6,21 +6,21 @@ import (
 	"github.com/Vodeneev/vodeneevbet/internal/pkg/storage"
 )
 
-// Parser интерфейс для всех парсеров букмекеров
+// Parser interface for all bookmaker parsers
 type Parser interface {
 	Start(ctx context.Context) error
 	Stop() error
 	GetName() string
 }
 
-// BaseParser базовая структура для всех парсеров
+// BaseParser base structure for all parsers
 type BaseParser struct {
 	ydbClient *storage.YDBWorkingClient
 	config    *config.Config
 	name      string
 }
 
-// NewBaseParser создает базовый парсер
+// NewBaseParser creates base parser
 func NewBaseParser(ydbClient *storage.YDBWorkingClient, config *config.Config, name string) *BaseParser {
 	return &BaseParser{
 		ydbClient: ydbClient,
@@ -29,7 +29,7 @@ func NewBaseParser(ydbClient *storage.YDBWorkingClient, config *config.Config, n
 	}
 }
 
-// GetName возвращает имя парсера
+// GetName returns parser name
 func (p *BaseParser) GetName() string {
 	return p.name
 }

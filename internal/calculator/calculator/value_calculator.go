@@ -13,13 +13,13 @@ import (
 	"github.com/Vodeneev/vodeneevbet/internal/pkg/storage"
 )
 
-// ValueCalculator калькулятор для поиска валуйных ставок
+// ValueCalculator calculator for finding value bets
 type ValueCalculator struct {
 	ydbClient *storage.YDBWorkingClient
 	config    *config.ValueCalculatorConfig
 }
 
-// NewValueCalculator создает новый калькулятор Value Bet
+// NewValueCalculator creates new Value Bet calculator
 func NewValueCalculator(ydbClient *storage.YDBWorkingClient, config *config.ValueCalculatorConfig) *ValueCalculator {
 	return &ValueCalculator{
 		ydbClient: ydbClient,
@@ -27,11 +27,11 @@ func NewValueCalculator(ydbClient *storage.YDBWorkingClient, config *config.Valu
 	}
 }
 
-// Start запускает калькулятор
+// Start starts calculator
 func (vc *ValueCalculator) Start(ctx context.Context) error {
 	log.Printf("Starting Value Bet Calculator with interval: %s", vc.config.CheckInterval)
 	
-	// Парсим интервал
+	// Parse interval
 	interval, err := time.ParseDuration(vc.config.CheckInterval)
 	if err != nil {
 		log.Printf("Invalid check interval '%s', using test interval", vc.config.CheckInterval)
@@ -58,11 +58,11 @@ func (vc *ValueCalculator) Start(ctx context.Context) error {
 	}
 }
 
-// findValueBets ищет валуйные ставки
+// findValueBets searches for value bets
 func (vc *ValueCalculator) findValueBets(ctx context.Context) error {
 	log.Println("Searching for value bets...")
 	
-	// Получаем все матчи
+	// Get all matches
 	matches, err := vc.ydbClient.GetAllMatches(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to get matches: %v", err)
@@ -75,7 +75,7 @@ func (vc *ValueCalculator) findValueBets(ctx context.Context) error {
 
 	log.Printf("Found %d matches to analyze", len(matches))
 
-	// Анализируем каждый матч
+	// Analyze each match
 	for _, matchID := range matches {
 		if err := vc.analyzeMatch(ctx, matchID); err != nil {
 			log.Printf("Error analyzing match %s: %v", matchID, err)
@@ -85,9 +85,9 @@ func (vc *ValueCalculator) findValueBets(ctx context.Context) error {
 	return nil
 }
 
-// analyzeMatch анализирует матч на предмет value bet
+// analyzeMatch analyzes match for value bet
 func (vc *ValueCalculator) analyzeMatch(ctx context.Context, matchID string) error {
-	// Получаем все коэффициенты для матча
+	// Get all odds for match
 	odds, err := vc.ydbClient.GetOddsByMatch(ctx, matchID)
 	if err != nil {
 		return fmt.Errorf("failed to get odds for match %s: %v", matchID, err)
@@ -97,10 +97,10 @@ func (vc *ValueCalculator) analyzeMatch(ctx context.Context, matchID string) err
 		return nil
 	}
 
-	// Группируем коэффициенты по рынкам
+	// Group odds by markets
 	oddsByMarket := vc.groupOddsByMarket(odds)
 
-	// Анализируем каждый рынок
+	// Analyze each market
 	for market, marketOdds := range oddsByMarket {
 		if err := vc.analyzeMarket(ctx, matchID, market, marketOdds); err != nil {
 			log.Printf("Error analyzing market %s for match %s: %v", market, matchID, err)
@@ -110,7 +110,7 @@ func (vc *ValueCalculator) analyzeMatch(ctx context.Context, matchID string) err
 	return nil
 }
 
-// groupOddsByMarket группирует коэффициенты по рынкам
+// groupOddsByMarket groups odds by markets
 func (vc *ValueCalculator) groupOddsByMarket(odds []*models.Odd) map[string][]*models.Odd {
 	grouped := make(map[string][]*models.Odd)
 	
@@ -121,23 +121,23 @@ func (vc *ValueCalculator) groupOddsByMarket(odds []*models.Odd) map[string][]*m
 	return grouped
 }
 
-// analyzeMarket анализирует рынок на предмет value bet
+// analyzeMarket analyzes market for value bet
 func (vc *ValueCalculator) analyzeMarket(ctx context.Context, matchID, market string, odds []*models.Odd) error {
 	if len(odds) < 2 {
-		return nil // Нужно минимум 2 БК для сравнения
+		return nil // Need at least 2 bookmakers for comparison
 	}
 
-	// Создаем референсные данные
+	// Create reference data
 	referenceData, err := vc.calculateReferenceData(odds)
 	if err != nil {
 		return fmt.Errorf("failed to calculate reference data: %v", err)
 	}
 
-	// Ищем value bet для каждого исхода
+	// Search value bet for each outcome
 	for outcome, referenceOdd := range referenceData.ReferenceOdds {
 		valueBets := vc.findValueBetsForOutcome(odds, outcome, referenceOdd)
 		
-		// Сохраняем найденные value bet
+		// Save found value bets
 		for _, valueBet := range valueBets {
 			if err := vc.saveValueBet(ctx, valueBet); err != nil {
 				log.Printf("Failed to save value bet: %v", err)
@@ -148,16 +148,16 @@ func (vc *ValueCalculator) analyzeMarket(ctx context.Context, matchID, market st
 	return nil
 }
 
-// ReferenceData представляет референсные данные
+// ReferenceData represents reference data
 type ReferenceData struct {
-	ReferenceOdds map[string]float64 `json:"reference_odds"` // исход -> коэффициент
+	ReferenceOdds map[string]float64 `json:"reference_odds"` // outcome -> coefficient
 	Source        string              `json:"source"`
 }
 
-// calculateReferenceData вычисляет референсные коэффициенты
+// calculateReferenceData calculates reference coefficients
 func (vc *ValueCalculator) calculateReferenceData(odds []*models.Odd) (*ReferenceData, error) {
-	// Собираем все исходы и их коэффициенты
-	allOutcomes := make(map[string][]float64) // исход -> []коэффициенты
+	// Collect all outcomes and their coefficients
+	allOutcomes := make(map[string][]float64) // outcome -> []coefficients
 	
 	for _, odd := range odds {
 		for outcome, coefficient := range odd.Outcomes {
@@ -165,7 +165,7 @@ func (vc *ValueCalculator) calculateReferenceData(odds []*models.Odd) (*Referenc
 		}
 	}
 
-	// Вычисляем референсные коэффициенты
+	// Calculate reference coefficients
 	referenceOdds := make(map[string]float64)
 	
 	for outcome, coefficients := range allOutcomes {
@@ -173,14 +173,14 @@ func (vc *ValueCalculator) calculateReferenceData(odds []*models.Odd) (*Referenc
 			continue
 		}
 		
-		// Сортируем коэффициенты по убыванию (самые высокие коэффициенты)
+		// Sort coefficients in descending order (highest coefficients)
 		sort.Sort(sort.Reverse(sort.Float64Slice(coefficients)))
 		
-		// Вычисляем среднее по топ-5 (или меньше, если недостаточно данных)
+		// Calculate average of top-5 (or less if insufficient data)
 		topCount := int(math.Min(5, float64(len(coefficients))))
 		topCoefficients := coefficients[:topCount]
 		
-		// Среднее арифметическое
+		// Arithmetic mean
 		sum := 0.0
 		for _, coef := range topCoefficients {
 			sum += coef
@@ -194,7 +194,7 @@ func (vc *ValueCalculator) calculateReferenceData(odds []*models.Odd) (*Referenc
 	}, nil
 }
 
-// findValueBetsForOutcome ищет value bet для конкретного исхода
+// findValueBetsForOutcome searches value bet for specific outcome
 func (vc *ValueCalculator) findValueBetsForOutcome(odds []*models.Odd, outcome string, referenceOdd float64) []*models.ValueBet {
 	var valueBets []*models.ValueBet
 
@@ -204,10 +204,10 @@ func (vc *ValueCalculator) findValueBetsForOutcome(odds []*models.Odd, outcome s
 			continue
 		}
 
-		// Вычисляем value
+		// Calculate value
 		valuePercent := vc.calculateValuePercent(bookmakerOdd, referenceOdd)
 		
-		// Проверяем критерии
+		// Check criteria
 		if valuePercent >= vc.config.MinValuePercent {
 			valueBet := &models.ValueBet{
 				ID:              fmt.Sprintf("%s_%s_%s_%s", odd.MatchID, odd.Market, outcome, odd.Bookmaker),
@@ -225,7 +225,7 @@ func (vc *ValueCalculator) findValueBetsForOutcome(odds []*models.Odd, outcome s
 				Stake:           float64(vc.config.MinStake),
 				PotentialWin:    float64(vc.config.MinStake) * bookmakerOdd,
 				FoundAt:         time.Now(),
-				ExpiresAt:       time.Now().Add(30 * time.Minute), // 30 минут на ставку
+				ExpiresAt:       time.Now().Add(30 * time.Minute), // 30 minutes for bet
 			}
 			
 			valueBets = append(valueBets, valueBet)
@@ -235,7 +235,7 @@ func (vc *ValueCalculator) findValueBetsForOutcome(odds []*models.Odd, outcome s
 	return valueBets
 }
 
-// calculateValuePercent вычисляет процент value
+// calculateValuePercent calculates value percentage
 func (vc *ValueCalculator) calculateValuePercent(bookmakerOdd, referenceOdd float64) float64 {
 	if referenceOdd <= 0 {
 		return 0
@@ -243,10 +243,10 @@ func (vc *ValueCalculator) calculateValuePercent(bookmakerOdd, referenceOdd floa
 	return ((bookmakerOdd / referenceOdd) - 1) * 100
 }
 
-// saveValueBet сохраняет найденную value bet
+// saveValueBet saves found value bet
 func (vc *ValueCalculator) saveValueBet(ctx context.Context, valueBet *models.ValueBet) error {
-	// В реальной реализации здесь будет сохранение в PostgreSQL
-	// Пока что просто логируем
+	// In real implementation, this would be PostgreSQL storage
+	// For now, just log
 	log.Printf("🎯 VALUE BET FOUND!")
 	log.Printf("   Match: %s", valueBet.MatchName)
 	log.Printf("   Market: %s, Outcome: %s", valueBet.Market, valueBet.Outcome)

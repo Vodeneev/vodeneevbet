@@ -8,7 +8,7 @@ import (
 	"github.com/Vodeneev/vodeneevbet/internal/pkg/models"
 )
 
-// YDBSimpleClient упрощенный клиент для YDB (пока без реализации)
+// YDBSimpleClient simplified client for YDB (пока без реализации)
 type YDBSimpleClient struct {
 	config *config.YDBConfig
 }
@@ -19,34 +19,34 @@ func NewYDBSimpleClient(cfg *config.YDBConfig) (*YDBSimpleClient, error) {
 	}, nil
 }
 
-// StoreOdd сохраняет коэффициент (заглушка)
+// StoreOdd stores odd (заглушка)
 func (y *YDBSimpleClient) StoreOdd(ctx context.Context, odd *models.Odd) error {
-	// Пока просто логируем, что данные получены
+	// Just log that data was received
 	fmt.Printf("YDB: Would store odd for match %s from %s: %+v\n", 
 		odd.MatchID, odd.Bookmaker, odd.Outcomes)
 	return nil
 }
 
-// GetOddsByMatch получает коэффициенты (заглушка)
+// GetOddsByMatch gets odds (заглушка)
 func (y *YDBSimpleClient) GetOddsByMatch(ctx context.Context, matchID string) ([]*models.Odd, error) {
-	// Возвращаем пустой список
+	// Return empty list
 	return []*models.Odd{}, nil
 }
 
-// GetAllMatches получает матчи (заглушка)
+// GetAllMatches gets matches (заглушка)
 func (y *YDBSimpleClient) GetAllMatches(ctx context.Context) ([]string, error) {
-	// Возвращаем пустой список
+	// Return empty list
 	return []string{}, nil
 }
 
-// StoreArbitrage сохраняет арбитраж (заглушка)
+// StoreValueBet stores value bet (заглушка)
 func (y *YDBSimpleClient) StoreArbitrage(ctx context.Context, arb *models.Arbitrage) error {
 	fmt.Printf("YDB: Would store arbitrage %s with profit %.2f%%\n", 
 		arb.ID, arb.ProfitPercent)
 	return nil
 }
 
-// Close закрывает соединение
+// Close closes connection
 func (y *YDBSimpleClient) Close() error {
 	return nil
 }

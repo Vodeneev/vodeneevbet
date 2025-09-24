@@ -4,7 +4,7 @@ import (
 	"time"
 )
 
-// ValueBet представляет найденную валуйную ставку
+// ValueBet represents found value bet
 type ValueBet struct {
 	ID              string    `json:"id"`
 	MatchID         string    `json:"match_id"`
@@ -30,7 +30,7 @@ type ValueBet struct {
 	ExpiresAt       time.Time `json:"expires_at"`       // Время истечения
 }
 
-// ReferenceData представляет референсные данные для расчета
+// ReferenceData represents reference data для расчета
 type ReferenceData struct {
 	MatchID         string             `json:"match_id"`
 	Market          string             `json:"market"`

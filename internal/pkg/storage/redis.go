@@ -21,7 +21,7 @@ func NewRedisClient(addr, password string, db int) (*RedisClient, error) {
 		DB:       db,
 	})
 
-	// Проверяем подключение
+	// Check connection
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
@@ -32,7 +32,7 @@ func NewRedisClient(addr, password string, db int) (*RedisClient, error) {
 	return &RedisClient{client: client}, nil
 }
 
-// StoreOdd сохраняет коэффициент в Redis
+// StoreOdd stores odd in Redis
 func (r *RedisClient) StoreOdd(ctx context.Context, odd *models.Odd) error {
 	key := fmt.Sprintf("odds:%s:%s:%s", odd.Bookmaker, odd.MatchID, odd.Market)
 	
@@ -41,7 +41,7 @@ func (r *RedisClient) StoreOdd(ctx context.Context, odd *models.Odd) error {
 		return fmt.Errorf("failed to marshal odd: %w", err)
 	}
 
-	// Устанавливаем TTL в 1 час
+	// Set TTL to 1 hour
 	return r.client.Set(ctx, key, data, time.Hour).Err()
 }
 
@@ -57,12 +57,12 @@ func (r *RedisClient) GetOddsByMatch(ctx context.Context, matchID string) ([]*mo
 	for _, key := range keys {
 		data, err := r.client.Get(ctx, key).Result()
 		if err != nil {
-			continue // Пропускаем невалидные ключи
+			continue // Skip invalid keys
 		}
 
 		var odd models.Odd
 		if err := json.Unmarshal([]byte(data), &odd); err != nil {
-			continue // Пропускаем невалидные данные
+			continue // Skip invalid data
 		}
 
 		odds = append(odds, &odd)
@@ -81,7 +81,7 @@ func (r *RedisClient) GetAllMatches(ctx context.Context) ([]string, error) {
 
 	matches := make(map[string]bool)
 	for _, key := range keys {
-		// Извлекаем matchID из ключа (формат: odds:bookmaker:matchID:market)
+		// Extract matchID from key (формат: odds:bookmaker:matchID:market)
 		parts := splitKey(key)
 		if len(parts) >= 3 {
 			matches[parts[2]] = true
@@ -96,15 +96,15 @@ func (r *RedisClient) GetAllMatches(ctx context.Context) ([]string, error) {
 	return result, nil
 }
 
-// Close закрывает соединение с Redis
+// Close closes connection с Redis
 func (r *RedisClient) Close() error {
 	return r.client.Close()
 }
 
-// Вспомогательная функция для разбора ключа
+// Helper function for key parsing
 func splitKey(key string) []string {
-	// Простая реализация разбора ключа
-	// В реальном проекте лучше использовать более надежный парсер
+	// Simple key parsing implementation
+	// In real project, better to use more reliable parser
 	var parts []string
 	var current string
 	for _, char := range key {

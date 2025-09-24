@@ -11,19 +11,19 @@ import (
 	"github.com/Vodeneev/vodeneevbet/internal/pkg/storage"
 )
 
-// TestParser тестовый парсер с заглушкой данных
+// TestParser test parser with stub data
 type TestParser struct {
 	*BaseParser
 }
 
-// NewTestParser создает новый тестовый парсер
+// NewTestParser creates new test parser
 func NewTestParser(ydbClient *storage.YDBWorkingClient, config *config.Config) *TestParser {
 	return &TestParser{
 		BaseParser: NewBaseParser(ydbClient, config, "test_bookmaker"),
 	}
 }
 
-// Start запускает парсер
+// Start starts parser
 func (p *TestParser) Start(ctx context.Context) error {
 	log.Printf("Starting %s parser", p.GetName())
 
@@ -43,18 +43,18 @@ func (p *TestParser) Start(ctx context.Context) error {
 	}
 }
 
-// Stop останавливает парсер
+// Stop stops parser
 func (p *TestParser) Stop() error {
 	return nil
 }
 
-// parseAndStore парсит данные и сохраняет их в Redis
+// parseAndStore parses data and saves to Redis
 func (p *TestParser) parseAndStore() error {
-	// Генерируем тестовые данные
+	// Generate test data
 	matches := p.generateTestMatches()
 	
 	for _, match := range matches {
-		// Сохраняем коэффициенты для каждого рынка
+		// Save odds for each market
 		markets := []string{"1x2", "total", "handicap"}
 		
 		for _, market := range markets {
@@ -79,14 +79,14 @@ func (p *TestParser) parseAndStore() error {
 	return nil
 }
 
-// TestMatch представляет тестовый матч
+// TestMatch represents test match
 type TestMatch struct {
 	ID   string
 	Name string
 	Time time.Time
 }
 
-// generateTestMatches генерирует тестовые матчи
+// generateTestMatches generates test matches
 func (p *TestParser) generateTestMatches() []TestMatch {
 	matches := []TestMatch{
 		{
@@ -109,7 +109,7 @@ func (p *TestParser) generateTestMatches() []TestMatch {
 	return matches
 }
 
-// generateOutcomes генерирует тестовые исходы для рынка
+// generateOutcomes generates test outcomes for market
 func (p *TestParser) generateOutcomes(market string) map[string]float64 {
 	rand.Seed(time.Now().UnixNano())
 	

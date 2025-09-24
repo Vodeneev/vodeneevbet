@@ -4,7 +4,7 @@ import (
 	"time"
 )
 
-// Odd представляет коэффициент букмекера
+// Odd represents bookmaker coefficient
 type Odd struct {
 	MatchID    string             `json:"match_id"`
 	Bookmaker  string             `json:"bookmaker"`
@@ -16,7 +16,7 @@ type Odd struct {
 	Sport      string             `json:"sport"`
 }
 
-// Arbitrage представляет найденную арбитражную ситуацию
+// Arbitrage represents found arbitrage situation
 type Arbitrage struct {
 	ID           string    `json:"id"`
 	MatchID      string    `json:"match_id"`
@@ -29,11 +29,11 @@ type Arbitrage struct {
 	FoundAt      time.Time `json:"found_at"`
 }
 
-// Bet представляет ставку в арбитражной ситуации
+// Bet represents bet in arbitrage situation
 type Bet struct {
 	Bookmaker string  `json:"bookmaker"`
 	Outcome   string  `json:"outcome"`
 	Odd       float64 `json:"odd"`
-	Stake     float64 `json:"stake"`    // Размер ставки в процентах от банка
-	Return    float64 `json:"return"`   // Возврат при выигрыше
+	Stake     float64 `json:"stake"`    // Bet size as percentage of bank
+	Return    float64 `json:"return"`   // Return on win
 }

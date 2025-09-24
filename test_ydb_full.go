@@ -14,7 +14,7 @@ import (
 func main() {
 	fmt.Println("=== Testing YDB with Authentication ===")
 	
-	// Загружаем конфигурацию
+	// Load configuration
 	cfg, err := config.Load("configs/local.yaml")
 	if err != nil {
 		log.Fatalf("Failed to load config: %v", err)
@@ -25,12 +25,12 @@ func main() {
 	fmt.Printf("YDB database: %s\n", cfg.YDB.Database)
 	fmt.Printf("Service account key file: %s\n", cfg.YDB.ServiceAccountKeyFile)
 	
-	// Проверяем наличие файла ключа
+	// Check if key file exists
 	if cfg.YDB.ServiceAccountKeyFile == "" {
 		log.Fatal("Service account key file not specified in config")
 	}
 	
-	// Создаем YDB клиент с аутентификацией
+	// Create YDB client with authentication
 	ydbClient, err := storage.NewYDBWorkingClient(&cfg.YDB)
 	if err != nil {
 		log.Fatalf("Failed to create YDB client: %v", err)
@@ -39,7 +39,7 @@ func main() {
 	
 	fmt.Println("YDB client created successfully with authentication!")
 	
-	// Создаем тестовый коэффициент
+	// Create test odd
 	testOdd := &models.Odd{
 		MatchID:   "test_match_ydb",
 		Bookmaker: "test_bookmaker",
@@ -55,7 +55,7 @@ func main() {
 		Sport:     "football",
 	}
 
-	// Сохраняем в YDB
+	// Save to YDB
 	ctx := context.Background()
 	if err := ydbClient.StoreOdd(ctx, testOdd); err != nil {
 		log.Fatalf("Failed to store odd: %v", err)
@@ -63,7 +63,7 @@ func main() {
 
 	fmt.Println("Successfully stored odd in YDB!")
 
-	// Получаем все матчи
+	// Get all matches
 	matches, err := ydbClient.GetAllMatches(ctx)
 	if err != nil {
 		log.Fatalf("Failed to get matches: %v", err)
@@ -71,7 +71,7 @@ func main() {
 
 	fmt.Printf("Found %d matches: %v\n", len(matches), matches)
 
-	// Получаем коэффициенты для тестового матча
+	// Get odds for test match
 	odds, err := ydbClient.GetOddsByMatch(ctx, "test_match_ydb")
 	if err != nil {
 		log.Fatalf("Failed to get odds: %v", err)

@@ -34,6 +34,7 @@ type FonbetAPIResponse struct {
 	TournamentInfos              []FonbetTournament `json:"tournamentInfos"`
 	Sports                       []FonbetSport      `json:"sports"`
 	Events                       []FonbetAPIEvent   `json:"events"`
+	CustomFactors                []FonbetFactorGroup `json:"customFactors"`
 }
 
 // FonbetTournament represents a tournament from Fonbet API
@@ -56,9 +57,25 @@ type FonbetSport struct {
 
 // FonbetAPIEvent represents an event from Fonbet API
 type FonbetAPIEvent struct {
-	E         int64           `json:"e"`         // Event ID
-	CountAll  int             `json:"countAll"`  // Number of factors
-	Factors   []FonbetFactor  `json:"factors"`   // Array of factors
+	ID        int64  `json:"id"`
+	Name      string `json:"name"`
+	StartTime int64  `json:"startTime"`
+	SportID   int64  `json:"sportId"`
+	Kind      int64  `json:"kind"`
+	RootKind  int64  `json:"rootKind"`
+	Level     int    `json:"level"`
+	ParentID  int64  `json:"parentId,omitempty"`
+	Team1ID   int64  `json:"team1Id,omitempty"`
+	Team2ID   int64  `json:"team2Id,omitempty"`
+	Team1     string `json:"team1,omitempty"`
+	Team2     string `json:"team2,omitempty"`
+}
+
+// FonbetFactorGroup represents a group of factors for an event
+type FonbetFactorGroup struct {
+	EventID   int64          `json:"e"`
+	CountAll  int            `json:"countAll"`
+	Factors   []FonbetFactor `json:"factors"`
 }
 
 // FonbetFactor represents a betting factor from Fonbet API

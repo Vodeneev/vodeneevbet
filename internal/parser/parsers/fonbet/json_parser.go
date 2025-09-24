@@ -21,11 +21,11 @@ func (p *JSONParser) ParseEvents(jsonData []byte) ([]FonbetEvent, error) {
 	var events []FonbetEvent
 	for _, event := range response.Events {
 		events = append(events, FonbetEvent{
-			ID:         fmt.Sprintf("%d", event.E),
-			Name:       fmt.Sprintf("Event %d", event.E),
-			HomeTeam:   "Home Team",
-			AwayTeam:   "Away Team",
-			StartTime:  time.Now().Add(2 * time.Hour),
+			ID:         fmt.Sprintf("%d", event.ID),
+			Name:       event.Name,
+			HomeTeam:   event.Team1,
+			AwayTeam:   event.Team2,
+			StartTime:  time.Unix(event.StartTime, 0),
 			Category:   "football",
 			Tournament: "Unknown Tournament",
 		})
@@ -34,17 +34,30 @@ func (p *JSONParser) ParseEvents(jsonData []byte) ([]FonbetEvent, error) {
 	return events, nil
 }
 
-func (p *JSONParser) ParseFactors(jsonData []byte) ([]FonbetFactor, error) {
+func (p *JSONParser) ParseFactors(jsonData []byte) ([]FonbetFactorGroup, error) {
 	var response FonbetAPIResponse
 	if err := json.Unmarshal(jsonData, &response); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal JSON: %w", err)
 	}
 	
-	var factors []FonbetFactor
-	for _, event := range response.Events {
-		factors = append(factors, event.Factors...)
+	return response.CustomFactors, nil
+}
+
+// ParseCornerEvents finds corner events (kind: 400100) from the response
+func (p *JSONParser) ParseCornerEvents(jsonData []byte) ([]FonbetAPIEvent, error) {
+	var response FonbetAPIResponse
+	if err := json.Unmarshal(jsonData, &response); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal JSON: %w", err)
 	}
 	
-	return factors, nil
+	var cornerEvents []FonbetAPIEvent
+	for _, event := range response.Events {
+		// Corner events have kind: 400100 and rootKind: 400000
+		if event.Kind == 400100 && event.RootKind == 400000 {
+			cornerEvents = append(cornerEvents, event)
+		}
+	}
+	
+	return cornerEvents, nil
 }
 

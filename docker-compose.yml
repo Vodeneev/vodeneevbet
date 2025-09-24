@@ -1,0 +1,33 @@
+version: '3.8'
+
+services:
+  # База данных для истории валуйных ставок и метаданных
+  postgres:
+    image: postgres:15-alpine
+    container_name: arb-postgres
+    environment:
+      POSTGRES_USER: arb_user
+      POSTGRES_PASSWORD: arb_password
+      POSTGRES_DB: arb_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U arb_user -d arb_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+
+  # Веб-интерфейс для администрирования PostgreSQL
+  adminer:
+    image: adminer
+    container_name: arb-adminer
+    ports:
+      - "8080:8080"
+    depends_on:
+      - postgres
+
+volumes:
+  postgres_data:

@@ -1,0 +1,32 @@
+# YDB конфигурация для облака
+ydb:
+  endpoint: "grpcs://ydb.serverless.yandexcloud.net:2135"
+  database: "/ru-central1/b1gttv06r5rq0hc4filn/etn1sqa39tgha69fe2mt"
+  # Путь к файлу с ключом Service Account
+  service_account_key_file: "keys/service-account-key.json"
+
+# PostgreSQL для истории валуйных ставок
+postgres:
+  dsn: "host=localhost user=arb_user password=arb_password dbname=arb_db port=5432 sslmode=disable"
+
+parser:
+  interval: 30s  # Интервал парсинга
+  user_agent: "ValueBetBot/1.0 (https://github.com/Vodeneev/vodeneevbet)"
+  timeout: 30s
+
+value_calculator:
+  # Настройки Value Bet
+  reference_method: "average_top5"  # "pinnacle" или "average_top5"
+  min_value_percent: 15.0           # Минимальная разница в процентах
+  max_risk_percent: 5.0            # Максимальный риск
+  min_stake: 1000                  # Минимальная ставка
+  max_stake: 50000                 # Максимальная ставка
+  check_interval: 5m               # Интервал проверки
+  test_interval: 30s               # Интервал для тестирования
+  
+  # Фильтры
+  sports: ["football"]             # Только футбол
+  markets: ["1x2", "total", "handicap"]  # Основные рынки
+  
+  # Топ-5 БК для референса (исключая общие API)
+  reference_bookmakers: ["pinnacle", "betfair", "sbobet", "bet365", "williamhill"]

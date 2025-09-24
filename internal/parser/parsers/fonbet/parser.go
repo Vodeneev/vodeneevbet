@@ -7,6 +7,7 @@ import (
 
 	"github.com/Vodeneev/vodeneevbet/internal/pkg/config"
 	"github.com/Vodeneev/vodeneevbet/internal/pkg/enums"
+	"github.com/Vodeneev/vodeneevbet/internal/pkg/enums/fonbet"
 	"github.com/Vodeneev/vodeneevbet/internal/pkg/models"
 	"github.com/Vodeneev/vodeneevbet/internal/parser/parsers"
 )
@@ -53,7 +54,7 @@ func (p *Parser) Stop() error {
 
 func (p *Parser) parseSportEvents(sport enums.Sport) error {
 	sportInfo := sport.GetSportInfo()
-	scopeMarket := enums.GetScopeMarket(sport)
+	scopeMarket := fonbet.GetScopeMarket(sport)
 	fmt.Printf("Parsing %s events from Fonbet (scope: %s)...\n", sportInfo.Name, scopeMarket.String())
 	
 	events, err := p.getSportEvents(sport)

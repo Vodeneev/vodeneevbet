@@ -8,6 +8,7 @@ import (
 
 	"github.com/Vodeneev/vodeneevbet/internal/pkg/config"
 	"github.com/Vodeneev/vodeneevbet/internal/pkg/enums"
+	"github.com/Vodeneev/vodeneevbet/internal/pkg/enums/fonbet"
 )
 
 type HTTPClient struct {
@@ -36,7 +37,7 @@ func (c *HTTPClient) GetEvents(sport enums.Sport) ([]byte, error) {
 	q.Set("lang", c.config.Parser.Fonbet.Lang)
 	q.Set("version", c.config.Parser.Fonbet.Version)
 	
-	scopeMarket := enums.GetScopeMarket(sport)
+	scopeMarket := fonbet.GetScopeMarket(sport)
 	q.Set("scopeMarket", scopeMarket.String())
 	req.URL.RawQuery = q.Encode()
 

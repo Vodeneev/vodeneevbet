@@ -6,7 +6,6 @@ import (
 	"github.com/Vodeneev/vodeneevbet/internal/pkg/models"
 )
 
-// YDBClient interface for YDB operations
 type YDBClient interface {
 	StoreOdd(ctx context.Context, odd *models.Odd) error
 	GetOddsByMatch(ctx context.Context, matchID string) ([]*models.Odd, error)
@@ -14,21 +13,18 @@ type YDBClient interface {
 	Close() error
 }
 
-// Parser interface for all bookmaker parsers
 type Parser interface {
 	Start(ctx context.Context) error
 	Stop() error
 	GetName() string
 }
 
-// BaseParser base structure for all parsers
 type BaseParser struct {
 	ydbClient YDBClient
 	config    *config.Config
 	name      string
 }
 
-// NewBaseParser creates base parser
 func NewBaseParser(ydbClient YDBClient, config *config.Config, name string) *BaseParser {
 	return &BaseParser{
 		ydbClient: ydbClient,
@@ -37,7 +33,6 @@ func NewBaseParser(ydbClient YDBClient, config *config.Config, name string) *Bas
 	}
 }
 
-// GetName returns parser name
 func (p *BaseParser) GetName() string {
 	return p.name
 }

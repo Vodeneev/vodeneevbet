@@ -1,6 +1,7 @@
 package parsers
 
 import (
+	"compress/gzip"
 	"context"
 	"fmt"
 	"io"
@@ -8,9 +9,17 @@ import (
 	"time"
 
 	"github.com/Vodeneev/vodeneevbet/internal/pkg/config"
+	"github.com/Vodeneev/vodeneevbet/internal/pkg/enums"
 	"github.com/Vodeneev/vodeneevbet/internal/pkg/models"
-	"github.com/Vodeneev/vodeneevbet/internal/pkg/storage"
 )
+
+// min returns the minimum of two integers
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
+}
 
 // FonbetParser implements parser for Fonbet bookmaker
 type FonbetParser struct {
@@ -20,7 +29,7 @@ type FonbetParser struct {
 }
 
 // NewFonbetParser creates a new Fonbet parser instance
-func NewFonbetParser(ydbClient *storage.YDBWorkingClient, config *config.Config) *FonbetParser {
+func NewFonbetParser(ydbClient YDBClient, config *config.Config) *FonbetParser {
 	httpClient := &http.Client{
 		Timeout: config.Parser.Timeout,
 	}
@@ -37,7 +46,13 @@ func (p *FonbetParser) Start(ctx context.Context) error {
 	fmt.Println("Starting Fonbet parser...")
 	
 	// Parse events for configured sports
-	for _, sport := range p.config.ValueCalculator.Sports {
+	for _, sportStr := range p.config.ValueCalculator.Sports {
+		sport, valid := enums.ParseSport(sportStr)
+		if !valid {
+			fmt.Printf("Unsupported sport: %s\n", sportStr)
+			continue
+		}
+		
 		if err := p.parseSportEvents(sport); err != nil {
 			fmt.Printf("Failed to parse %s events: %v\n", sport, err)
 			continue
@@ -54,7 +69,7 @@ func (p *FonbetParser) Stop() error {
 }
 
 // parseSportEvents parses events for specific sport from Fonbet
-func (p *FonbetParser) parseSportEvents(sport string) error {
+func (p *FonbetParser) parseSportEvents(sport enums.Sport) error {
 	fmt.Printf("Parsing %s events from Fonbet...\n", sport)
 	
 	// Get events list for sport
@@ -75,8 +90,8 @@ func (p *FonbetParser) parseSportEvents(sport string) error {
 }
 
 // getSportEvents retrieves events for specific sport from Fonbet
-func (p *FonbetParser) getSportEvents(sport string) ([]FonbetEvent, error) {
-	url := fmt.Sprintf("%s/sports/%s?dateInterval=3", p.baseURL, sport)
+func (p *FonbetParser) getSportEvents(sport enums.Sport) ([]FonbetEvent, error) {
+	url := fmt.Sprintf("%s/sports/%s?dateInterval=3", p.baseURL, sport.String())
 	
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
@@ -99,10 +114,25 @@ func (p *FonbetParser) getSportEvents(sport string) ([]FonbetEvent, error) {
 		return nil, fmt.Errorf("unexpected status code: %d", resp.StatusCode)
 	}
 	
-	// Read response body
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read response body: %w", err)
+	// Read response body with gzip decompression
+	var body []byte
+	
+	if resp.Header.Get("Content-Encoding") == "gzip" {
+		gzReader, err := gzip.NewReader(resp.Body)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create gzip reader: %w", err)
+		}
+		defer gzReader.Close()
+		
+		body, err = io.ReadAll(gzReader)
+		if err != nil {
+			return nil, fmt.Errorf("failed to read gzipped response body: %w", err)
+		}
+	} else {
+		body, err = io.ReadAll(resp.Body)
+		if err != nil {
+			return nil, fmt.Errorf("failed to read response body: %w", err)
+		}
 	}
 	
 	// Parse HTML to extract events (simplified approach)
@@ -116,32 +146,13 @@ func (p *FonbetParser) getSportEvents(sport string) ([]FonbetEvent, error) {
 
 // parseHTMLForEvents extracts events from HTML response
 func (p *FonbetParser) parseHTMLForEvents(html string) ([]FonbetEvent, error) {
-	// This is a simplified implementation
-	// In real scenario, you would use HTML parsing library like goquery
-	// For now, we'll create mock events for testing
+	// TODO: Implement real HTML parsing using goquery
+	// For now, return empty slice to see what we get from Fonbet
+	fmt.Printf("Received HTML response length: %d characters\n", len(html))
+	fmt.Printf("First 500 characters: %s\n", html[:min(500, len(html))])
 	
-	events := []FonbetEvent{
-		{
-			ID:          "test-event-1",
-			Name:        "Test Match 1",
-			HomeTeam:    "Team A",
-			AwayTeam:    "Team B",
-			StartTime:   time.Now().Add(2 * time.Hour),
-			Category:    "football",
-			Tournament:  "Test League",
-		},
-		{
-			ID:          "test-event-2", 
-			Name:        "Test Match 2",
-			HomeTeam:    "Team C",
-			AwayTeam:    "Team D",
-			StartTime:   time.Now().Add(4 * time.Hour),
-			Category:    "football",
-			Tournament:  "Test League",
-		},
-	}
-	
-	return events, nil
+	// Return empty slice for now - we'll implement real parsing later
+	return []FonbetEvent{}, nil
 }
 
 // parseEvent parses a specific event and extracts odds
@@ -149,7 +160,7 @@ func (p *FonbetParser) parseEvent(event FonbetEvent) error {
 	fmt.Printf("Parsing event: %s vs %s\n", event.HomeTeam, event.AwayTeam)
 	
 	// Get odds for the event
-	odds, err := p.getEventOdds(event.ID, event.Category)
+	odds, err := p.getEventOdds(event.ID, enums.Sport(event.Category))
 	if err != nil {
 		return fmt.Errorf("failed to get event odds: %w", err)
 	}
@@ -166,28 +177,13 @@ func (p *FonbetParser) parseEvent(event FonbetEvent) error {
 }
 
 // getEventOdds retrieves odds for a specific event
-func (p *FonbetParser) getEventOdds(eventID string, sport string) ([]*models.Odd, error) {
-	// This would be the actual API call to get odds
-	// For now, we'll create mock odds for testing
+func (p *FonbetParser) getEventOdds(eventID string, sport enums.Sport) ([]*models.Odd, error) {
+	// TODO: Implement real API call to get odds from Fonbet
+	// For now, return empty slice - we'll implement real odds parsing later
+	fmt.Printf("Getting odds for event %s, sport %s\n", eventID, sport)
 	
-	odds := []*models.Odd{
-		{
-			MatchID:   eventID,
-			Bookmaker: "Fonbet",
-			Market:    "1X2",
-			Outcomes: map[string]float64{
-				"win_a": 1.85,
-				"draw":  3.20,
-				"win_b": 4.10,
-			},
-			UpdatedAt: time.Now(),
-			MatchName: fmt.Sprintf("Test Match %s", eventID),
-			MatchTime: time.Now().Add(2 * time.Hour),
-			Sport:     sport,
-		},
-	}
-	
-	return odds, nil
+	// Return empty slice for now - we'll implement real odds parsing later
+	return []*models.Odd{}, nil
 }
 
 // FonbetEvent represents a sports event from Fonbet

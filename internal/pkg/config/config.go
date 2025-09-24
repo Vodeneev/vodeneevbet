@@ -27,10 +27,11 @@ type PostgresConfig struct {
 }
 
 type ParserConfig struct {
-	Type      string        `yaml:"type"`
-	Interval  time.Duration `yaml:"interval"`
-	UserAgent string        `yaml:"user_agent"`
-	Timeout   time.Duration `yaml:"timeout"`
+	Type      string            `yaml:"type"`
+	Interval  time.Duration     `yaml:"interval"`
+	UserAgent string            `yaml:"user_agent"`
+	Timeout   time.Duration     `yaml:"timeout"`
+	Headers   map[string]string `yaml:"headers"`
 }
 
 type ValueCalculatorConfig struct {

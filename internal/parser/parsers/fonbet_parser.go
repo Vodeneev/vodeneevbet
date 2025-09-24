@@ -36,9 +36,12 @@ func NewFonbetParser(ydbClient *storage.YDBWorkingClient, config *config.Config)
 func (p *FonbetParser) Start(ctx context.Context) error {
 	fmt.Println("Starting Fonbet parser...")
 	
-	// Parse football events
-	if err := p.parseFootballEvents(); err != nil {
-		return fmt.Errorf("failed to parse football events: %w", err)
+	// Parse events for configured sports
+	for _, sport := range p.config.ValueCalculator.Sports {
+		if err := p.parseSportEvents(sport); err != nil {
+			fmt.Printf("Failed to parse %s events: %v\n", sport, err)
+			continue
+		}
 	}
 	
 	return nil
@@ -50,14 +53,14 @@ func (p *FonbetParser) Stop() error {
 	return nil
 }
 
-// parseFootballEvents parses football events from Fonbet
-func (p *FonbetParser) parseFootballEvents() error {
-	fmt.Println("Parsing football events from Fonbet...")
+// parseSportEvents parses events for specific sport from Fonbet
+func (p *FonbetParser) parseSportEvents(sport string) error {
+	fmt.Printf("Parsing %s events from Fonbet...\n", sport)
 	
-	// Get football events list
-	events, err := p.getFootballEvents()
+	// Get events list for sport
+	events, err := p.getSportEvents(sport)
 	if err != nil {
-		return fmt.Errorf("failed to get football events: %w", err)
+		return fmt.Errorf("failed to get %s events: %w", sport, err)
 	}
 	
 	// Parse each event
@@ -71,22 +74,20 @@ func (p *FonbetParser) parseFootballEvents() error {
 	return nil
 }
 
-// getFootballEvents retrieves football events from Fonbet
-func (p *FonbetParser) getFootballEvents() ([]FonbetEvent, error) {
-	url := fmt.Sprintf("%s/sports/football?dateInterval=3", p.baseURL)
+// getSportEvents retrieves events for specific sport from Fonbet
+func (p *FonbetParser) getSportEvents(sport string) ([]FonbetEvent, error) {
+	url := fmt.Sprintf("%s/sports/%s?dateInterval=3", p.baseURL, sport)
 	
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
 	
-	// Set headers to mimic browser
-	req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36")
-	req.Header.Set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8")
-	req.Header.Set("Accept-Language", "ru-RU,ru;q=0.9,en;q=0.8")
-	req.Header.Set("Accept-Encoding", "gzip, deflate, br")
-	req.Header.Set("Connection", "keep-alive")
-	req.Header.Set("Upgrade-Insecure-Requests", "1")
+	// Set headers from configuration
+	req.Header.Set("User-Agent", p.config.Parser.UserAgent)
+	for key, value := range p.config.Parser.Headers {
+		req.Header.Set(key, value)
+	}
 	
 	resp, err := p.httpClient.Do(req)
 	if err != nil {
@@ -148,7 +149,7 @@ func (p *FonbetParser) parseEvent(event FonbetEvent) error {
 	fmt.Printf("Parsing event: %s vs %s\n", event.HomeTeam, event.AwayTeam)
 	
 	// Get odds for the event
-	odds, err := p.getEventOdds(event.ID)
+	odds, err := p.getEventOdds(event.ID, event.Category)
 	if err != nil {
 		return fmt.Errorf("failed to get event odds: %w", err)
 	}
@@ -165,7 +166,7 @@ func (p *FonbetParser) parseEvent(event FonbetEvent) error {
 }
 
 // getEventOdds retrieves odds for a specific event
-func (p *FonbetParser) getEventOdds(eventID string) ([]*models.Odd, error) {
+func (p *FonbetParser) getEventOdds(eventID string, sport string) ([]*models.Odd, error) {
 	// This would be the actual API call to get odds
 	// For now, we'll create mock odds for testing
 	
@@ -182,7 +183,7 @@ func (p *FonbetParser) getEventOdds(eventID string) ([]*models.Odd, error) {
 			UpdatedAt: time.Now(),
 			MatchName: fmt.Sprintf("Test Match %s", eventID),
 			MatchTime: time.Now().Add(2 * time.Hour),
-			Sport:     "football",
+			Sport:     sport,
 		},
 	}
 	

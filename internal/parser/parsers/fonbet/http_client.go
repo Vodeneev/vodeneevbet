@@ -22,7 +22,7 @@ func NewHTTPClient(config *config.Config) *HTTPClient {
 			Timeout: config.Parser.Timeout,
 		},
 		config:  config,
-		baseURL: "https://line55w.bk6bba-resources.com/events/list",
+		baseURL: config.Parser.Fonbet.BaseURL,
 	}
 }
 
@@ -33,8 +33,8 @@ func (c *HTTPClient) GetEvents(sport enums.Sport) ([]byte, error) {
 	}
 
 	q := req.URL.Query()
-	q.Set("lang", "ru")
-	q.Set("version", "60312723953")
+	q.Set("lang", c.config.Parser.Fonbet.Lang)
+	q.Set("version", c.config.Parser.Fonbet.Version)
 	
 	sportInfo := sport.GetSportInfo()
 	q.Set("scopeMarket", sportInfo.ScopeMarket)

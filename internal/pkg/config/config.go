@@ -32,6 +32,14 @@ type ParserConfig struct {
 	UserAgent string            `yaml:"user_agent"`
 	Timeout   time.Duration     `yaml:"timeout"`
 	Headers   map[string]string `yaml:"headers"`
+	Fonbet    FonbetConfig      `yaml:"fonbet"`
+}
+
+type FonbetConfig struct {
+	BaseURL   string `yaml:"base_url"`
+	Lang      string `yaml:"lang"`
+	Version   string `yaml:"version"`
+	TestLimit int    `yaml:"test_limit"`
 }
 
 type ValueCalculatorConfig struct {

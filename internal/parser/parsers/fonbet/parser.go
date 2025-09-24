@@ -61,8 +61,8 @@ func (p *Parser) parseSportEvents(sport enums.Sport) error {
 	}
 	
 	for i, event := range events {
-		if i >= 5 { // Limit to first 5 events for testing
-			fmt.Printf("Limiting to first 5 events for testing\n")
+		if p.config.Parser.Fonbet.TestLimit > 0 && i >= p.config.Parser.Fonbet.TestLimit {
+			fmt.Printf("Limiting to first %d events for testing\n", p.config.Parser.Fonbet.TestLimit)
 			break
 		}
 		

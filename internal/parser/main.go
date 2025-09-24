@@ -38,8 +38,23 @@ func main() {
 	}
 	defer ydbClient.Close()
 
-	// Create parser for test bookmaker (пока заглушка)
-	parser := parsers.NewTestParser(ydbClient, cfg)
+	// Create parser based on config
+	var parser parsers.Parser
+	parserType := cfg.Parser.Type
+	if parserType == "" {
+		parserType = "test" // Default to test parser
+	}
+	
+	switch parserType {
+	case "fonbet":
+		parser = parsers.NewFonbetParser(ydbClient, cfg)
+	case "test":
+		parser = parsers.NewTestParser(ydbClient, cfg)
+	default:
+		log.Fatalf("Unknown parser type: %s", parserType)
+	}
+	
+	fmt.Printf("Using parser: %s\n", parser.GetName())
 
 	// Create context with cancellation
 	ctx, cancel := context.WithCancel(context.Background())

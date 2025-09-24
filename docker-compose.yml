@@ -1,7 +1,7 @@
 version: '3.8'
 
 services:
-  # База данных для истории арбов и метаданных
+  # База данных для истории валуйных ставок и метаданных
   postgres:
     image: postgres:15-alpine
     container_name: arb-postgres

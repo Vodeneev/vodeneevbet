@@ -6,9 +6,9 @@ import (
 	"math/rand"
 	"time"
 
-	"vodeneevbet/internal/pkg/models"
-	"vodeneevbet/internal/pkg/config"
-	"vodeneevbet/internal/pkg/storage"
+	"github.com/Vodeneev/vodeneevbet/internal/pkg/models"
+	"github.com/Vodeneev/vodeneevbet/internal/pkg/config"
+	"github.com/Vodeneev/vodeneevbet/internal/pkg/storage"
 )
 
 // TestParser тестовый парсер с заглушкой данных

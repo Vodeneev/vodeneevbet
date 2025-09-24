@@ -8,9 +8,9 @@ import (
 	"sort"
 	"time"
 
-	"vodeneevbet/internal/pkg/config"
-	"vodeneevbet/internal/pkg/models"
-	"vodeneevbet/internal/pkg/storage"
+	"github.com/Vodeneev/vodeneevbet/internal/pkg/config"
+	"github.com/Vodeneev/vodeneevbet/internal/pkg/models"
+	"github.com/Vodeneev/vodeneevbet/internal/pkg/storage"
 )
 
 // ValueCalculator калькулятор для поиска валуйных ставок
@@ -34,10 +34,11 @@ func (vc *ValueCalculator) Start(ctx context.Context) error {
 	// Парсим интервал
 	interval, err := time.ParseDuration(vc.config.CheckInterval)
 	if err != nil {
-		// Для тестирования используем более частый интервал
+		log.Printf("Invalid check interval '%s', using test interval", vc.config.CheckInterval)
 		interval, err = time.ParseDuration(vc.config.TestInterval)
 		if err != nil {
-			interval = 30 * time.Second
+			log.Printf("Invalid test interval '%s', using default 5 minutes", vc.config.TestInterval)
+			interval = 5 * time.Minute
 		}
 	}
 
@@ -172,8 +173,8 @@ func (vc *ValueCalculator) calculateReferenceData(odds []*models.Odd) (*Referenc
 			continue
 		}
 		
-		// Сортируем коэффициенты
-		sort.Float64s(coefficients)
+		// Сортируем коэффициенты по убыванию (самые высокие коэффициенты)
+		sort.Sort(sort.Reverse(sort.Float64Slice(coefficients)))
 		
 		// Вычисляем среднее по топ-5 (или меньше, если недостаточно данных)
 		topCount := int(math.Min(5, float64(len(coefficients))))

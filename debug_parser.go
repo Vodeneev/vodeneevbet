@@ -3,8 +3,8 @@ package main
 import (
 	"fmt"
 	"log"
-	"vodeneevbet/internal/pkg/config"
-	"vodeneevbet/internal/pkg/storage"
+	"github.com/Vodeneev/vodeneevbet/internal/pkg/config"
+	"github.com/Vodeneev/vodeneevbet/internal/pkg/storage"
 )
 
 func main() {

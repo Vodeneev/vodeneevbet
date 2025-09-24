@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/redis/go-redis/v9"
-	"vodeneevbet/internal/pkg/models"
+	"github.com/Vodeneev/vodeneevbet/internal/pkg/models"
 )
 
 type RedisClient struct {

@@ -2,8 +2,8 @@ package parsers
 
 import (
 	"context"
-	"vodeneevbet/internal/pkg/config"
-	"vodeneevbet/internal/pkg/storage"
+	"github.com/Vodeneev/vodeneevbet/internal/pkg/config"
+	"github.com/Vodeneev/vodeneevbet/internal/pkg/storage"
 )
 
 // Parser интерфейс для всех парсеров букмекеров

@@ -2,7 +2,7 @@ package storage
 
 import (
 	"context"
-	"vodeneevbet/internal/pkg/models"
+	"github.com/Vodeneev/vodeneevbet/internal/pkg/models"
 )
 
 // Storage интерфейс для работы с хранилищем коэффициентов

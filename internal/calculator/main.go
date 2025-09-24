@@ -9,9 +9,9 @@ import (
 	"os/signal"
 	"syscall"
 
-	"vodeneevbet/internal/pkg/config"
-	"vodeneevbet/internal/pkg/storage"
-	"vodeneevbet/internal/calculator/calculator"
+	"github.com/Vodeneev/vodeneevbet/internal/pkg/config"
+	"github.com/Vodeneev/vodeneevbet/internal/pkg/storage"
+	"github.com/Vodeneev/vodeneevbet/internal/calculator/calculator"
 )
 
 func main() {

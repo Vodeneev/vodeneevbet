@@ -4,8 +4,8 @@ import (
 	"context"
 	"fmt"
 
-	"vodeneevbet/internal/pkg/config"
-	"vodeneevbet/internal/pkg/models"
+	"github.com/Vodeneev/vodeneevbet/internal/pkg/config"
+	"github.com/Vodeneev/vodeneevbet/internal/pkg/models"
 )
 
 // YDBSimpleClient упрощенный клиент для YDB (пока без реализации)

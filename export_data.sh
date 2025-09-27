@@ -14,8 +14,11 @@ mkdir -p exports
 
 # Clean previous exports
 echo "🧹 Cleaning previous exports..."
-rm -f exports/*.json exports/*.csv 2>/dev/null || true
+rm -rf exports 2>/dev/null || true
 echo "✅ Previous exports cleaned"
+
+# Create exports directory
+mkdir -p exports
 
 # Run export utility
 cd internal/export
@@ -24,19 +27,15 @@ go run main.go
 # Move exports to project root
 if [ -d "exports" ]; then
     echo "📁 Moving exports to project root..."
-    # Clean target directory first
-    EXPORTS_DIR="../../exports"
-    # Get absolute path
-    ABS_EXPORTS_DIR=$(cd "$EXPORTS_DIR" && pwd)
-    for file in "$ABS_EXPORTS_DIR"/*.json; do
-        [ -f "$file" ] && rm -f "$file"
-    done
-    for file in "$ABS_EXPORTS_DIR"/*.csv; do
-        [ -f "$file" ] && rm -f "$file"
-    done
+    # Clean target directory first (from project root)
+    cd ../..
+    rm -rf exports 2>/dev/null || true
+    mkdir -p exports
     # Copy new files
-    cp exports/*.json "$EXPORTS_DIR/" 2>/dev/null || true
-    cp exports/*.csv "$EXPORTS_DIR/" 2>/dev/null || true
+    cp internal/export/exports/*.json exports/ 2>/dev/null || true
+    cp internal/export/exports/*.csv exports/ 2>/dev/null || true
+    # Clean up temporary exports directory
+    rm -rf internal/export/exports 2>/dev/null || true
     echo "✅ Export completed! Check the 'exports' directory."
 else
     echo "❌ Export failed - no exports directory created"
@@ -45,4 +44,4 @@ fi
 
 echo ""
 echo "📁 Exported files:"
-ls -la ../../exports/
+ls -la exports/ 2>/dev/null || echo "No exports directory found"

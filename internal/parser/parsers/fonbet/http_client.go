@@ -89,7 +89,7 @@ func (c *HTTPClient) GetEventFactors(eventID int64) ([]byte, error) {
 	q := req.URL.Query()
 	q.Set("lang", c.config.Parser.Fonbet.Lang)
 	q.Set("version", "0")
-	q.Set("eventId", "57873748") // Use the example event ID from the documentation
+	q.Set("eventId", fmt.Sprintf("%d", eventID))
 	q.Set("scopeMarket", "1600") // Football scope market
 	req.URL.RawQuery = q.Encode()
 

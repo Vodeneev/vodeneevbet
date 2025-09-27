@@ -12,6 +12,7 @@ import (
 	"github.com/Vodeneev/vodeneevbet/internal/pkg/config"
 	"github.com/Vodeneev/vodeneevbet/internal/pkg/storage"
 	"github.com/Vodeneev/vodeneevbet/internal/parser/parsers"
+	"github.com/Vodeneev/vodeneevbet/internal/parser/parsers/fonbet"
 )
 
 func main() {
@@ -23,7 +24,6 @@ func main() {
 
 	fmt.Printf("Loading config from: %s\n", configPath)
 	
-	// Load configuration
 	cfg, err := config.Load(configPath)
 	if err != nil {
 		log.Fatalf("Failed to load config: %v", err)
@@ -31,21 +31,32 @@ func main() {
 	
 	fmt.Println("Config loaded successfully")
 
-	// Connect to YDB
 	ydbClient, err := storage.NewYDBWorkingClient(&cfg.YDB)
 	if err != nil {
 		log.Fatalf("Failed to connect to YDB: %v", err)
 	}
 	defer ydbClient.Close()
 
-	// Create parser for test bookmaker (пока заглушка)
-	parser := parsers.NewTestParser(ydbClient, cfg)
+	var parser parsers.Parser
+	parserType := cfg.Parser.Type
+	if parserType == "" {
+		parserType = "test"
+	}
+	
+	switch parserType {
+	case "fonbet":
+		parser = fonbet.NewParserWrapper(ydbClient, cfg)
+	case "test":
+		parser = parsers.NewTestParser(ydbClient, cfg)
+	default:
+		log.Fatalf("Unknown parser type: %s", parserType)
+	}
+	
+	fmt.Printf("Using parser: %s\n", parser.GetName())
 
-	// Create context with cancellation
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	// Handle signals for graceful shutdown
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
 
@@ -55,7 +66,6 @@ func main() {
 		cancel()
 	}()
 
-	// Запускаем парсер
 	log.Println("Starting parser...")
 	if err := parser.Start(ctx); err != nil {
 		log.Fatalf("Parser failed: %v", err)

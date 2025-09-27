@@ -3,25 +3,29 @@ package parsers
 import (
 	"context"
 	"github.com/Vodeneev/vodeneevbet/internal/pkg/config"
-	"github.com/Vodeneev/vodeneevbet/internal/pkg/storage"
+	"github.com/Vodeneev/vodeneevbet/internal/pkg/models"
 )
 
-// Parser interface for all bookmaker parsers
+type YDBClient interface {
+	StoreOdd(ctx context.Context, odd *models.Odd) error
+	GetOddsByMatch(ctx context.Context, matchID string) ([]*models.Odd, error)
+	GetAllMatches(ctx context.Context) ([]string, error)
+	Close() error
+}
+
 type Parser interface {
 	Start(ctx context.Context) error
 	Stop() error
 	GetName() string
 }
 
-// BaseParser base structure for all parsers
 type BaseParser struct {
-	ydbClient *storage.YDBWorkingClient
+	ydbClient YDBClient
 	config    *config.Config
 	name      string
 }
 
-// NewBaseParser creates base parser
-func NewBaseParser(ydbClient *storage.YDBWorkingClient, config *config.Config, name string) *BaseParser {
+func NewBaseParser(ydbClient YDBClient, config *config.Config, name string) *BaseParser {
 	return &BaseParser{
 		ydbClient: ydbClient,
 		config:    config,
@@ -29,7 +33,6 @@ func NewBaseParser(ydbClient *storage.YDBWorkingClient, config *config.Config, n
 	}
 }
 
-// GetName returns parser name
 func (p *BaseParser) GetName() string {
 	return p.name
 }

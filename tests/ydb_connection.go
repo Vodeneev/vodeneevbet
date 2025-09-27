@@ -12,16 +12,16 @@ import (
 )
 
 func main() {
-	fmt.Println("🧪 Testing YDB Real Connection...")
+	fmt.Println("🧪 Testing YDB Connection...")
 
-	// Загружаем конфигурацию
-	cfg, err := config.Load("configs/local.yaml")
+	// Load configuration
+	cfg, err := config.Load("../configs/local.yaml")
 	if err != nil {
 		log.Fatalf("Failed to load config: %v", err)
 	}
 
-	// Создаем YDB клиент
-	ydbClient, err := storage.NewYDBWorkingClient(&cfg.YDB)
+	// Create YDB client
+	ydbClient, err := storage.NewYDBClient(&cfg.YDB)
 	if err != nil {
 		log.Fatalf("Failed to create YDB client: %v", err)
 	}
@@ -29,7 +29,7 @@ func main() {
 
 	ctx := context.Background()
 
-	// Тест 1: Сохранение коэффициента
+	// Test 1: Store betting odds
 	fmt.Println("\n📝 Test 1: Storing odd...")
 	testOdd := &models.Odd{
 		MatchID:   "test_match_001",
@@ -51,7 +51,7 @@ func main() {
 	}
 	fmt.Println("✅ Odd stored successfully")
 
-	// Тест 2: Получение коэффициентов
+	// Test 2: Retrieve odds
 	fmt.Println("\n📖 Test 2: Getting odds...")
 	odds, err := ydbClient.GetOddsByMatch(ctx, "test_match_001")
 	if err != nil {
@@ -62,7 +62,7 @@ func main() {
 		fmt.Printf("   %s: %+v\n", odd.Bookmaker, odd.Outcomes)
 	}
 
-	// Тест 3: Получение всех матчей
+	// Test 3: Get all matches
 	fmt.Println("\n🏆 Test 3: Getting all matches...")
 	matches, err := ydbClient.GetAllMatches(ctx)
 	if err != nil {
@@ -73,7 +73,7 @@ func main() {
 		fmt.Printf("   Match: %s\n", matchID)
 	}
 
-	// Тест 4: Сохранение второго коэффициента
+	// Test 4: Store second odd
 	fmt.Println("\n📝 Test 4: Storing second odd...")
 	testOdd2 := &models.Odd{
 		MatchID:   "test_match_001",
@@ -95,7 +95,7 @@ func main() {
 	}
 	fmt.Println("✅ Second odd stored successfully")
 
-	// Тест 5: Получение всех коэффициентов для матча
+	// Test 5: Get all odds for match
 	fmt.Println("\n📊 Test 5: Getting all odds for match...")
 	allOdds, err := ydbClient.GetOddsByMatch(ctx, "test_match_001")
 	if err != nil {
@@ -108,4 +108,3 @@ func main() {
 
 	fmt.Println("\n🎉 All tests passed! YDB connection is working correctly.")
 }
-

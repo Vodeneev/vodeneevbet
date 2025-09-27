@@ -162,11 +162,12 @@ func (y *YDBClient) GetOddsByMatch(ctx context.Context, matchID string) ([]*mode
 			for res.NextResultSet(ctx) {
 				for res.NextRow() {
 					odd := &models.Odd{}
+					var outcomesJSON string
 					err = res.ScanNamed(
 						named.Required("match_id", &odd.MatchID),
 						named.Required("bookmaker", &odd.Bookmaker),
 						named.Required("market", &odd.Market),
-						named.Required("outcomes", &odd.Outcomes),
+						named.Required("outcomes", &outcomesJSON),
 						named.Required("updated_at", &odd.UpdatedAt),
 						named.Required("match_name", &odd.MatchName),
 						named.Required("match_time", &odd.MatchTime),
@@ -175,6 +176,12 @@ func (y *YDBClient) GetOddsByMatch(ctx context.Context, matchID string) ([]*mode
 					if err != nil {
 						return err
 					}
+					
+					// Парсим JSON в map
+					if err := json.Unmarshal([]byte(outcomesJSON), &odd.Outcomes); err != nil {
+						return fmt.Errorf("failed to parse outcomes JSON: %w", err)
+					}
+					
 					odds = append(odds, odd)
 				}
 			}
@@ -255,11 +262,12 @@ func (y *YDBClient) GetAllOdds(ctx context.Context) ([]*models.Odd, error) {
 			for res.NextResultSet(ctx) {
 				for res.NextRow() {
 					odd := &models.Odd{}
+					var outcomesJSON string
 					err = res.ScanNamed(
 						named.Required("match_id", &odd.MatchID),
 						named.Required("bookmaker", &odd.Bookmaker),
 						named.Required("market", &odd.Market),
-						named.Required("outcomes", &odd.Outcomes),
+						named.Required("outcomes", &outcomesJSON),
 						named.Required("updated_at", &odd.UpdatedAt),
 						named.Required("match_name", &odd.MatchName),
 						named.Required("match_time", &odd.MatchTime),
@@ -268,6 +276,12 @@ func (y *YDBClient) GetAllOdds(ctx context.Context) ([]*models.Odd, error) {
 					if err != nil {
 						return err
 					}
+					
+					// Парсим JSON в map
+					if err := json.Unmarshal([]byte(outcomesJSON), &odd.Outcomes); err != nil {
+						return fmt.Errorf("failed to parse outcomes JSON: %w", err)
+					}
+					
 					odds = append(odds, odd)
 				}
 			}

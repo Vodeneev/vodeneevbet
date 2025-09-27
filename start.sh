@@ -21,6 +21,9 @@ docker-compose up -d
 echo "⏳ Waiting for services to start..."
 sleep 5
 
+echo "📊 Exporting current data..."
+./export_data.sh
+
 echo "🌐 Starting web interface..."
 cd internal/api
 go run main.go &

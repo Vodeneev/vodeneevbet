@@ -1,0 +1,3 @@
+Match ID,Bookmaker,Market,Match Name,Match Time,Sport,Outcomes,Updated At
+match_1,Fonbet,1x2,"Real Madrid vs Barcelona",2025-09-27 20:49:34,football,"home:1.85; draw:3.20; away:4.10",2025-09-27 18:49:34
+match_2,Fonbet,Corners,"Manchester United vs Liverpool",2025-09-27 22:49:34,football,"total_-5.5:10.00; alt_total_+4.5:1.50; alt_total_-4.5:2.60; total_+5.5:1.06",2025-09-27 18:49:34

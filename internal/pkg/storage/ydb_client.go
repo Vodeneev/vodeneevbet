@@ -3,6 +3,7 @@ package storage
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/Vodeneev/vodeneevbet/internal/pkg/config"
 	"github.com/Vodeneev/vodeneevbet/internal/pkg/models"
@@ -40,6 +41,43 @@ func (y *YDBClient) GetOddsByMatch(ctx context.Context, matchID string) ([]*mode
 func (y *YDBClient) GetAllMatches(ctx context.Context) ([]string, error) {
 	fmt.Println("YDB: Getting all matches")
 	return []string{}, nil
+}
+
+// GetAllOdds retrieves all odds from YDB
+func (y *YDBClient) GetAllOdds(ctx context.Context) ([]*models.Odd, error) {
+	fmt.Println("YDB: Getting all odds")
+	// Mock data for testing - replace with real YDB query
+	return []*models.Odd{
+		{
+			MatchID:   "match_1",
+			Bookmaker: "Fonbet",
+			Market:    "1x2",
+			Outcomes: map[string]float64{
+				"home": 1.85,
+				"draw": 3.20,
+				"away": 4.10,
+			},
+			UpdatedAt: time.Now(),
+			MatchName: "Real Madrid vs Barcelona",
+			MatchTime: time.Now().Add(2 * time.Hour),
+			Sport:     "football",
+		},
+		{
+			MatchID:   "match_2",
+			Bookmaker: "Fonbet",
+			Market:    "Corners",
+			Outcomes: map[string]float64{
+				"total_+5.5": 1.06,
+				"total_-5.5": 10.0,
+				"alt_total_+4.5": 1.5,
+				"alt_total_-4.5": 2.6,
+			},
+			UpdatedAt: time.Now(),
+			MatchName: "Manchester United vs Liverpool",
+			MatchTime: time.Now().Add(4 * time.Hour),
+			Sport:     "football",
+		},
+	}, nil
 }
 
 // StoreArbitrage stores arbitrage opportunity (stub for compatibility)

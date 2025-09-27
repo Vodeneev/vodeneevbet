@@ -1,0 +1,36 @@
+{
+  "timestamp": "2025-09-27T18:49:34.791990516Z",
+  "total_odds": 2,
+  "matches": [],
+  "odds": [
+    {
+      "match_id": "match_1",
+      "bookmaker": "Fonbet",
+      "market": "1x2",
+      "outcomes": {
+        "away": 4.1,
+        "draw": 3.2,
+        "home": 1.85
+      },
+      "updated_at": "2025-09-27T18:49:34.791984346Z",
+      "match_name": "Real Madrid vs Barcelona",
+      "match_time": "2025-09-27T20:49:34.791984444Z",
+      "sport": "football"
+    },
+    {
+      "match_id": "match_2",
+      "bookmaker": "Fonbet",
+      "market": "Corners",
+      "outcomes": {
+        "alt_total_+4.5": 1.5,
+        "alt_total_-4.5": 2.6,
+        "total_+5.5": 1.06,
+        "total_-5.5": 10
+      },
+      "updated_at": "2025-09-27T18:49:34.791984779Z",
+      "match_name": "Manchester United vs Liverpool",
+      "match_time": "2025-09-27T22:49:34.791984838Z",
+      "sport": "football"
+    }
+  ]
+}

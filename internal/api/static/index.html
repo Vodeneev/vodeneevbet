@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Value Bet Finder</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+            overflow: hidden;
+        }
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+        .header h1 {
+            margin: 0;
+            font-size: 2.5em;
+            font-weight: 300;
+        }
+        .header p {
+            margin: 10px 0 0 0;
+            opacity: 0.9;
+        }
+        .content {
+            padding: 30px;
+        }
+        .section {
+            margin-bottom: 40px;
+        }
+        .section h2 {
+            color: #333;
+            border-bottom: 2px solid #667eea;
+            padding-bottom: 10px;
+            margin-bottom: 20px;
+        }
+        .odds-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 20px;
+        }
+        .odd-card {
+            border: 1px solid #e0e0e0;
+            border-radius: 8px;
+            padding: 20px;
+            background: #f9f9f9;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+        .odd-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 25px rgba(0,0,0,0.1);
+        }
+        .match-name {
+            font-weight: 600;
+            color: #333;
+            margin-bottom: 10px;
+        }
+        .market {
+            color: #667eea;
+            font-size: 0.9em;
+            margin-bottom: 15px;
+        }
+        .outcomes {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+        .outcome {
+            background: white;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            padding: 8px 12px;
+            font-weight: 500;
+            color: #333;
+        }
+        .outcome-value {
+            color: #667eea;
+            font-weight: 600;
+        }
+        .bookmaker {
+            color: #666;
+            font-size: 0.8em;
+            margin-top: 10px;
+        }
+        .status {
+            background: #e8f5e8;
+            border: 1px solid #4caf50;
+            border-radius: 6px;
+            padding: 15px;
+            margin-bottom: 20px;
+        }
+        .status.success {
+            background: #e8f5e8;
+            border-color: #4caf50;
+            color: #2e7d32;
+        }
+        .btn {
+            background: #667eea;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 16px;
+            transition: background 0.2s;
+        }
+        .btn:hover {
+            background: #5a6fd8;
+        }
+        .loading {
+            text-align: center;
+            color: #666;
+            font-style: italic;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🎯 Value Bet Finder</h1>
+            <p>Система поиска валуйных ставок</p>
+        </div>
+        
+        <div class="content">
+            <div class="section">
+                <div class="status success">
+                    ✅ Парсер Fonbet работает! Получены реальные данные с API.
+                </div>
+            </div>
+            
+            <div class="section">
+                <h2>📊 Текущие коэффициенты</h2>
+                <div id="odds-container" class="loading">
+                    Загрузка коэффициентов...
+                </div>
+                <button class="btn" onclick="loadOdds()">🔄 Обновить</button>
+            </div>
+            
+            <div class="section">
+                <h2>⚽ Доступные матчи</h2>
+                <div id="matches-container" class="loading">
+                    Загрузка матчей...
+                </div>
+                <button class="btn" onclick="loadMatches()">🔄 Обновить</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        async function loadOdds() {
+            const container = document.getElementById('odds-container');
+            container.innerHTML = '<div class="loading">Загрузка коэффициентов...</div>';
+            
+            try {
+                const response = await fetch('/api/odds');
+                const odds = await response.json();
+                
+                if (odds.length === 0) {
+                    container.innerHTML = '<div class="loading">Нет доступных коэффициентов</div>';
+                    return;
+                }
+                
+                let html = '<div class="odds-grid">';
+                odds.forEach(odd => {
+                    html += `
+                        <div class="odd-card">
+                            <div class="match-name">${odd.match_name}</div>
+                            <div class="market">${odd.market}</div>
+                            <div class="outcomes">
+                                ${Object.entries(odd.outcomes).map(([outcome, value]) => 
+                                    `<div class="outcome">${outcome}: <span class="outcome-value">${value}</span></div>`
+                                ).join('')}
+                            </div>
+                            <div class="bookmaker">📊 ${odd.bookmaker}</div>
+                        </div>
+                    `;
+                });
+                html += '</div>';
+                container.innerHTML = html;
+            } catch (error) {
+                container.innerHTML = '<div class="loading">Ошибка загрузки: ' + error.message + '</div>';
+            }
+        }
+        
+        async function loadMatches() {
+            const container = document.getElementById('matches-container');
+            container.innerHTML = '<div class="loading">Загрузка матчей...</div>';
+            
+            try {
+                const response = await fetch('/api/matches');
+                const matches = await response.json();
+                
+                if (matches.length === 0) {
+                    container.innerHTML = '<div class="loading">Нет доступных матчей</div>';
+                    return;
+                }
+                
+                let html = '<ul style="list-style: none; padding: 0;">';
+                matches.forEach(match => {
+                    html += `<li style="padding: 10px; border-bottom: 1px solid #eee;">⚽ ${match}</li>`;
+                });
+                html += '</ul>';
+                container.innerHTML = html;
+            } catch (error) {
+                container.innerHTML = '<div class="loading">Ошибка загрузки: ' + error.message + '</div>';
+            }
+        }
+        
+        // Load data on page load
+        document.addEventListener('DOMContentLoaded', function() {
+            loadOdds();
+            loadMatches();
+        });
+    </script>
+</body>
+</html>

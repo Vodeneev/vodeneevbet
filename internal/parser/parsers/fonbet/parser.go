@@ -115,8 +115,8 @@ func (p *Parser) parseEvent(event FonbetEvent) error {
 			"away": 2.1,
 		},
 		UpdatedAt: time.Now(),
-		MatchName: fmt.Sprintf("Event %s", event.ID),
-		MatchTime: time.Now().Add(2 * time.Hour),
+		MatchName: p.getMatchName(event),
+		MatchTime: event.StartTime,
 		Sport:     "football",
 	}
 	
@@ -192,13 +192,20 @@ func (p *Parser) parseCornerEvents(jsonData []byte) error {
 		if len(cornerOdds) > 0 {
 			fmt.Printf("Extracted corner odds: %+v\n", cornerOdds)
 			
+			// Try to find parent event for team names
+			parentEventName := cornerEvent.Name
+			if cornerEvent.ParentID > 0 {
+				// TODO: Look up parent event to get team names
+				parentEventName = fmt.Sprintf("Corners for event %d", cornerEvent.ParentID)
+			}
+			
 			odd := &models.Odd{
 				MatchID:   fmt.Sprintf("%d", cornerEvent.ID),
 				Bookmaker: "Fonbet",
 				Market:    "Corners",
 				Outcomes:  cornerOdds,
 				UpdatedAt: time.Now(),
-				MatchName: cornerEvent.Name,
+				MatchName: parentEventName,
 				MatchTime: time.Unix(cornerEvent.StartTime, 0),
 				Sport:     "football",
 			}
@@ -236,6 +243,22 @@ func (p *Parser) parseCornerOdds(factors []FonbetFactor) map[string]float64 {
 	}
 	
 	return odds
+}
+
+// getMatchName returns a proper match name with team names or fallback
+func (p *Parser) getMatchName(event FonbetEvent) string {
+	// If we have both team names, use them
+	if event.HomeTeam != "" && event.AwayTeam != "" {
+		return fmt.Sprintf("%s vs %s", event.HomeTeam, event.AwayTeam)
+	}
+	
+	// If we have the event name, use it
+	if event.Name != "" {
+		return event.Name
+	}
+	
+	// Fallback to event ID
+	return fmt.Sprintf("Event %s", event.ID)
 }
 
 

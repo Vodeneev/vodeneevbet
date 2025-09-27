@@ -8,7 +8,6 @@ import (
 
 	"github.com/Vodeneev/vodeneevbet/internal/pkg/models"
 	"github.com/Vodeneev/vodeneevbet/internal/pkg/config"
-	"github.com/Vodeneev/vodeneevbet/internal/pkg/storage"
 )
 
 // TestParser test parser with stub data
@@ -17,7 +16,7 @@ type TestParser struct {
 }
 
 // NewTestParser creates new test parser
-func NewTestParser(ydbClient *storage.YDBWorkingClient, config *config.Config) *TestParser {
+func NewTestParser(ydbClient YDBClient, config *config.Config) *TestParser {
 	return &TestParser{
 		BaseParser: NewBaseParser(ydbClient, config, "test_bookmaker"),
 	}

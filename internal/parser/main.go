@@ -31,7 +31,7 @@ func main() {
 	
 	fmt.Println("Config loaded successfully")
 
-	ydbClient, err := storage.NewYDBWorkingClient(&cfg.YDB)
+	ydbClient, err := storage.NewYDBClient(&cfg.YDB)
 	if err != nil {
 		log.Fatalf("Failed to connect to YDB: %v", err)
 	}

@@ -152,6 +152,7 @@ func exportToCSV(odds []*models.Odd, filename string) error {
 // getMockData returns mock data for testing when YDB is not available
 func getMockData() ([]*models.Odd, []string) {
 	mockOdds := []*models.Odd{
+		// Match 1: Real Madrid vs Barcelona
 		{
 			MatchID:   "match_1",
 			Bookmaker: "Fonbet",
@@ -181,7 +182,7 @@ func getMockData() ([]*models.Odd, []string) {
 			Sport:     "football",
 		},
 		{
-			MatchID:   "match_2",
+			MatchID:   "match_1",
 			Bookmaker: "Fonbet",
 			Market:    "Total",
 			Outcomes: map[string]float64{
@@ -189,8 +190,79 @@ func getMockData() ([]*models.Odd, []string) {
 				"under_2.5": 2.10,
 			},
 			UpdatedAt: time.Now(),
+			MatchName: "Real Madrid vs Barcelona",
+			MatchTime: time.Now().Add(2 * time.Hour),
+			Sport:     "football",
+		},
+		// Match 2: Manchester United vs Liverpool
+		{
+			MatchID:   "match_2",
+			Bookmaker: "Fonbet",
+			Market:    "1x2",
+			Outcomes: map[string]float64{
+				"home": 2.10,
+				"draw": 3.40,
+				"away": 3.20,
+			},
+			UpdatedAt: time.Now(),
 			MatchName: "Manchester United vs Liverpool",
 			MatchTime: time.Now().Add(4 * time.Hour),
+			Sport:     "football",
+		},
+		{
+			MatchID:   "match_2",
+			Bookmaker: "Bet365",
+			Market:    "1x2",
+			Outcomes: map[string]float64{
+				"home": 2.05,
+				"draw": 3.50,
+				"away": 3.15,
+			},
+			UpdatedAt: time.Now(),
+			MatchName: "Manchester United vs Liverpool",
+			MatchTime: time.Now().Add(4 * time.Hour),
+			Sport:     "football",
+		},
+		{
+			MatchID:   "match_2",
+			Bookmaker: "Fonbet",
+			Market:    "Total",
+			Outcomes: map[string]float64{
+				"over_2.5": 1.65,
+				"under_2.5": 2.25,
+			},
+			UpdatedAt: time.Now(),
+			MatchName: "Manchester United vs Liverpool",
+			MatchTime: time.Now().Add(4 * time.Hour),
+			Sport:     "football",
+		},
+		// Match 3: Bayern Munich vs Borussia Dortmund
+		{
+			MatchID:   "match_3",
+			Bookmaker: "Fonbet",
+			Market:    "1x2",
+			Outcomes: map[string]float64{
+				"home": 1.70,
+				"draw": 3.80,
+				"away": 4.50,
+			},
+			UpdatedAt: time.Now(),
+			MatchName: "Bayern Munich vs Borussia Dortmund",
+			MatchTime: time.Now().Add(6 * time.Hour),
+			Sport:     "football",
+		},
+		{
+			MatchID:   "match_3",
+			Bookmaker: "Bet365",
+			Market:    "1x2",
+			Outcomes: map[string]float64{
+				"home": 1.75,
+				"draw": 3.70,
+				"away": 4.30,
+			},
+			UpdatedAt: time.Now(),
+			MatchName: "Bayern Munich vs Borussia Dortmund",
+			MatchTime: time.Now().Add(6 * time.Hour),
 			Sport:     "football",
 		},
 		{
@@ -206,9 +278,67 @@ func getMockData() ([]*models.Odd, []string) {
 			MatchTime: time.Now().Add(6 * time.Hour),
 			Sport:     "football",
 		},
+		// Match 4: PSG vs Marseille
+		{
+			MatchID:   "match_4",
+			Bookmaker: "Fonbet",
+			Market:    "1x2",
+			Outcomes: map[string]float64{
+				"home": 1.60,
+				"draw": 4.00,
+				"away": 5.50,
+			},
+			UpdatedAt: time.Now(),
+			MatchName: "PSG vs Marseille",
+			MatchTime: time.Now().Add(8 * time.Hour),
+			Sport:     "football",
+		},
+		{
+			MatchID:   "match_4",
+			Bookmaker: "Bet365",
+			Market:    "1x2",
+			Outcomes: map[string]float64{
+				"home": 1.65,
+				"draw": 3.90,
+				"away": 5.20,
+			},
+			UpdatedAt: time.Now(),
+			MatchName: "PSG vs Marseille",
+			MatchTime: time.Now().Add(8 * time.Hour),
+			Sport:     "football",
+		},
+		// Match 5: Chelsea vs Arsenal
+		{
+			MatchID:   "match_5",
+			Bookmaker: "Fonbet",
+			Market:    "1x2",
+			Outcomes: map[string]float64{
+				"home": 2.80,
+				"draw": 3.20,
+				"away": 2.40,
+			},
+			UpdatedAt: time.Now(),
+			MatchName: "Chelsea vs Arsenal",
+			MatchTime: time.Now().Add(10 * time.Hour),
+			Sport:     "football",
+		},
+		{
+			MatchID:   "match_5",
+			Bookmaker: "Bet365",
+			Market:    "1x2",
+			Outcomes: map[string]float64{
+				"home": 2.75,
+				"draw": 3.30,
+				"away": 2.45,
+			},
+			UpdatedAt: time.Now(),
+			MatchName: "Chelsea vs Arsenal",
+			MatchTime: time.Now().Add(10 * time.Hour),
+			Sport:     "football",
+		},
 	}
 	
-	matches := []string{"match_1", "match_2", "match_3"}
+	matches := []string{"match_1", "match_2", "match_3", "match_4", "match_5"}
 	
 	return mockOdds, matches
 }

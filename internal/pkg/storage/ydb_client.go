@@ -16,6 +16,7 @@ import (
 	"github.com/ydb-platform/ydb-go-sdk/v3/table/result/named"
 	"github.com/ydb-platform/ydb-go-sdk/v3/table/types"
 	"github.com/ydb-platform/ydb-go-yc"
+	ycMetadata "github.com/ydb-platform/ydb-go-yc-metadata"
 )
 
 // mustJSON converts a Go value to JSON string
@@ -43,10 +44,35 @@ func NewYDBClient(cfg *config.YDBConfig) (*YDBClient, error) {
 	log.Printf("YDB: Connecting to %s", dsn)
 	
 	// Создаем объект подключения db
-	db, err := ydb.Open(ctx, dsn,
-		yc.WithServiceAccountKeyFileCredentials(cfg.ServiceAccountKeyFile),
-		// environ.WithEnvironCredentials(ctx), // альтернативный способ аутентификации
-	)
+	var db ydb.Connection
+	var err error
+	
+	// Определяем тип подключения по endpoint
+	if cfg.Endpoint == "grpcs://ydb.serverless.yandexcloud.net:2135" {
+		// Подключение к Yandex Cloud YDB
+		if cfg.ServiceAccountKeyFile != "" {
+			// Подключение снаружи Yandex Cloud с Service Account ключом
+			log.Println("YDB: Using external connection with Service Account key")
+			db, err = ydb.Open(ctx, dsn,
+				yc.WithInternalCA(),
+				yc.WithServiceAccountKeyFileCredentials(cfg.ServiceAccountKeyFile),
+			)
+		} else {
+			// Подключение изнутри Yandex Cloud (Cloud Functions, VM)
+			log.Println("YDB: Using internal connection with metadata credentials")
+			db, err = ydb.Open(ctx, dsn,
+				ycMetadata.WithInternalCA(),
+				ycMetadata.WithCredentials(),
+			)
+		}
+	} else {
+		// Локальное подключение (для тестирования)
+		log.Println("YDB: Using local connection with anonymous credentials")
+		db, err = ydb.Open(ctx, dsn,
+			ydb.WithAnonymousCredentials(),
+		)
+	}
+	
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to YDB: %w", err)
 	}

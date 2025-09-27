@@ -20,15 +20,19 @@ func (p *JSONParser) ParseEvents(jsonData []byte) ([]FonbetEvent, error) {
 	
 	var events []FonbetEvent
 	for _, event := range response.Events {
-		events = append(events, FonbetEvent{
-			ID:         fmt.Sprintf("%d", event.ID),
-			Name:       event.Name,
-			HomeTeam:   event.Team1,
-			AwayTeam:   event.Team2,
-			StartTime:  time.Unix(event.StartTime, 0),
-			Category:   "football",
-			Tournament: "Unknown Tournament",
-		})
+		// Filter only main football matches (not statistical events)
+		// Main matches typically have Team1 and Team2, and are not corner/statistical events
+		if event.Team1 != "" && event.Team2 != "" && event.Kind != 400100 {
+			events = append(events, FonbetEvent{
+				ID:         fmt.Sprintf("%d", event.ID),
+				Name:       event.Name,
+				HomeTeam:   event.Team1,
+				AwayTeam:   event.Team2,
+				StartTime:  time.Unix(event.StartTime, 0),
+				Category:   "football",
+				Tournament: "Unknown Tournament",
+			})
+		}
 	}
 	
 	return events, nil

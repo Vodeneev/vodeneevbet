@@ -5,26 +5,44 @@ import (
 	"github.com/Vodeneev/vodeneevbet/internal/pkg/models"
 )
 
-// Storage interface for working with odds storage
+// Storage interface for working with match data storage
 type Storage interface {
-	// StoreOdd stores odd
-	StoreOdd(ctx context.Context, odd *models.Odd) error
+	// StoreMatch stores a complete match with all its events and outcomes
+	StoreMatch(ctx context.Context, match *models.Match) error
 	
-	// GetOddsByMatch gets all odds for match
-	GetOddsByMatch(ctx context.Context, matchID string) ([]*models.Odd, error)
+	// GetMatch retrieves a complete match with all events and outcomes
+	GetMatch(ctx context.Context, matchID string) (*models.Match, error)
 	
-	// GetAllMatches получает все доступные матчи
-	GetAllMatches(ctx context.Context) ([]string, error)
+	// GetAllMatches retrieves all matches with their events and outcomes
+	GetAllMatches(ctx context.Context) ([]models.Match, error)
 	
-	// Close closes connection
+	// GetMatchesWithLimit retrieves matches with a limit to avoid timeout
+	GetMatchesWithLimit(ctx context.Context, limit int) ([]models.Match, error)
+	
+	// CleanTable removes all data from a table
+	CleanTable(ctx context.Context, tableName string) error
+	
+	// Close closes the database connection
 	Close() error
 }
 
-// ArbitrageStorage интерфейс для работы с арбитражами
+// ArbitrageStorage interface for working with arbitrage data
 type ArbitrageStorage interface {
-	// StoreArbitrage сохраняет найденный арбитраж
-	StoreArbitrage(ctx context.Context, arb *models.Arbitrage) error
+	// StoreArbitrage saves found arbitrage
+	StoreArbitrage(ctx context.Context, arb interface{}) error
 	
-	// GetArbitrages получает арбитражи по фильтрам
-	GetArbitrages(ctx context.Context, limit int) ([]*models.Arbitrage, error)
+	// GetArbitrages gets arbitrages by filters
+	GetArbitrages(ctx context.Context, limit int) ([]interface{}, error)
+}
+
+// ValueBetStorage interface for working with value bet data
+type ValueBetStorage interface {
+	// StoreValueBet saves found value bet
+	StoreValueBet(ctx context.Context, valueBet *models.ValueBet) error
+	
+	// GetValueBets gets value bets by filters
+	GetValueBets(ctx context.Context, limit int) ([]*models.ValueBet, error)
+	
+	// GetValueBetStats gets value bet statistics
+	GetValueBetStats(ctx context.Context) (interface{}, error)
 }

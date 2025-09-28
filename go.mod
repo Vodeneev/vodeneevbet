@@ -5,7 +5,6 @@ go 1.22.5
 toolchain go1.24.7
 
 require (
-	github.com/redis/go-redis/v9 v9.14.0
 	github.com/ydb-platform/ydb-go-sdk/v3 v3.116.2
 	github.com/ydb-platform/ydb-go-yc v0.12.1
 	github.com/ydb-platform/ydb-go-yc-metadata v0.6.1
@@ -13,8 +12,6 @@ require (
 )
 
 require (
-	github.com/cespare/xxhash/v2 v2.3.0 // indirect
-	github.com/dgryski/go-rendezvous v0.0.0-20200823014737-9f7001d12a5f // indirect
 	github.com/golang-jwt/jwt/v4 v4.5.2 // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/jonboulle/clockwork v0.5.0 // indirect

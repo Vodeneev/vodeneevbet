@@ -7,9 +7,9 @@ import (
 )
 
 type YDBClient interface {
-	StoreOdd(ctx context.Context, odd *models.Odd) error
-	GetOddsByMatch(ctx context.Context, matchID string) ([]*models.Odd, error)
-	GetAllMatches(ctx context.Context) ([]string, error)
+	StoreMatch(ctx context.Context, match *models.Match) error
+	GetMatch(ctx context.Context, matchID string) (*models.Match, error)
+	GetAllMatches(ctx context.Context) ([]models.Match, error)
 	Close() error
 }
 

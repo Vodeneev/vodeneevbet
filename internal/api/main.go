@@ -71,7 +71,7 @@ func main() {
 		log.Fatalf("Failed to load config: %v", err)
 	}
 	
-	// Create YDB client (mock for now)
+	// Create YDB client
 	ydbClient, err := storage.NewYDBClient(&cfg.YDB)
 	if err != nil {
 		log.Fatalf("Failed to connect to YDB: %v", err)

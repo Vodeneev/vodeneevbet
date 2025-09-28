@@ -110,7 +110,7 @@ func (p *Parser) parseEvent(event FonbetEvent) error {
 		Bookmaker: "Fonbet",
 		Market:    "Match Result",
 		Outcomes: map[string]float64{
-			"home": 1.5,  // Mock data
+			"home": 1.5,
 			"draw": 3.2,
 			"away": 2.1,
 		},

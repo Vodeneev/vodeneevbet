@@ -20,7 +20,7 @@ echo "✅ Previous exports cleaned"
 # Create exports directory
 mkdir -p exports
 
-# Run hierarchical export utility
+# Run export utility
 cd internal/export
 go run main.go
 

@@ -538,6 +538,86 @@ func (y *YDBClient) createTablesIfNotExist(ctx context.Context) error {
 		})
 }
 
+// GetMatchesWithLimit retrieves matches with a limit to avoid timeout
+func (y *YDBClient) GetMatchesWithLimit(ctx context.Context, limit int) ([]models.Match, error) {
+	log.Printf("YDB: Getting matches with limit %d", limit)
+	
+	var matches []models.Match
+	
+	err := y.db.Table().Do(ctx,
+		func(ctx context.Context, s table.Session) error {
+			var res result.Result
+			_, res, err := s.Execute(ctx, table.TxControl(
+				table.BeginTx(table.WithOnlineReadOnly()),
+				table.CommitTx(),
+			), fmt.Sprintf(`
+				SELECT match_id, name, home_team, away_team, start_time, sport, tournament, bookmaker, created_at, updated_at
+				FROM matches
+				ORDER BY start_time DESC
+				LIMIT %d;
+			`, limit), table.NewQueryParameters())
+			if err != nil {
+				return err
+			}
+			defer res.Close()
+			
+			for res.NextResultSet(ctx) {
+				for res.NextRow() {
+					match := models.Match{}
+					err = res.ScanNamed(
+						named.Required("match_id", &match.ID),
+						named.Required("name", &match.Name),
+						named.Required("home_team", &match.HomeTeam),
+						named.Required("away_team", &match.AwayTeam),
+						named.Required("start_time", &match.StartTime),
+						named.Required("sport", &match.Sport),
+						named.Required("tournament", &match.Tournament),
+						named.Required("bookmaker", &match.Bookmaker),
+						named.Required("created_at", &match.CreatedAt),
+						named.Required("updated_at", &match.UpdatedAt),
+					)
+					if err != nil {
+						return err
+					}
+					
+					// Get events for this match
+					events, err := y.getEventsForMatch(ctx, match.ID)
+					if err != nil {
+						log.Printf("Warning: failed to get events for match %s: %v", match.ID, err)
+						events = []models.Event{}
+					}
+					match.Events = events
+					
+					matches = append(matches, match)
+				}
+			}
+			return res.Err()
+		})
+	
+	return matches, err
+}
+
+// CleanTable removes all data from a table
+func (y *YDBClient) CleanTable(ctx context.Context, tableName string) error {
+	log.Printf("YDB: Cleaning table %s", tableName)
+	
+	err := y.db.Table().Do(ctx,
+		func(ctx context.Context, s table.Session) error {
+			_, _, err := s.Execute(ctx, table.TxControl(
+				table.BeginTx(table.WithSerializableReadWrite()),
+				table.CommitTx(),
+			), fmt.Sprintf("DELETE FROM %s;", tableName), table.NewQueryParameters())
+			return err
+		})
+	
+	if err != nil {
+		return fmt.Errorf("failed to clean table %s: %w", tableName, err)
+	}
+	
+	log.Printf("YDB: Table %s cleaned successfully", tableName)
+	return nil
+}
+
 // Close closes the database connection
 func (y *YDBClient) Close() error {
 	return y.db.Close(context.Background())

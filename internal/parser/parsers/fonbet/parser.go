@@ -24,9 +24,13 @@ type Parser struct {
 
 func NewParser(config *config.Config) *Parser {
 	// Create YDB client
+	fmt.Println("Creating YDB client...")
 	ydbClient, err := storage.NewYDBClient(&config.YDB)
 	if err != nil {
-		fmt.Printf("Warning: Failed to create YDB client: %v\n", err)
+		fmt.Printf("❌ Failed to create YDB client: %v\n", err)
+		fmt.Println("⚠️  Parser will run without YDB storage")
+	} else {
+		fmt.Println("✅ YDB client created successfully")
 	}
 	
 	return &Parser{
@@ -71,19 +75,118 @@ func (p *Parser) parseSportEvents(sport enums.Sport) error {
 		return fmt.Errorf("failed to get %s events: %w", sport, err)
 	}
 	
-	for i, event := range events {
-		if p.config.Parser.Fonbet.TestLimit > 0 && i >= p.config.Parser.Fonbet.TestLimit {
-			fmt.Printf("Limiting to first %d events for testing\n", p.config.Parser.Fonbet.TestLimit)
+	// Group events by parent match
+	eventsByMatch := p.groupEventsByMatch(events)
+	
+	// Process each match with all its events
+	matchCount := 0
+	for matchID, matchEvents := range eventsByMatch {
+		if p.config.Parser.Fonbet.TestLimit > 0 && matchCount >= p.config.Parser.Fonbet.TestLimit {
+			fmt.Printf("Limiting to first %d matches for testing\n", p.config.Parser.Fonbet.TestLimit)
 			break
 		}
 		
-		if err := p.parseEvent(event); err != nil {
-			fmt.Printf("Failed to parse event %s: %v\n", event.ID, err)
+		if len(matchEvents) == 0 {
 			continue
 		}
+		
+		// The first event is always the main match (Level 1)
+		mainEvent := &matchEvents[0]
+		statisticalEvents := matchEvents[1:] // All other events are statistical
+		
+		// Process the match with all its events
+		if err := p.parseMatchWithEvents(*mainEvent, statisticalEvents); err != nil {
+			fmt.Printf("Failed to parse match %s: %v\n", matchID, err)
+			continue
+		}
+		
+		matchCount++
 	}
 	
 	return nil
+}
+
+// groupEventsByMatch groups events by their parent match ID
+func (p *Parser) groupEventsByMatch(events []FonbetEvent) map[string][]FonbetEvent {
+	groups := make(map[string][]FonbetEvent)
+	
+	// First, find all main matches (Level 1)
+	mainMatches := make(map[string]FonbetEvent)
+	for _, event := range events {
+		if event.Level == 1 {
+			mainMatches[event.ID] = event
+		}
+	}
+	
+	// Then, for each main match, find all related events
+	for matchID, mainMatch := range mainMatches {
+		// Add the main match itself
+		groups[matchID] = append(groups[matchID], mainMatch)
+		
+		// Find all statistical events for this match
+		for _, event := range events {
+			if event.Level > 1 && event.ParentID > 0 {
+				parentID := fmt.Sprintf("%d", event.ParentID)
+				if parentID == matchID {
+					groups[matchID] = append(groups[matchID], event)
+				}
+			}
+		}
+	}
+	
+	return groups
+}
+
+// parseMatchWithEvents processes a main match with all its statistical events
+func (p *Parser) parseMatchWithEvents(mainEvent FonbetEvent, statisticalEvents []FonbetEvent) error {
+	fmt.Printf("Processing match %s (%s vs %s) with %d statistical events\n", 
+		mainEvent.ID, mainEvent.HomeTeam, mainEvent.AwayTeam, len(statisticalEvents))
+	
+	// Get factors for main event
+	mainEventID, err := strconv.ParseInt(mainEvent.ID, 10, 64)
+	if err != nil {
+		return fmt.Errorf("failed to parse main event ID: %w", err)
+	}
+	
+	// Get factors for main event
+	mainFactors, err := p.getEventFactors(mainEventID)
+	if err != nil {
+		fmt.Printf("Failed to get factors for main event %s: %v\n", mainEvent.ID, err)
+		mainFactors = []FonbetFactor{}
+	}
+	
+	// Create hierarchical match structure
+	match := p.createHierarchicalMatchWithEvents(mainEvent, statisticalEvents, mainFactors)
+	
+	// Store the match
+	if err := p.storeHierarchicalMatch(context.Background(), match); err != nil {
+		return fmt.Errorf("failed to store match: %w", err)
+	}
+	
+	fmt.Printf("Successfully stored match %s with %d events\n", match.ID, len(match.Events))
+	return nil
+}
+
+// getEventFactors gets factors for a specific event
+func (p *Parser) getEventFactors(eventID int64) ([]FonbetFactor, error) {
+	factorData, err := p.httpClient.GetEventFactors(eventID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get factors: %w", err)
+	}
+	
+	factorGroups, err := p.jsonParser.ParseFactors(factorData)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse factors: %w", err)
+	}
+	
+	// Find factors for this specific event
+	for _, group := range factorGroups {
+		if group.EventID == eventID {
+			return group.Factors, nil
+		}
+	}
+	
+	return []FonbetFactor{}, nil
 }
 
 func (p *Parser) getSportEvents(sport enums.Sport) ([]FonbetEvent, error) {
@@ -525,15 +628,20 @@ func (p *Parser) getMatchName(event FonbetEvent) string {
 func (p *Parser) createHierarchicalMatch(event FonbetEvent, odds map[string]float64) *models.Match {
 	now := time.Now()
 	
-	// Extract team names from event name
-	homeTeam, awayTeam := p.extractTeamNames(event.Name)
+	// For basic events, determine match name based on type
+	var matchName string
+	if event.HomeTeam != "" && event.AwayTeam != "" {
+		matchName = fmt.Sprintf("%s vs %s", event.HomeTeam, event.AwayTeam)
+	} else {
+		matchName = event.Name
+	}
 	
 	// Create match
 	match := &models.Match{
 		ID:         event.ID,
-		Name:       event.Name,
-		HomeTeam:   homeTeam,
-		AwayTeam:   awayTeam,
+		Name:       matchName,
+		HomeTeam:   event.HomeTeam,
+		AwayTeam:   event.AwayTeam,
 		StartTime:  event.StartTime,
 		Sport:      "football",
 		Tournament: event.Tournament,
@@ -573,6 +681,94 @@ func (p *Parser) createHierarchicalMatch(event FonbetEvent, odds map[string]floa
 	
 	match.Events = append(match.Events, eventModel)
 	return match
+}
+
+// createHierarchicalMatchWithEvents creates a hierarchical match with main and statistical events
+func (p *Parser) createHierarchicalMatchWithEvents(mainEvent FonbetEvent, statisticalEvents []FonbetEvent, mainFactors []FonbetFactor) *models.Match {
+	now := time.Now()
+	
+	// Create match name
+	matchName := fmt.Sprintf("%s vs %s", mainEvent.HomeTeam, mainEvent.AwayTeam)
+	
+	// Create match
+	match := &models.Match{
+		ID:         mainEvent.ID,
+		Name:       matchName,
+		HomeTeam:   mainEvent.HomeTeam,
+		AwayTeam:   mainEvent.AwayTeam,
+		StartTime:  mainEvent.StartTime,
+		Sport:      "football",
+		Tournament: mainEvent.Tournament,
+		Bookmaker:  "Fonbet",
+		Events:     []models.Event{},
+		CreatedAt:  now,
+		UpdatedAt:  now,
+	}
+	
+	// Add main match event
+	if len(mainFactors) > 0 {
+		mainOdds := p.parseEventOdds(mainEvent, mainFactors)
+		if len(mainOdds) > 0 {
+			mainEventModel := p.createEventModel(mainEvent, mainOdds, "main_match", "Match Result")
+			match.Events = append(match.Events, mainEventModel)
+		}
+	}
+	
+	// Add statistical events
+	for _, statEvent := range statisticalEvents {
+		statEventID, err := strconv.ParseInt(statEvent.ID, 10, 64)
+		if err != nil {
+			continue
+		}
+		
+		statFactors, err := p.getEventFactors(statEventID)
+		if err != nil {
+			continue
+		}
+		
+		if len(statFactors) > 0 {
+			statOdds := p.parseEventOdds(statEvent, statFactors)
+			if len(statOdds) > 0 {
+				eventType := p.jsonParser.GetStandardEventType(statEvent.Kind)
+				marketName := models.GetMarketName(eventType)
+				statEventModel := p.createEventModel(statEvent, statOdds, string(eventType), marketName)
+				match.Events = append(match.Events, statEventModel)
+			}
+		}
+	}
+	
+	return match
+}
+
+// createEventModel creates a models.Event from FonbetEvent and odds
+func (p *Parser) createEventModel(fonbetEvent FonbetEvent, odds map[string]float64, eventType, marketName string) models.Event {
+	now := time.Now()
+	
+	event := models.Event{
+		ID:         fmt.Sprintf("%s_%s", fonbetEvent.ID, eventType),
+		EventType:  eventType,
+		MarketName: marketName,
+		Bookmaker:  "Fonbet",
+		Outcomes:   []models.Outcome{},
+		CreatedAt:  now,
+		UpdatedAt:  now,
+	}
+	
+	// Create outcomes
+	for outcomeType, oddsValue := range odds {
+		outcome := models.Outcome{
+			ID:          fmt.Sprintf("%s_%s_%s", event.ID, outcomeType, p.getParameterFromOutcome(outcomeType)),
+			OutcomeType: string(p.getStandardOutcomeType(outcomeType)),
+			Parameter:   p.getParameterFromOutcome(outcomeType),
+			Odds:        oddsValue,
+			Bookmaker:   "Fonbet",
+			CreatedAt:   now,
+			UpdatedAt:   now,
+		}
+		event.Outcomes = append(event.Outcomes, outcome)
+	}
+	
+	return event
 }
 
 // extractTeamNames extracts home and away team names from match name
@@ -630,12 +826,20 @@ func (p *Parser) getParameterFromOutcome(outcome string) string {
 func (p *Parser) createHierarchicalMatchFromCornerEvent(cornerEvent FonbetEvent, odds map[string]float64) *models.Match {
 	now := time.Now()
 	
+	// For corner events, determine match name based on teams
+	var matchName string
+	if cornerEvent.HomeTeam != "" && cornerEvent.AwayTeam != "" {
+		matchName = fmt.Sprintf("%s vs %s", cornerEvent.HomeTeam, cornerEvent.AwayTeam)
+	} else {
+		matchName = cornerEvent.Name
+	}
+	
 	// Create match
 	match := &models.Match{
 		ID:         fmt.Sprintf("%d", cornerEvent.ID),
-		Name:       cornerEvent.Name,
-		HomeTeam:   "Unknown Home",
-		AwayTeam:   "Unknown Away",
+		Name:       matchName,
+		HomeTeam:   cornerEvent.HomeTeam,
+		AwayTeam:   cornerEvent.AwayTeam,
 		StartTime:  cornerEvent.StartTime,
 		Sport:      "football",
 		Tournament: "Unknown Tournament",

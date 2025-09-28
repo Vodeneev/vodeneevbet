@@ -8,8 +8,8 @@ import (
 	"github.com/Vodeneev/vodeneevbet/internal/pkg/models"
 )
 
-// HierarchicalExport represents the new hierarchical export format
-type HierarchicalExport struct {
+// Export represents the export format
+type Export struct {
 	Timestamp string           `json:"timestamp"`
 	TotalMatches int          `json:"total_matches"`
 	Matches   []MatchExport   `json:"matches"`
@@ -52,17 +52,17 @@ type OutcomeExport struct {
 	UpdatedAt   time.Time `json:"updated_at"`
 }
 
-// HierarchicalExporter handles the new hierarchical export format
-type HierarchicalExporter struct{}
+// Exporter handles the export format
+type Exporter struct{}
 
-// NewHierarchicalExporter creates a new hierarchical exporter
-func NewHierarchicalExporter() *HierarchicalExporter {
-	return &HierarchicalExporter{}
+// NewExporter creates a new exporter
+func NewExporter() *Exporter {
+	return &Exporter{}
 }
 
-// ExportMatches converts matches to hierarchical export format
-func (e *HierarchicalExporter) ExportMatches(matches []models.Match) *HierarchicalExport {
-	export := &HierarchicalExport{
+// ExportMatches converts matches to export format
+func (e *Exporter) ExportMatches(matches []models.Match) *Export {
+	export := &Export{
 		Timestamp:    time.Now().UTC().Format(time.RFC3339),
 		TotalMatches: len(matches),
 		Matches:      []MatchExport{},
@@ -77,7 +77,7 @@ func (e *HierarchicalExporter) ExportMatches(matches []models.Match) *Hierarchic
 }
 
 // convertMatch converts a models.Match to MatchExport
-func (e *HierarchicalExporter) convertMatch(match models.Match) MatchExport {
+func (e *Exporter) convertMatch(match models.Match) MatchExport {
 	events := make([]EventExport, 0, len(match.Events))
 	
 	for _, event := range match.Events {
@@ -101,7 +101,7 @@ func (e *HierarchicalExporter) convertMatch(match models.Match) MatchExport {
 }
 
 // convertEvent converts a models.Event to EventExport
-func (e *HierarchicalExporter) convertEvent(event models.Event) EventExport {
+func (e *Exporter) convertEvent(event models.Event) EventExport {
 	outcomes := make([]OutcomeExport, 0, len(event.Outcomes))
 	
 	for _, outcome := range event.Outcomes {
@@ -129,21 +129,21 @@ func (e *HierarchicalExporter) convertEvent(event models.Event) EventExport {
 }
 
 // ExportToJSON exports matches to JSON format
-func (e *HierarchicalExporter) ExportToJSON(matches []models.Match) ([]byte, error) {
+func (e *Exporter) ExportToJSON(matches []models.Match) ([]byte, error) {
 	export := e.ExportMatches(matches)
 	return json.MarshalIndent(export, "", "  ")
 }
 
 // ExportToCSV exports matches to CSV format (simplified)
-func (e *HierarchicalExporter) ExportToCSV(matches []models.Match) ([]byte, error) {
+func (e *Exporter) ExportToCSV(matches []models.Match) ([]byte, error) {
 	// TODO: Implement CSV export for hierarchical structure
 	// This would be more complex as we need to flatten the hierarchy
 	return nil, fmt.Errorf("CSV export for hierarchical structure not implemented yet")
 }
 
 // PrintSummary prints a summary of the export
-func (e *HierarchicalExporter) PrintSummary(export *HierarchicalExport) {
-	fmt.Printf("=== Hierarchical Export Summary ===\n")
+func (e *Exporter) PrintSummary(export *Export) {
+	fmt.Printf("=== Export Summary ===\n")
 	fmt.Printf("Timestamp: %s\n", export.Timestamp)
 	fmt.Printf("Total Matches: %d\n", export.TotalMatches)
 	

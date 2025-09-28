@@ -3,7 +3,7 @@ ydb:
   endpoint: "grpcs://ydb.serverless.yandexcloud.net:2135"
   database: "/ru-central1/b1gttv06r5rq0hc4filn/etn1sqa39tgha69fe2mt"
   # Путь к файлу с ключом Service Account
-  service_account_key_file: "../../keys/service-account-key.json"
+  service_account_key_file: "keys/service-account-key.json"
   
   # TTL настройки для автоматической очистки устаревших данных
   ttl:
@@ -32,7 +32,7 @@ parser:
     base_url: "https://line55w.bk6bba-resources.com/events/list"
     lang: "ru"
     version: "60312723953"
-    test_limit: 10  # Лимит событий для тестирования (0 = без лимита)
+    test_limit: 50  # Лимит событий для тестирования (0 = без лимита)
 
 value_calculator:
   # Настройки Value Bet

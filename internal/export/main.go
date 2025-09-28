@@ -15,7 +15,7 @@ import (
 
 
 func main() {
-	fmt.Println("📊 Starting hierarchical data export from YDB...")
+	fmt.Println("📊 Starting data export from YDB...")
 	
 	// Load config
 	cfg, err := config.Load("../../configs/local.yaml")
@@ -30,14 +30,20 @@ func main() {
 	}
 	defer ydbClient.Close()
 	
-	// Get all data from YDB
-	ctx := context.Background()
+	// Get all data from YDB with timeout
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	defer cancel()
 	
-	fmt.Println("📥 Fetching all hierarchical matches from YDB...")
-	hierarchicalMatches, err := ydbClient.GetAllMatches(ctx)
+	fmt.Println("📥 Fetching matches from YDB...")
+	fmt.Println("⏳ Limiting to first 100 matches to avoid timeout...")
+	
+	// Get matches with limit to avoid timeout
+	hierarchicalMatches, err := ydbClient.GetMatchesWithLimit(ctx, 5)
 	if err != nil {
 		log.Fatalf("Failed to get matches from YDB: %v", err)
 	}
+	
+	fmt.Printf("📊 Found %d matches in YDB (limited to 100)\n", len(hierarchicalMatches))
 	
 	// Create exports directory first
 	if err := os.MkdirAll("exports", 0755); err != nil {
@@ -45,13 +51,13 @@ func main() {
 	}
 	
 	if len(hierarchicalMatches) == 0 {
-		fmt.Println("⚠️  No hierarchical matches found in YDB")
-		fmt.Println("💡 This means the parser hasn't been updated to use hierarchical storage yet")
-		fmt.Println("💡 Run the parser first to populate hierarchical data")
+		fmt.Println("⚠️  No matches found in YDB")
+		fmt.Println("💡 This means the parser hasn't been updated to use storage yet")
+		fmt.Println("💡 Run the parser first to populate data")
 		
 		// Create empty info file
 		infoFile := "exports/no_data_info.txt"
-		infoContent := "No hierarchical data found in YDB.\nRun the parser first to populate hierarchical data."
+		infoContent := "No data found in YDB.\nRun the parser first to populate data."
 		if err := os.WriteFile(infoFile, []byte(infoContent), 0644); err != nil {
 			log.Printf("Warning: failed to create info file: %v", err)
 		}
@@ -62,29 +68,29 @@ func main() {
 	
 	// Generate filename with timestamp
 	timestamp := time.Now().Format("2006-01-02_15-04-05")
-	jsonFile := fmt.Sprintf("exports/hierarchical_export_%s.json", timestamp)
-	csvFile := fmt.Sprintf("exports/hierarchical_export_%s.csv", timestamp)
+	jsonFile := fmt.Sprintf("exports/export_%s.json", timestamp)
+	csvFile := fmt.Sprintf("exports/export_%s.csv", timestamp)
 	
-	// Export to JSON using hierarchical exporter
-	fmt.Printf("💾 Exporting to hierarchical JSON: %s\n", jsonFile)
-	hierarchicalExporter := export.NewHierarchicalExporter()
-	jsonData, err := hierarchicalExporter.ExportToJSON(hierarchicalMatches)
+	// Export to JSON using exporter
+	fmt.Printf("💾 Exporting to JSON: %s\n", jsonFile)
+	exporter := export.NewExporter()
+	jsonData, err := exporter.ExportToJSON(hierarchicalMatches)
 	if err != nil {
-		log.Fatalf("Failed to export hierarchical JSON: %v", err)
+		log.Fatalf("Failed to export JSON: %v", err)
 	}
 	
 	if err := os.WriteFile(jsonFile, jsonData, 0644); err != nil {
 		log.Fatalf("Failed to write JSON file: %v", err)
 	}
 	
-	// Export to CSV (simplified for hierarchical format)
+	// Export to CSV (simplified format)
 	fmt.Printf("💾 Exporting to CSV: %s\n", csvFile)
-	if err := exportToHierarchicalCSV(hierarchicalMatches, csvFile); err != nil {
+	if err := exportToCSV(hierarchicalMatches, csvFile); err != nil {
 		log.Fatalf("Failed to export CSV: %v", err)
 	}
 	
 	// Print summary
-	fmt.Println("\n✅ Hierarchical export completed successfully!")
+	fmt.Println("\n✅ Export completed successfully!")
 	fmt.Printf("📊 Total matches exported: %d\n", len(hierarchicalMatches))
 	
 	totalEvents := 0
@@ -105,7 +111,7 @@ func main() {
 
 
 
-func exportToHierarchicalCSV(matches []models.Match, filename string) error {
+func exportToCSV(matches []models.Match, filename string) error {
 	file, err := os.Create(filename)
 	if err != nil {
 		return err

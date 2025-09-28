@@ -38,27 +38,27 @@ type YDBClient struct {
 func NewYDBClient(cfg *config.YDBConfig) (*YDBClient, error) {
 	ctx := context.Background()
 	
-	// Создаем строку подключения
+	// Create connection string
 	dsn := fmt.Sprintf("%s?database=%s", cfg.Endpoint, cfg.Database)
 	
 	log.Printf("YDB: Connecting to %s", dsn)
 	
-	// Создаем объект подключения db
+	// Create database connection object
 	var db ydb.Connection
 	var err error
 	
-	// Определяем тип подключения по endpoint
+	// Determine connection type by endpoint
 	if cfg.Endpoint == "grpcs://ydb.serverless.yandexcloud.net:2135" {
-		// Подключение к Yandex Cloud YDB
+		// Connect to Yandex Cloud YDB
 		if cfg.ServiceAccountKeyFile != "" {
-			// Подключение снаружи Yandex Cloud с Service Account ключом
+			// External connection with Service Account key
 			log.Println("YDB: Using external connection with Service Account key")
 			db, err = ydb.Open(ctx, dsn,
 				yc.WithInternalCA(),
 				yc.WithServiceAccountKeyFileCredentials(cfg.ServiceAccountKeyFile),
 			)
 		} else {
-			// Подключение изнутри Yandex Cloud (Cloud Functions, VM)
+			// Internal connection from Yandex Cloud (Cloud Functions, VM)
 			log.Println("YDB: Using internal connection with metadata credentials")
 			db, err = ydb.Open(ctx, dsn,
 				ycMetadata.WithInternalCA(),
@@ -66,7 +66,7 @@ func NewYDBClient(cfg *config.YDBConfig) (*YDBClient, error) {
 			)
 		}
 	} else {
-		// Локальное подключение (для тестирования)
+		// Local connection (for testing)
 		log.Println("YDB: Using local connection with anonymous credentials")
 		db, err = ydb.Open(ctx, dsn,
 			ydb.WithAnonymousCredentials(),
@@ -84,12 +84,12 @@ func NewYDBClient(cfg *config.YDBConfig) (*YDBClient, error) {
 		config: cfg,
 	}
 	
-	// Автоматическая настройка TTL если включена
+	// Automatic TTL setup if enabled
 	if cfg.TTL.Enabled && cfg.TTL.AutoSetup {
 		ctx := context.Background()
 		if err := client.SetupTTL(ctx, cfg.TTL.ExpireAfter); err != nil {
 			log.Printf("YDB: Warning - failed to setup TTL: %v", err)
-			// Не возвращаем ошибку, так как TTL не критичен для работы
+			// Don't return error as TTL is not critical for operation
 		}
 	}
 	
@@ -101,12 +101,12 @@ func (y *YDBClient) StoreOdd(ctx context.Context, odd *models.Odd) error {
 	log.Printf("YDB: Storing odd for match %s from %s: %+v", 
 		odd.MatchID, odd.Bookmaker, odd.Outcomes)
 	
-	// Создаем таблицу если не существует
+	// Create table if not exists
 	if err := y.createTablesIfNotExist(ctx); err != nil {
 		return fmt.Errorf("failed to create tables: %w", err)
 	}
 	
-	// Сохраняем коэффициент в YDB
+	// Save coefficient to YDB
 	err := y.db.Table().Do(ctx,
 		func(ctx context.Context, s table.Session) error {
 			_, _, err := s.Execute(ctx, table.TxControl(
@@ -188,7 +188,7 @@ func (y *YDBClient) GetOddsByMatch(ctx context.Context, matchID string) ([]*mode
 						return err
 					}
 					
-					// Парсим JSON в map
+					// Parse JSON to map
 					if err := json.Unmarshal([]byte(outcomesJSON), &odd.Outcomes); err != nil {
 						return fmt.Errorf("failed to parse outcomes JSON: %w", err)
 					}
@@ -288,7 +288,7 @@ func (y *YDBClient) GetAllOdds(ctx context.Context) ([]*models.Odd, error) {
 						return err
 					}
 					
-					// Парсим JSON в map
+					// Parse JSON to map
 					if err := json.Unmarshal([]byte(outcomesJSON), &odd.Outcomes); err != nil {
 						return fmt.Errorf("failed to parse outcomes JSON: %w", err)
 					}
@@ -317,7 +317,7 @@ func (y *YDBClient) StoreArbitrage(ctx context.Context, arb *models.Arbitrage) e
 func (y *YDBClient) createTablesIfNotExist(ctx context.Context) error {
 	return y.db.Table().Do(ctx,
 		func(ctx context.Context, s table.Session) error {
-			// Создаем таблицу для коэффициентов
+			// Create table for coefficients
 			err := s.CreateTable(ctx, path.Join(y.db.Name(), "odds"),
 				options.WithColumn("match_id", types.TypeUTF8),
 				options.WithColumn("bookmaker", types.TypeUTF8),
@@ -330,7 +330,7 @@ func (y *YDBClient) createTablesIfNotExist(ctx context.Context) error {
 				options.WithPrimaryKeyColumn("match_id", "bookmaker", "market"),
 			)
 			if err != nil {
-				// Игнорируем ошибку если таблица уже существует
+				// Ignore error if table already exists
 				log.Printf("YDB: Table creation result: %v", err)
 			} else {
 				log.Println("YDB: Table 'odds' created successfully")

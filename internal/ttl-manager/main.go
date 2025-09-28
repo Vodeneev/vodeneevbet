@@ -19,13 +19,13 @@ func main() {
 	)
 	flag.Parse()
 
-	// Загружаем конфигурацию
+	// Load configuration
 	cfg, err := config.Load(*configPath)
 	if err != nil {
 		log.Fatalf("Failed to load config: %v", err)
 	}
 
-	// Создаем YDB клиент
+	// Create YDB client
 	ydbClient, err := storage.NewYDBClient(&cfg.YDB)
 	if err != nil {
 		log.Fatalf("Failed to create YDB client: %v", err)

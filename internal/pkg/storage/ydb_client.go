@@ -79,10 +79,21 @@ func NewYDBClient(cfg *config.YDBConfig) (*YDBClient, error) {
 	
 	log.Printf("YDB: Successfully connected to database: %s", cfg.Database)
 	
-	return &YDBClient{
+	client := &YDBClient{
 		db:     db,
 		config: cfg,
-	}, nil
+	}
+	
+	// Автоматическая настройка TTL если включена
+	if cfg.TTL.Enabled && cfg.TTL.AutoSetup {
+		ctx := context.Background()
+		if err := client.SetupTTL(ctx, cfg.TTL.ExpireAfter); err != nil {
+			log.Printf("YDB: Warning - failed to setup TTL: %v", err)
+			// Не возвращаем ошибку, так как TTL не критичен для работы
+		}
+	}
+	
+	return client, nil
 }
 
 // StoreOdd stores betting odds in YDB
@@ -324,6 +335,70 @@ func (y *YDBClient) createTablesIfNotExist(ctx context.Context) error {
 			} else {
 				log.Println("YDB: Table 'odds' created successfully")
 			}
+			return nil
+		})
+}
+
+// SetupTTL configures TTL for the odds table
+func (y *YDBClient) SetupTTL(ctx context.Context, expireAfter time.Duration) error {
+	log.Printf("YDB: Setting up TTL for odds table with expire after %v", expireAfter)
+	
+	return y.db.Table().Do(ctx,
+		func(ctx context.Context, s table.Session) error {
+			err := s.AlterTable(ctx, path.Join(y.db.Name(), "odds"),
+				options.WithSetTimeToLiveSettings(
+					options.NewTTLSettings().
+						ColumnDateType("match_time").
+						ExpireAfter(expireAfter),
+				),
+			)
+			if err != nil {
+				return fmt.Errorf("failed to setup TTL: %w", err)
+			}
+			
+			log.Printf("YDB: TTL configured successfully - odds will be deleted %v after match_time", expireAfter)
+			return nil
+		})
+}
+
+// GetTTLSettings retrieves current TTL settings for the table
+func (y *YDBClient) GetTTLSettings(ctx context.Context) (*options.TTLSettings, error) {
+	log.Println("YDB: Getting TTL settings for odds table")
+	
+	var ttlSettings *options.TTLSettings
+	
+	err := y.db.Table().Do(ctx,
+		func(ctx context.Context, s table.Session) error {
+			desc, err := s.DescribeTable(ctx, path.Join(y.db.Name(), "odds"))
+			if err != nil {
+				return fmt.Errorf("failed to describe table: %w", err)
+			}
+			
+			ttlSettings = desc.TimeToLiveSettings
+			return nil
+		})
+	
+	if err != nil {
+		return nil, fmt.Errorf("failed to get TTL settings: %w", err)
+	}
+	
+	return ttlSettings, nil
+}
+
+// DisableTTL disables TTL for the odds table
+func (y *YDBClient) DisableTTL(ctx context.Context) error {
+	log.Println("YDB: Disabling TTL for odds table")
+	
+	return y.db.Table().Do(ctx,
+		func(ctx context.Context, s table.Session) error {
+			err := s.AlterTable(ctx, path.Join(y.db.Name(), "odds"),
+				options.WithDropTimeToLive(),
+			)
+			if err != nil {
+				return fmt.Errorf("failed to disable TTL: %w", err)
+			}
+			
+			log.Println("YDB: TTL disabled successfully")
 			return nil
 		})
 }

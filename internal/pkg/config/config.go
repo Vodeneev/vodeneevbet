@@ -16,9 +16,16 @@ type Config struct {
 }
 
 type YDBConfig struct {
-	Endpoint              string `yaml:"endpoint"`
-	Database              string `yaml:"database"`
-	ServiceAccountKeyFile string `yaml:"service_account_key_file"`
+	Endpoint              string        `yaml:"endpoint"`
+	Database              string        `yaml:"database"`
+	ServiceAccountKeyFile string        `yaml:"service_account_key_file"`
+	TTL                   TTLConfig     `yaml:"ttl"`
+}
+
+type TTLConfig struct {
+	Enabled       bool          `yaml:"enabled"`
+	ExpireAfter   time.Duration `yaml:"expire_after"`
+	AutoSetup     bool          `yaml:"auto_setup"`
 }
 
 

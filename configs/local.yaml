@@ -4,6 +4,12 @@ ydb:
   database: "/ru-central1/b1gttv06r5rq0hc4filn/etn1sqa39tgha69fe2mt"
   # Путь к файлу с ключом Service Account
   service_account_key_file: "keys/service-account-key.json"
+  
+  # TTL настройки для автоматической очистки устаревших данных
+  ttl:
+    enabled: true                    # Включить TTL
+    expire_after: 4h                 # Удалять коэффициенты через 4 часа после матча
+    auto_setup: true                 # Автоматически настраивать TTL при запуске
 
 # PostgreSQL для истории валуйных ставок
 postgres:

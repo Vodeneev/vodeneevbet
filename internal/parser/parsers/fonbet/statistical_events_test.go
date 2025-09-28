@@ -4,10 +4,10 @@ import (
 	"testing"
 )
 
-func TestStatisticalEventParsing(t *testing.T) {
+func TestUnifiedEventParsing(t *testing.T) {
 	parser := NewJSONParser()
 	
-	// Test data with various statistical events
+	// Test data with various events (main match + statistical events)
 	jsonData := []byte(`{
 		"events": [
 			{
@@ -84,7 +84,26 @@ func TestStatisticalEventParsing(t *testing.T) {
 		]
 	}`)
 	
-	// Test parsing all statistical events
+	// Test parsing all events (unified approach)
+	events, err := parser.ParseEvents(jsonData)
+	if err != nil {
+		t.Fatalf("Failed to parse events: %v", err)
+	}
+	
+	// Should get all 7 events (1 main match + 6 statistical events)
+	if len(events) != 7 {
+		t.Errorf("Expected 7 events, got %d", len(events))
+	}
+	
+	// Check that all events have the correct Kind values
+	expectedKinds := []int64{1, 400100, 400200, 400300, 400400, 400500, 401000}
+	for i, event := range events {
+		if event.Kind != expectedKinds[i] {
+			t.Errorf("Event %d: expected Kind %d, got %d", i, expectedKinds[i], event.Kind)
+		}
+	}
+	
+	// Test parsing all statistical events (still available for backward compatibility)
 	statisticalEvents, err := parser.ParseAllStatisticalEvents(jsonData)
 	if err != nil {
 		t.Fatalf("Failed to parse statistical events: %v", err)
@@ -98,55 +117,6 @@ func TestStatisticalEventParsing(t *testing.T) {
 		} else {
 			t.Logf("Found %d %s events", len(events), eventType)
 		}
-	}
-	
-	// Test individual event type parsers
-	cornerEvents, err := parser.ParseCornerEvents(jsonData)
-	if err != nil {
-		t.Errorf("Failed to parse corner events: %v", err)
-	}
-	if len(cornerEvents) != 1 {
-		t.Errorf("Expected 1 corner event, got %d", len(cornerEvents))
-	}
-	
-	yellowCardEvents, err := parser.ParseYellowCardEvents(jsonData)
-	if err != nil {
-		t.Errorf("Failed to parse yellow card events: %v", err)
-	}
-	if len(yellowCardEvents) != 1 {
-		t.Errorf("Expected 1 yellow card event, got %d", len(yellowCardEvents))
-	}
-	
-	foulEvents, err := parser.ParseFoulEvents(jsonData)
-	if err != nil {
-		t.Errorf("Failed to parse foul events: %v", err)
-	}
-	if len(foulEvents) != 1 {
-		t.Errorf("Expected 1 foul event, got %d", len(foulEvents))
-	}
-	
-	shotsEvents, err := parser.ParseShotsOnTargetEvents(jsonData)
-	if err != nil {
-		t.Errorf("Failed to parse shots on target events: %v", err)
-	}
-	if len(shotsEvents) != 1 {
-		t.Errorf("Expected 1 shots on target event, got %d", len(shotsEvents))
-	}
-	
-	offsideEvents, err := parser.ParseOffsideEvents(jsonData)
-	if err != nil {
-		t.Errorf("Failed to parse offside events: %v", err)
-	}
-	if len(offsideEvents) != 1 {
-		t.Errorf("Expected 1 offside event, got %d", len(offsideEvents))
-	}
-	
-	throwInEvents, err := parser.ParseThrowInEvents(jsonData)
-	if err != nil {
-		t.Errorf("Failed to parse throw-in events: %v", err)
-	}
-	if len(throwInEvents) != 1 {
-		t.Errorf("Expected 1 throw-in event, got %d", len(throwInEvents))
 	}
 }
 

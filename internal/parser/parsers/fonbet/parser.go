@@ -3,6 +3,7 @@ package fonbet
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"time"
 
 	"github.com/Vodeneev/vodeneevbet/internal/pkg/config"
@@ -87,11 +88,6 @@ func (p *Parser) getSportEvents(sport enums.Sport) ([]FonbetEvent, error) {
 	
 	fmt.Printf("Received %d bytes of data\n", len(jsonData))
 	
-	// Parse all statistical events
-	if err := p.parseAllStatisticalEvents(jsonData); err != nil {
-		fmt.Printf("Failed to parse statistical events: %v\n", err)
-	}
-	
 	events, err := p.jsonParser.ParseEvents(jsonData)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse JSON: %w", err)
@@ -104,29 +100,150 @@ func (p *Parser) getSportEvents(sport enums.Sport) ([]FonbetEvent, error) {
 func (p *Parser) parseEvent(event FonbetEvent) error {
 	fmt.Printf("Parsing event %s\n", event.ID)
 	
-	// TODO: Extract actual odds from event data
-	odd := &models.Odd{
-		MatchID:   event.ID,
-		Bookmaker: "Fonbet",
-		Market:    "Match Result",
-		Outcomes: map[string]float64{
-			"home": 1.5,
-			"draw": 3.2,
-			"away": 2.1,
-		},
-		UpdatedAt: time.Now(),
-		MatchName: p.getMatchName(event),
-		MatchTime: event.StartTime,
-		Sport:     "football",
-	}
-	
-	if err := p.ydbClient.StoreOdd(context.Background(), odd); err != nil {
-		fmt.Printf("Failed to store odd: %v\n", err)
+	// Convert string ID to int64 for API call
+	eventID, err := strconv.ParseInt(event.ID, 10, 64)
+	if err != nil {
+		fmt.Printf("Failed to parse event ID %s: %v\n", event.ID, err)
 		return err
 	}
 	
-	fmt.Printf("Stored odd for event %s\n", event.ID)
+	// Get factors for this specific event
+	factorData, err := p.httpClient.GetEventFactors(eventID)
+	if err != nil {
+		fmt.Printf("Failed to get factors for event %s: %v\n", event.ID, err)
+		return err
+	}
+	
+	// Parse factors from the event-specific response
+	factorGroups, err := p.jsonParser.ParseFactors(factorData)
+	if err != nil {
+		fmt.Printf("Failed to parse factors for event %s: %v\n", event.ID, err)
+		return err
+	}
+	
+	// Find factors for this specific event
+	var factors []FonbetFactor
+	for _, group := range factorGroups {
+		if group.EventID == eventID {
+			factors = group.Factors
+			break
+		}
+	}
+	
+	if len(factors) == 0 {
+		fmt.Printf("No factors found for event %s\n", event.ID)
+		return nil
+	}
+	
+	// Parse odds based on event type
+	odds := p.parseEventOdds(event, factors)
+	if len(odds) > 0 {
+		fmt.Printf("Extracted odds: %+v\n", odds)
+		
+		odd := &models.Odd{
+			MatchID:   event.ID,
+			Bookmaker: "Fonbet",
+			Market:    p.getEventMarketName(event),
+			Outcomes:  odds,
+			UpdatedAt: time.Now(),
+			MatchName: p.getMatchName(event),
+			MatchTime: event.StartTime,
+			Sport:     "football",
+		}
+		
+		if err := p.ydbClient.StoreOdd(context.Background(), odd); err != nil {
+			fmt.Printf("Failed to store odd: %v\n", err)
+			return err
+		}
+		
+		fmt.Printf("Stored odd for event %s with %d outcomes\n", event.ID, len(odds))
+	}
+	
 	return nil
+}
+
+// parseEventOdds parses odds for any type of event
+func (p *Parser) parseEventOdds(event FonbetEvent, factors []FonbetFactor) map[string]float64 {
+	// Determine event type based on Kind
+	eventType := p.getEventTypeFromKind(event.Kind)
+	
+	switch eventType {
+	case "corners":
+		return p.parseCornerOdds(factors)
+	case "yellow_cards":
+		return p.parseYellowCardOdds(factors)
+	case "fouls":
+		return p.parseFoulOdds(factors)
+	case "shots_on_target":
+		return p.parseShotsOnTargetOdds(factors)
+	case "offsides":
+		return p.parseOffsideOdds(factors)
+	case "throw_ins":
+		return p.parseThrowInOdds(factors)
+	default:
+		// For main matches, parse basic match odds
+		return p.parseMainMatchOdds(factors)
+	}
+}
+
+// getEventTypeFromKind determines event type from Kind field
+func (p *Parser) getEventTypeFromKind(kind int64) string {
+	switch kind {
+	case 400100:
+		return "corners"
+	case 400200:
+		return "yellow_cards"
+	case 400300:
+		return "fouls"
+	case 400400:
+		return "shots_on_target"
+	case 400500:
+		return "offsides"
+	case 401000:
+		return "throw_ins"
+	default:
+		return "main_match"
+	}
+}
+
+// parseMainMatchOdds parses basic match odds (1X2, totals, etc.)
+func (p *Parser) parseMainMatchOdds(factors []FonbetFactor) map[string]float64 {
+	odds := make(map[string]float64)
+	
+	for _, factor := range factors {
+		switch factor.F {
+		case 1, 2, 3: // 1X2 odds
+			odds[fmt.Sprintf("outcome_%d", factor.F)] = factor.V
+		case 910, 912: // Total goals over/under
+			if factor.Pt != "" {
+				odds[fmt.Sprintf("total_%s", factor.Pt)] = factor.V
+			}
+		}
+	}
+	
+	return odds
+}
+
+// getEventMarketName returns the market name for an event
+func (p *Parser) getEventMarketName(event FonbetEvent) string {
+	eventType := p.getEventTypeFromKind(event.Kind)
+	
+	switch eventType {
+	case "corners":
+		return "Corners"
+	case "yellow_cards":
+		return "Yellow Cards"
+	case "fouls":
+		return "Fouls"
+	case "shots_on_target":
+		return "Shots on Target"
+	case "offsides":
+		return "Offsides"
+	case "throw_ins":
+		return "Throw-ins"
+	default:
+		return "Match Result"
+	}
 }
 
 func (p *Parser) parseAllStatisticalEvents(jsonData []byte) error {

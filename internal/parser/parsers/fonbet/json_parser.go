@@ -20,17 +20,20 @@ func (p *JSONParser) ParseEvents(jsonData []byte) ([]FonbetEvent, error) {
 	
 	var events []FonbetEvent
 	for _, event := range response.Events {
-		if p.isMainMatch(event) {
-			events = append(events, FonbetEvent{
-				ID:         fmt.Sprintf("%d", event.ID),
-				Name:       event.Name,
-				HomeTeam:   event.Team1,
-				AwayTeam:   event.Team2,
-				StartTime:  time.Unix(event.StartTime, 0),
-				Category:   "football",
-				Tournament: "Unknown Tournament",
-			})
-		}
+		// Include all events, not just main matches
+		events = append(events, FonbetEvent{
+			ID:         fmt.Sprintf("%d", event.ID),
+			Name:       event.Name,
+			HomeTeam:   event.Team1,
+			AwayTeam:   event.Team2,
+			StartTime:  time.Unix(event.StartTime, 0),
+			Category:   "football",
+			Tournament: "Unknown Tournament",
+			Kind:       event.Kind,
+			RootKind:   event.RootKind,
+			Level:      event.Level,
+			ParentID:   event.ParentID,
+		})
 	}
 	
 	return events, nil
@@ -188,13 +191,8 @@ func (p *JSONParser) getStatisticalEventType(event FonbetAPIEvent) string {
 	}
 }
 
-// isMainMatch determines if an event is a main football match (not statistical event)
+// isMainMatch determines if an event is a main football match
 func (p *JSONParser) isMainMatch(event FonbetAPIEvent) bool {
-	// Check if it's a statistical event
-	if p.isStatisticalEvent(event) {
-		return false
-	}
-	
 	// Main matches should have both team names
 	if event.Team1 == "" || event.Team2 == "" {
 		return false

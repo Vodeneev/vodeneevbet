@@ -87,9 +87,9 @@ func (p *Parser) getSportEvents(sport enums.Sport) ([]FonbetEvent, error) {
 	
 	fmt.Printf("Received %d bytes of data\n", len(jsonData))
 	
-	// Parse corner events specifically
-	if err := p.parseCornerEvents(jsonData); err != nil {
-		fmt.Printf("Failed to parse corner events: %v\n", err)
+	// Parse all statistical events
+	if err := p.parseAllStatisticalEvents(jsonData); err != nil {
+		fmt.Printf("Failed to parse statistical events: %v\n", err)
 	}
 	
 	events, err := p.jsonParser.ParseEvents(jsonData)
@@ -126,6 +126,86 @@ func (p *Parser) parseEvent(event FonbetEvent) error {
 	}
 	
 	fmt.Printf("Stored odd for event %s\n", event.ID)
+	return nil
+}
+
+func (p *Parser) parseAllStatisticalEvents(jsonData []byte) error {
+	statisticalEvents, err := p.jsonParser.ParseAllStatisticalEvents(jsonData)
+	if err != nil {
+		return fmt.Errorf("failed to parse statistical events: %w", err)
+	}
+	
+	// Process each type of statistical event
+	for eventType, events := range statisticalEvents {
+		fmt.Printf("Found %d %s events\n", len(events), eventType)
+		
+		// Process each event of this type
+		for i, event := range events {
+			if p.config.Parser.Fonbet.TestLimit > 0 && i >= p.config.Parser.Fonbet.TestLimit {
+				fmt.Printf("Limiting to first %d %s events for testing\n", p.config.Parser.Fonbet.TestLimit, eventType)
+				break
+			}
+			
+			fmt.Printf("Processing %s event %d (%s)...\n", eventType, event.ID, event.Name)
+			
+			// Get factors for this specific event
+			factorData, err := p.httpClient.GetEventFactors(event.ID)
+			if err != nil {
+				fmt.Printf("Failed to get factors for %s event %d: %v\n", eventType, event.ID, err)
+				continue
+			}
+			
+			// Parse factors from the event-specific response
+			factorGroups, err := p.jsonParser.ParseFactors(factorData)
+			if err != nil {
+				fmt.Printf("Failed to parse factors for %s event %d: %v\n", eventType, event.ID, err)
+				continue
+			}
+			
+			// Find factors for this specific event or its parent
+			var factors []FonbetFactor
+			for _, group := range factorGroups {
+				if group.EventID == event.ID || group.EventID == event.ParentID {
+					factors = group.Factors
+					break
+				}
+			}
+			
+			if len(factors) == 0 {
+				fmt.Printf("No factors found for %s event %d\n", eventType, event.ID)
+				continue
+			}
+			
+			// Parse odds based on event type
+			odds := p.parseStatisticalEventOdds(eventType, factors)
+			if len(odds) > 0 {
+				fmt.Printf("Extracted %s odds: %+v\n", eventType, odds)
+				
+				// Create event name
+				eventName := p.getStatisticalEventName(eventType, event)
+				
+				odd := &models.Odd{
+					MatchID:   fmt.Sprintf("%d", event.ID),
+					Bookmaker: "Fonbet",
+					Market:    p.getMarketName(eventType),
+					Outcomes:  odds,
+					UpdatedAt: time.Now(),
+					MatchName: eventName,
+					MatchTime: time.Unix(event.StartTime, 0),
+					Sport:     "football",
+				}
+				
+				if err := p.ydbClient.StoreOdd(context.Background(), odd); err != nil {
+					fmt.Printf("Failed to store %s odd: %v\n", eventType, err)
+					continue
+				}
+				
+				fmt.Printf("Stored %s odd for event %d with %d outcomes\n", 
+					eventType, event.ID, len(odds))
+			}
+		}
+	}
+	
 	return nil
 }
 
@@ -243,6 +323,173 @@ func (p *Parser) parseCornerOdds(factors []FonbetFactor) map[string]float64 {
 	}
 	
 	return odds
+}
+
+// parseStatisticalEventOdds parses odds for different types of statistical events
+func (p *Parser) parseStatisticalEventOdds(eventType string, factors []FonbetFactor) map[string]float64 {
+	odds := make(map[string]float64)
+	
+	switch eventType {
+	case "corners":
+		odds = p.parseCornerOdds(factors)
+	case "yellow_cards":
+		odds = p.parseYellowCardOdds(factors)
+	case "fouls":
+		odds = p.parseFoulOdds(factors)
+	case "shots_on_target":
+		odds = p.parseShotsOnTargetOdds(factors)
+	case "offsides":
+		odds = p.parseOffsideOdds(factors)
+	case "throw_ins":
+		odds = p.parseThrowInOdds(factors)
+	}
+	
+	return odds
+}
+
+// parseYellowCardOdds parses yellow card betting odds
+func (p *Parser) parseYellowCardOdds(factors []FonbetFactor) map[string]float64 {
+	odds := make(map[string]float64)
+	
+	for _, factor := range factors {
+		switch factor.F {
+		case 910, 912: // Total yellow cards over/under
+			if factor.Pt != "" {
+				odds[fmt.Sprintf("total_%s", factor.Pt)] = factor.V
+			}
+		case 921, 922, 923, 924, 925: // Exact yellow card counts
+			odds[fmt.Sprintf("exact_%d", factor.F)] = factor.V
+		case 927, 928: // Alternative totals
+			if factor.Pt != "" {
+				odds[fmt.Sprintf("alt_total_%s", factor.Pt)] = factor.V
+			}
+		}
+	}
+	
+	return odds
+}
+
+// parseFoulOdds parses foul betting odds
+func (p *Parser) parseFoulOdds(factors []FonbetFactor) map[string]float64 {
+	odds := make(map[string]float64)
+	
+	for _, factor := range factors {
+		switch factor.F {
+		case 910, 912: // Total fouls over/under
+			if factor.Pt != "" {
+				odds[fmt.Sprintf("total_%s", factor.Pt)] = factor.V
+			}
+		case 921, 922, 923, 924, 925: // Exact foul counts
+			odds[fmt.Sprintf("exact_%d", factor.F)] = factor.V
+		case 927, 928: // Alternative totals
+			if factor.Pt != "" {
+				odds[fmt.Sprintf("alt_total_%s", factor.Pt)] = factor.V
+			}
+		}
+	}
+	
+	return odds
+}
+
+// parseShotsOnTargetOdds parses shots on target betting odds
+func (p *Parser) parseShotsOnTargetOdds(factors []FonbetFactor) map[string]float64 {
+	odds := make(map[string]float64)
+	
+	for _, factor := range factors {
+		switch factor.F {
+		case 910, 912: // Total shots on target over/under
+			if factor.Pt != "" {
+				odds[fmt.Sprintf("total_%s", factor.Pt)] = factor.V
+			}
+		case 921, 922, 923, 924, 925: // Exact shots on target counts
+			odds[fmt.Sprintf("exact_%d", factor.F)] = factor.V
+		case 927, 928: // Alternative totals
+			if factor.Pt != "" {
+				odds[fmt.Sprintf("alt_total_%s", factor.Pt)] = factor.V
+			}
+		}
+	}
+	
+	return odds
+}
+
+// parseOffsideOdds parses offside betting odds
+func (p *Parser) parseOffsideOdds(factors []FonbetFactor) map[string]float64 {
+	odds := make(map[string]float64)
+	
+	for _, factor := range factors {
+		switch factor.F {
+		case 910, 912: // Total offsides over/under
+			if factor.Pt != "" {
+				odds[fmt.Sprintf("total_%s", factor.Pt)] = factor.V
+			}
+		case 921, 922, 923, 924, 925: // Exact offside counts
+			odds[fmt.Sprintf("exact_%d", factor.F)] = factor.V
+		case 927, 928: // Alternative totals
+			if factor.Pt != "" {
+				odds[fmt.Sprintf("alt_total_%s", factor.Pt)] = factor.V
+			}
+		}
+	}
+	
+	return odds
+}
+
+// parseThrowInOdds parses throw-in betting odds
+func (p *Parser) parseThrowInOdds(factors []FonbetFactor) map[string]float64 {
+	odds := make(map[string]float64)
+	
+	for _, factor := range factors {
+		switch factor.F {
+		case 910, 912: // Total throw-ins over/under
+			if factor.Pt != "" {
+				odds[fmt.Sprintf("total_%s", factor.Pt)] = factor.V
+			}
+		case 921, 922, 923, 924, 925: // Exact throw-in counts
+			odds[fmt.Sprintf("exact_%d", factor.F)] = factor.V
+		case 927, 928: // Alternative totals
+			if factor.Pt != "" {
+				odds[fmt.Sprintf("alt_total_%s", factor.Pt)] = factor.V
+			}
+		}
+	}
+	
+	return odds
+}
+
+// getMarketName returns the market name for a statistical event type
+func (p *Parser) getMarketName(eventType string) string {
+	switch eventType {
+	case "corners":
+		return "Corners"
+	case "yellow_cards":
+		return "Yellow Cards"
+	case "fouls":
+		return "Fouls"
+	case "shots_on_target":
+		return "Shots on Target"
+	case "offsides":
+		return "Offsides"
+	case "throw_ins":
+		return "Throw-ins"
+	default:
+		return "Statistical Event"
+	}
+}
+
+// getStatisticalEventName returns a proper name for a statistical event
+func (p *Parser) getStatisticalEventName(eventType string, event FonbetAPIEvent) string {
+	eventTypeName := p.getMarketName(eventType)
+	
+	if event.ParentID > 0 {
+		return fmt.Sprintf("%s for event %d", eventTypeName, event.ParentID)
+	}
+	
+	if event.Name != "" {
+		return fmt.Sprintf("%s: %s", eventTypeName, event.Name)
+	}
+	
+	return fmt.Sprintf("%s event %d", eventTypeName, event.ID)
 }
 
 // getMatchName returns a proper match name with team names or fallback

@@ -9,7 +9,7 @@ import (
 
 func main() {
 	// Read the existing legacy export
-	legacyData, err := ioutil.ReadFile("exports/odds_export_2025-09-28_11-31-39.json")
+	legacyData, err := ioutil.ReadFile("exports/odds_export_2025-09-28_11-35-23.json")
 	if err != nil {
 		fmt.Printf("Error reading legacy file: %v\n", err)
 		return

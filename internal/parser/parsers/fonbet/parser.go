@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/Vodeneev/vodeneevbet/internal/pkg/config"
@@ -140,20 +141,12 @@ func (p *Parser) parseEvent(event FonbetEvent) error {
 	if len(odds) > 0 {
 		fmt.Printf("Extracted odds: %+v\n", odds)
 		
-		// Store using new unified structure
-		odd := &models.Odd{
-			MatchID:   event.ID,
-			Bookmaker: "Fonbet",
-			Market:    p.getEventMarketName(event),
-			Outcomes:  odds,
-			UpdatedAt: time.Now(),
-			MatchName: p.getMatchName(event),
-			MatchTime: event.StartTime,
-			Sport:     "football",
-		}
+		// Create hierarchical match structure
+		match := p.createHierarchicalMatch(event, odds)
 		
-		if err := p.ydbClient.StoreOdd(context.Background(), odd); err != nil {
-			fmt.Printf("Failed to store odd: %v\n", err)
+		// Store using new hierarchical structure
+		if err := p.storeHierarchicalMatch(context.Background(), match); err != nil {
+			fmt.Printf("Failed to store hierarchical match: %v\n", err)
 			return err
 		}
 		
@@ -517,6 +510,142 @@ func (p *Parser) getMatchName(event FonbetEvent) string {
 	
 	// Fallback to event ID
 	return fmt.Sprintf("Event %s", event.ID)
+}
+
+// createHierarchicalMatch creates a hierarchical match structure from event data
+func (p *Parser) createHierarchicalMatch(event FonbetEvent, odds map[string]float64) *models.Match {
+	now := time.Now()
+	
+	// Extract team names from event name
+	homeTeam, awayTeam := p.extractTeamNames(event.Name)
+	
+	// Create match
+	match := &models.Match{
+		ID:         event.ID,
+		Name:       event.Name,
+		HomeTeam:   homeTeam,
+		AwayTeam:   awayTeam,
+		StartTime:  event.StartTime,
+		Sport:      "football",
+		Tournament: event.Tournament,
+		Bookmaker:  "Fonbet",
+		Events:     []models.Event{},
+		CreatedAt:  now,
+		UpdatedAt:  now,
+	}
+	
+	// Create event
+	eventType := p.jsonParser.GetStandardEventType(getEventTypeFromKind(event.Kind))
+	marketName := parsers.GetMarketName(eventType)
+	
+	eventModel := models.Event{
+		ID:         fmt.Sprintf("%s_%s", event.ID, eventType),
+		EventType:  eventType,
+		MarketName: marketName,
+		Bookmaker:  "Fonbet",
+		Outcomes:   []models.Outcome{},
+		CreatedAt:  now,
+		UpdatedAt:  now,
+	}
+	
+	// Create outcomes
+	for outcomeType, oddsValue := range odds {
+		outcome := models.Outcome{
+			ID:          fmt.Sprintf("%s_%s_%s", eventModel.ID, outcomeType, p.getParameterFromOutcome(outcomeType)),
+			OutcomeType: p.getStandardOutcomeType(outcomeType),
+			Parameter:   p.getParameterFromOutcome(outcomeType),
+			Odds:        oddsValue,
+			Bookmaker:   "Fonbet",
+			CreatedAt:   now,
+			UpdatedAt:  now,
+		}
+		eventModel.Outcomes = append(eventModel.Outcomes, outcome)
+	}
+	
+	match.Events = append(match.Events, eventModel)
+	return match
+}
+
+// extractTeamNames extracts home and away team names from match name
+func (p *Parser) extractTeamNames(matchName string) (string, string) {
+	// Try different separators
+	separators := []string{" vs ", " - ", " v "}
+	for _, sep := range separators {
+		if parts := strings.Split(matchName, sep); len(parts) == 2 {
+			return strings.TrimSpace(parts[0]), strings.TrimSpace(parts[1])
+		}
+	}
+	
+	// Fallback
+	return matchName, "Unknown Away"
+}
+
+// getStandardOutcomeType maps outcome string to standard type
+func (p *Parser) getStandardOutcomeType(outcome string) models.StandardOutcomeType {
+	switch {
+	case strings.Contains(outcome, "home"):
+		return models.StandardOutcomeHomeWin
+	case strings.Contains(outcome, "away"):
+		return models.StandardOutcomeAwayWin
+	case strings.Contains(outcome, "draw"):
+		return models.StandardOutcomeDraw
+	case strings.Contains(outcome, "total_+"):
+		return models.StandardOutcomeTotalOver
+	case strings.Contains(outcome, "total_-"):
+		return models.StandardOutcomeTotalUnder
+	case strings.Contains(outcome, "exact_"):
+		return models.StandardOutcomeExactCount
+	default:
+		return models.StandardOutcomeType(outcome)
+	}
+}
+
+// getParameterFromOutcome extracts parameter from outcome string
+func (p *Parser) getParameterFromOutcome(outcome string) string {
+	if strings.Contains(outcome, "total_") {
+		parts := strings.Split(outcome, "_")
+		if len(parts) > 1 {
+			return parts[1]
+		}
+	}
+	if strings.Contains(outcome, "exact_") {
+		parts := strings.Split(outcome, "_")
+		if len(parts) > 1 {
+			return parts[1]
+		}
+	}
+	return ""
+}
+
+// storeHierarchicalMatch stores match using hierarchical structure
+func (p *Parser) storeHierarchicalMatch(ctx context.Context, match *models.Match) error {
+	// TODO: Replace with HierarchicalYDBClient when ready
+	// For now, we'll use the old YDB client but store in hierarchical format
+	
+	// Convert to old format for compatibility
+	for _, event := range match.Events {
+		outcomes := make(map[string]float64)
+		for _, outcome := range event.Outcomes {
+			outcomes[string(outcome.OutcomeType)] = outcome.Odds
+		}
+		
+		odd := &models.Odd{
+			MatchID:   match.ID,
+			Bookmaker: match.Bookmaker,
+			Market:    event.MarketName,
+			Outcomes:  outcomes,
+			UpdatedAt: match.UpdatedAt,
+			MatchName: match.Name,
+			MatchTime: match.StartTime,
+			Sport:     match.Sport,
+		}
+		
+		if err := p.ydbClient.StoreOdd(ctx, odd); err != nil {
+			return err
+		}
+	}
+	
+	return nil
 }
 
 

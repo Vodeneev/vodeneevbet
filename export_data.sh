@@ -20,9 +20,9 @@ echo "✅ Previous exports cleaned"
 # Create exports directory
 mkdir -p exports
 
-# Run export utility
+# Run hierarchical export utility
 cd internal/export
-go run main.go
+go run hierarchical_main.go
 
 # Move exports to project root
 if [ -d "exports" ]; then

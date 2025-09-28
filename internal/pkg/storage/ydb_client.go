@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"path"
+	"time"
 
 	"github.com/Vodeneev/vodeneevbet/internal/pkg/config"
 	"github.com/Vodeneev/vodeneevbet/internal/pkg/models"
@@ -362,10 +363,10 @@ func (y *YDBClient) SetupTTL(ctx context.Context, expireAfter time.Duration) err
 }
 
 // GetTTLSettings retrieves current TTL settings for the table
-func (y *YDBClient) GetTTLSettings(ctx context.Context) (*options.TTLSettings, error) {
+func (y *YDBClient) GetTTLSettings(ctx context.Context) (*options.TimeToLiveSettings, error) {
 	log.Println("YDB: Getting TTL settings for odds table")
 	
-	var ttlSettings *options.TTLSettings
+	var ttlSettings *options.TimeToLiveSettings
 	
 	err := y.db.Table().Do(ctx,
 		func(ctx context.Context, s table.Session) error {

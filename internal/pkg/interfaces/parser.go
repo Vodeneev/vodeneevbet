@@ -48,4 +48,7 @@ type EventProcessor interface {
 	
 	// ProcessEvents processes multiple events
 	ProcessEvents(events []interface{}) error
+	
+	// ProcessSportEvents processes events for a specific sport
+	ProcessSportEvents(sport string) error
 }

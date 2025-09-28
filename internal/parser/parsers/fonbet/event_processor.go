@@ -4,9 +4,10 @@ import (
 	"context"
 	"fmt"
 	"strconv"
+	"time"
 
 	"github.com/Vodeneev/vodeneevbet/internal/pkg/interfaces"
-	"github.com/Vodeneev/vodeneevbet/internal/pkg/storage"
+	"github.com/Vodeneev/vodeneevbet/internal/pkg/models"
 )
 
 // EventProcessor handles processing events
@@ -247,11 +248,11 @@ func (p *EventProcessor) buildHierarchicalMatch(mainEvent FonbetAPIEvent, statis
 		ParentID:   mainEvent.ParentID,
 	}
 
-	// Convert statistical events
-	statEvents := make([]FonbetEvent, len(statisticalEvents))
+	// Convert statistical events to interface{}
+	statEvents := make([]interface{}, len(statisticalEvents))
 	for i, event := range statisticalEvents {
 		if apiEvent, ok := event.(FonbetAPIEvent); ok {
-			statEvents[i] = FonbetEvent{
+			fonbetEvent := FonbetEvent{
 				ID:         fmt.Sprintf("%d", apiEvent.ID),
 				Name:       apiEvent.Name,
 				HomeTeam:   apiEvent.Team1,
@@ -264,12 +265,19 @@ func (p *EventProcessor) buildHierarchicalMatch(mainEvent FonbetAPIEvent, statis
 				Level:      apiEvent.Level,
 				ParentID:   apiEvent.ParentID,
 			}
+			statEvents[i] = fonbetEvent
 		}
+	}
+
+	// Convert main factors to interface{}
+	factors := make([]interface{}, len(mainFactors))
+	for i, factor := range mainFactors {
+		factors[i] = factor
 	}
 
 	// Use match builder to create the match
 	matchBuilder := NewMatchBuilder("Fonbet")
-	match, err := matchBuilder.BuildMatch(mainFonbetEvent, statEvents, mainFactors)
+	match, err := matchBuilder.BuildMatch(mainFonbetEvent, statEvents, factors)
 	if err != nil {
 		return nil, err
 	}

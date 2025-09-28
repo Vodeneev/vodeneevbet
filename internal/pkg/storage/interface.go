@@ -29,10 +29,10 @@ type Storage interface {
 // ArbitrageStorage interface for working with arbitrage data
 type ArbitrageStorage interface {
 	// StoreArbitrage saves found arbitrage
-	StoreArbitrage(ctx context.Context, arb *models.Arbitrage) error
+	StoreArbitrage(ctx context.Context, arb interface{}) error
 	
 	// GetArbitrages gets arbitrages by filters
-	GetArbitrages(ctx context.Context, limit int) ([]*models.Arbitrage, error)
+	GetArbitrages(ctx context.Context, limit int) ([]interface{}, error)
 }
 
 // ValueBetStorage interface for working with value bet data
@@ -44,5 +44,5 @@ type ValueBetStorage interface {
 	GetValueBets(ctx context.Context, limit int) ([]*models.ValueBet, error)
 	
 	// GetValueBetStats gets value bet statistics
-	GetValueBetStats(ctx context.Context) (*models.ValueBetStats, error)
+	GetValueBetStats(ctx context.Context) (interface{}, error)
 }

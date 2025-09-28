@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"time"
+
+	"github.com/Vodeneev/vodeneevbet/internal/parser/parsers"
 )
 
 type JSONParser struct{}
@@ -20,20 +22,22 @@ func (p *JSONParser) ParseEvents(jsonData []byte) ([]FonbetEvent, error) {
 	
 	var events []FonbetEvent
 	for _, event := range response.Events {
-		// Include all events, not just main matches
-		events = append(events, FonbetEvent{
-			ID:         fmt.Sprintf("%d", event.ID),
-			Name:       event.Name,
-			HomeTeam:   event.Team1,
-			AwayTeam:   event.Team2,
-			StartTime:  time.Unix(event.StartTime, 0),
-			Category:   "football",
-			Tournament: "Unknown Tournament",
-			Kind:       event.Kind,
-			RootKind:   event.RootKind,
-			Level:      event.Level,
-			ParentID:   event.ParentID,
-		})
+		// Only include supported events
+		if p.isSupportedEvent(event) {
+			events = append(events, FonbetEvent{
+				ID:         fmt.Sprintf("%d", event.ID),
+				Name:       event.Name,
+				HomeTeam:   event.Team1,
+				AwayTeam:   event.Team2,
+				StartTime:  time.Unix(event.StartTime, 0),
+				Category:   "football",
+				Tournament: "Unknown Tournament",
+				Kind:       event.Kind,
+				RootKind:   event.RootKind,
+				Level:      event.Level,
+				ParentID:   event.ParentID,
+			})
+		}
 	}
 	
 	return events, nil
@@ -167,39 +171,97 @@ func (p *JSONParser) isMainMatch(event FonbetAPIEvent) bool {
 	return true
 }
 
+// EventType represents a standardized event type (alias for StandardEventType)
+type EventType = parsers.StandardEventType
+
+const (
+	EventTypeMainMatch      EventType = parsers.StandardEventMainMatch
+	EventTypeCorners        EventType = parsers.StandardEventCorners
+	EventTypeYellowCards    EventType = parsers.StandardEventYellowCards
+	EventTypeFouls          EventType = parsers.StandardEventFouls
+	EventTypeShotsOnTarget  EventType = parsers.StandardEventShotsOnTarget
+	EventTypeOffsides       EventType = parsers.StandardEventOffsides
+	EventTypeThrowIns       EventType = parsers.StandardEventThrowIns
+)
+
+// supportedEvents defines which event types are supported by this parser
+var supportedEvents = map[int64]EventType{
+	1:      EventTypeMainMatch,
+	400100: EventTypeCorners,
+	400200: EventTypeYellowCards,
+	400300: EventTypeFouls,
+	400400: EventTypeShotsOnTarget,
+	400500: EventTypeOffsides,
+	401000: EventTypeThrowIns,
+}
+
+// isSupportedEvent checks if an event type is supported by this parser
+func (p *JSONParser) isSupportedEvent(event FonbetAPIEvent) bool {
+	_, exists := supportedEvents[event.Kind]
+	return exists
+}
+
+// getEventType returns the standardized event type for a given event
+func (p *JSONParser) getEventType(event FonbetAPIEvent) EventType {
+	if eventType, exists := supportedEvents[event.Kind]; exists {
+		return eventType
+	}
+	return EventTypeMainMatch // Default fallback
+}
+
 // isStatisticalEvent checks if an event is any statistical event (RootKind: 400000)
 func (p *JSONParser) isStatisticalEvent(event FonbetAPIEvent) bool {
 	return event.RootKind == 400000
 }
 
-// isCornerEvent determines if an event is a corner event
+// Legacy methods for backward compatibility
 func (p *JSONParser) isCornerEvent(event FonbetAPIEvent) bool {
-	return event.Kind == 400100
+	return p.getEventType(event) == EventTypeCorners
 }
 
-// isYellowCardEvent determines if an event is a yellow card event
 func (p *JSONParser) isYellowCardEvent(event FonbetAPIEvent) bool {
-	return event.Kind == 400200
+	return p.getEventType(event) == EventTypeYellowCards
 }
 
-// isFoulEvent determines if an event is a foul event
 func (p *JSONParser) isFoulEvent(event FonbetAPIEvent) bool {
-	return event.Kind == 400300
+	return p.getEventType(event) == EventTypeFouls
 }
 
-// isShotsOnTargetEvent determines if an event is a shots on target event
 func (p *JSONParser) isShotsOnTargetEvent(event FonbetAPIEvent) bool {
-	return event.Kind == 400400
+	return p.getEventType(event) == EventTypeShotsOnTarget
 }
 
-// isOffsideEvent determines if an event is an offside event
 func (p *JSONParser) isOffsideEvent(event FonbetAPIEvent) bool {
-	return event.Kind == 400500
+	return p.getEventType(event) == EventTypeOffsides
 }
 
-// isThrowInEvent determines if an event is a throw-in event
 func (p *JSONParser) isThrowInEvent(event FonbetAPIEvent) bool {
-	return event.Kind == 401000
+	return p.getEventType(event) == EventTypeThrowIns
+}
+
+// EventMapper interface implementation
+
+// GetStandardEventType maps a Fonbet event ID to a standard event type
+func (p *JSONParser) GetStandardEventType(eventID int64) parsers.StandardEventType {
+	if eventType, exists := supportedEvents[eventID]; exists {
+		return parsers.StandardEventType(eventType)
+	}
+	return parsers.StandardEventMainMatch // Default fallback
+}
+
+// IsSupportedEvent checks if an event type is supported by Fonbet parser
+func (p *JSONParser) IsSupportedEvent(eventID int64) bool {
+	_, exists := supportedEvents[eventID]
+	return exists
+}
+
+// GetSupportedEvents returns all supported event types for Fonbet
+func (p *JSONParser) GetSupportedEvents() map[int64]parsers.StandardEventType {
+	result := make(map[int64]parsers.StandardEventType)
+	for kind, eventType := range supportedEvents {
+		result[kind] = parsers.StandardEventType(eventType)
+	}
+	return result
 }
 
 

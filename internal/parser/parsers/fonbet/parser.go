@@ -186,24 +186,12 @@ func (p *Parser) parseEventOdds(event FonbetEvent, factors []FonbetFactor) map[s
 	}
 }
 
-// getEventTypeFromKind determines event type from Kind field
+// getEventTypeFromKind determines event type from Kind field using standardized mapping
 func (p *Parser) getEventTypeFromKind(kind int64) string {
-	switch kind {
-	case 400100:
-		return "corners"
-	case 400200:
-		return "yellow_cards"
-	case 400300:
-		return "fouls"
-	case 400400:
-		return "shots_on_target"
-	case 400500:
-		return "offsides"
-	case 401000:
-		return "throw_ins"
-	default:
-		return "main_match"
-	}
+	// Create a temporary event to use the standardized mapping
+	tempEvent := FonbetAPIEvent{Kind: kind}
+	eventType := p.jsonParser.getEventType(tempEvent)
+	return string(eventType)
 }
 
 // parseMainMatchOdds parses basic match odds (1X2, totals, etc.)
@@ -224,26 +212,10 @@ func (p *Parser) parseMainMatchOdds(factors []FonbetFactor) map[string]float64 {
 	return odds
 }
 
-// getEventMarketName returns the market name for an event
+// getEventMarketName returns the market name for an event using standardized mapping
 func (p *Parser) getEventMarketName(event FonbetEvent) string {
 	eventType := p.getEventTypeFromKind(event.Kind)
-	
-	switch eventType {
-	case "corners":
-		return "Corners"
-	case "yellow_cards":
-		return "Yellow Cards"
-	case "fouls":
-		return "Fouls"
-	case "shots_on_target":
-		return "Shots on Target"
-	case "offsides":
-		return "Offsides"
-	case "throw_ins":
-		return "Throw-ins"
-	default:
-		return "Match Result"
-	}
+	return parsers.GetMarketName(parsers.StandardEventType(eventType))
 }
 
 

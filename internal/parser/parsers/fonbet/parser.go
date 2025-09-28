@@ -140,6 +140,7 @@ func (p *Parser) parseEvent(event FonbetEvent) error {
 	if len(odds) > 0 {
 		fmt.Printf("Extracted odds: %+v\n", odds)
 		
+		// Store using new unified structure
 		odd := &models.Odd{
 			MatchID:   event.ID,
 			Bookmaker: "Fonbet",

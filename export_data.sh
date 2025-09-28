@@ -22,7 +22,7 @@ mkdir -p exports
 
 # Run export utility
 cd internal/export
-go run main.go
+go run main.go -config ../../configs/local.yaml
 
 # Move exports to project root
 if [ -d "exports" ]; then

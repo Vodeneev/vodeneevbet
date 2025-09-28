@@ -154,8 +154,8 @@ go build -o parser .
 ./export_data.sh
 
 # Результат:
-# - exports/hierarchical_export_YYYY-MM-DD_HH-MM-SS.json
-# - exports/hierarchical_export_YYYY-MM-DD_HH-MM-SS.csv
+# - exports/export_YYYY-MM-DD_HH-MM-SS.json
+# - exports/export_YYYY-MM-DD_HH-MM-SS.csv
 # - Иерархическая структура: Match → Events → Outcomes
 ```
 

@@ -25,10 +25,14 @@ type Parser struct {
 func NewParser(config *config.Config) *Parser {
 	// Create YDB client
 	fmt.Println("Creating YDB client...")
+	fmt.Printf("YDB config: endpoint=%s, database=%s, key_file=%s\n", 
+		config.YDB.Endpoint, config.YDB.Database, config.YDB.ServiceAccountKeyFile)
+	
 	ydbClient, err := storage.NewYDBClient(&config.YDB)
 	if err != nil {
 		fmt.Printf("❌ Failed to create YDB client: %v\n", err)
 		fmt.Println("⚠️  Parser will run without YDB storage")
+		ydbClient = nil
 	} else {
 		fmt.Println("✅ YDB client created successfully")
 	}
@@ -165,6 +169,11 @@ func (p *Parser) parseMatchWithEvents(mainEvent FonbetEvent, statisticalEvents [
 	
 	fmt.Printf("Successfully stored match %s with %d events\n", match.ID, len(match.Events))
 	return nil
+}
+
+// GetEventFactors gets factors for a specific event (public method for debugging)
+func (p *Parser) GetEventFactors(eventID int64) ([]FonbetFactor, error) {
+	return p.getEventFactors(eventID)
 }
 
 // getEventFactors gets factors for a specific event
@@ -306,9 +315,135 @@ func (p *Parser) parseMainMatchOdds(factors []FonbetFactor) map[string]float64 {
 		switch factor.F {
 		case 1, 2, 3: // 1X2 odds
 			odds[fmt.Sprintf("outcome_%d", factor.F)] = factor.V
-		case 910, 912: // Total goals over/under
+		case 910, 912: // Total goals over/under (main totals)
 			if factor.Pt != "" {
 				odds[fmt.Sprintf("total_%s", factor.Pt)] = factor.V
+			}
+		case 927, 928: // Alternative totals
+			if factor.Pt != "" {
+				odds[fmt.Sprintf("total_%s", factor.Pt)] = factor.V
+			}
+		case 930, 931: // Total 3.5
+			if factor.Pt != "" {
+				odds[fmt.Sprintf("total_%s", factor.Pt)] = factor.V
+			}
+		case 989, 991: // Total 2
+			if factor.Pt != "" {
+				odds[fmt.Sprintf("total_%s", factor.Pt)] = factor.V
+			}
+		case 1569, 1572: // Total 1.5
+			if factor.Pt != "" {
+				odds[fmt.Sprintf("total_%s", factor.Pt)] = factor.V
+			}
+		case 1672, 1675, 1677, 1678: // Total 1
+			if factor.Pt != "" {
+				odds[fmt.Sprintf("total_%s", factor.Pt)] = factor.V
+			}
+		case 1680, 1681: // Total 1.5
+			if factor.Pt != "" {
+				odds[fmt.Sprintf("total_%s", factor.Pt)] = factor.V
+			}
+		case 1696, 1697: // Total 0.5
+			if factor.Pt != "" {
+				odds[fmt.Sprintf("total_%s", factor.Pt)] = factor.V
+			}
+		case 1727, 1728: // Total 1
+			if factor.Pt != "" {
+				odds[fmt.Sprintf("total_%s", factor.Pt)] = factor.V
+			}
+		case 1730, 1731: // Total 1.5
+			if factor.Pt != "" {
+				odds[fmt.Sprintf("total_%s", factor.Pt)] = factor.V
+			}
+		case 1733, 1734: // Total 2
+			if factor.Pt != "" {
+				odds[fmt.Sprintf("total_%s", factor.Pt)] = factor.V
+			}
+		case 1736, 1737: // Total 2.5
+			if factor.Pt != "" {
+				odds[fmt.Sprintf("total_%s", factor.Pt)] = factor.V
+			}
+		case 1739, 1791: // Total 3
+			if factor.Pt != "" {
+				odds[fmt.Sprintf("total_%s", factor.Pt)] = factor.V
+			}
+		case 1793, 1794: // Total 4
+			if factor.Pt != "" {
+				odds[fmt.Sprintf("total_%s", factor.Pt)] = factor.V
+			}
+		case 1796, 1797: // Total 4.5
+			if factor.Pt != "" {
+				odds[fmt.Sprintf("total_%s", factor.Pt)] = factor.V
+			}
+		case 1799, 1800: // Total 5
+			if factor.Pt != "" {
+				odds[fmt.Sprintf("total_%s", factor.Pt)] = factor.V
+			}
+		case 1802, 1803: // Total 5.5
+			if factor.Pt != "" {
+				odds[fmt.Sprintf("total_%s", factor.Pt)] = factor.V
+			}
+		case 1809, 1810: // Total 0.5
+			if factor.Pt != "" {
+				odds[fmt.Sprintf("total_%s", factor.Pt)] = factor.V
+			}
+		case 1812, 1813: // Total 1
+			if factor.Pt != "" {
+				odds[fmt.Sprintf("total_%s", factor.Pt)] = factor.V
+			}
+		case 1815, 1816: // Total 1.5
+			if factor.Pt != "" {
+				odds[fmt.Sprintf("total_%s", factor.Pt)] = factor.V
+			}
+		case 1818, 1819: // Total 2
+			if factor.Pt != "" {
+				odds[fmt.Sprintf("total_%s", factor.Pt)] = factor.V
+			}
+		case 1821, 1822: // Total 2.5
+			if factor.Pt != "" {
+				odds[fmt.Sprintf("total_%s", factor.Pt)] = factor.V
+			}
+		case 1824, 1825: // Total 3
+			if factor.Pt != "" {
+				odds[fmt.Sprintf("total_%s", factor.Pt)] = factor.V
+			}
+		case 1827, 1828: // Total 3.5
+			if factor.Pt != "" {
+				odds[fmt.Sprintf("total_%s", factor.Pt)] = factor.V
+			}
+		case 1854, 1871: // Total 0.5
+			if factor.Pt != "" {
+				odds[fmt.Sprintf("total_%s", factor.Pt)] = factor.V
+			}
+		case 1873, 1874: // Total 1
+			if factor.Pt != "" {
+				odds[fmt.Sprintf("total_%s", factor.Pt)] = factor.V
+			}
+		case 1880, 1881: // Total 1.5
+			if factor.Pt != "" {
+				odds[fmt.Sprintf("total_%s", factor.Pt)] = factor.V
+			}
+		case 1883, 1884: // Total 2
+			if factor.Pt != "" {
+				odds[fmt.Sprintf("total_%s", factor.Pt)] = factor.V
+			}
+		case 1886, 1887: // Total 2.5
+			if factor.Pt != "" {
+				odds[fmt.Sprintf("total_%s", factor.Pt)] = factor.V
+			}
+		case 4241, 4242: // Additional totals
+			if factor.Pt != "" {
+				odds[fmt.Sprintf("total_%s", factor.Pt)] = factor.V
+			}
+		default:
+			// Handle all other factors with parameters
+			if factor.Pt != "" {
+				// String parameters (like "0.5", "1", "1.5", etc.)
+				odds[fmt.Sprintf("total_%s", factor.Pt)] = factor.V
+			} else if factor.P != 0 {
+				// Numeric parameters - convert to string
+				paramStr := fmt.Sprintf("%.1f", float64(factor.P)/100.0)
+				odds[fmt.Sprintf("total_%s", paramStr)] = factor.V
 			}
 		}
 	}
@@ -800,6 +935,12 @@ func (p *Parser) getStandardOutcomeType(outcome string) models.StandardOutcomeTy
 		return models.OutcomeTypeTotalUnder
 	case strings.Contains(outcome, "exact_"):
 		return models.OutcomeTypeExactCount
+	case strings.Contains(outcome, "outcome_1"):
+		return models.OutcomeTypeHomeWin
+	case strings.Contains(outcome, "outcome_2"):
+		return models.OutcomeTypeAwayWin
+	case strings.Contains(outcome, "outcome_3"):
+		return models.OutcomeTypeDraw
 	default:
 		return models.StandardOutcomeType(outcome)
 	}

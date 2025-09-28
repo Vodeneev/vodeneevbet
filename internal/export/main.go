@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"flag"
 	"fmt"
 	"log"
 	"os"
@@ -17,8 +18,13 @@ import (
 func main() {
 	fmt.Println("📊 Starting data export from YDB...")
 	
+	// Parse command line flags
+	var configPath string
+	flag.StringVar(&configPath, "config", "configs/local.yaml", "Path to config file")
+	flag.Parse()
+	
 	// Load config
-	cfg, err := config.Load("../../configs/local.yaml")
+	cfg, err := config.Load(configPath)
 	if err != nil {
 		log.Fatalf("Failed to load config: %v", err)
 	}

@@ -246,19 +246,6 @@ type Outcome struct {
 }
 ```
 
-### Legacy Odd (Коэффициент) - для совместимости
-```go
-type Odd struct {
-    MatchID    string             `json:"match_id"`
-    Bookmaker  string             `json:"bookmaker"`
-    Market     string             `json:"market"`     // "1x2", "total", "handicap"
-    Outcomes   map[string]float64 `json:"outcomes"`   // {"win_home": 1.5, "draw": 3.0}
-    UpdatedAt  time.Time          `json:"updated_at"`
-    MatchName  string             `json:"match_name"`
-    MatchTime  time.Time          `json:"match_time"`
-    Sport      string             `json:"sport"`
-}
-```
 
 ### ValueBet (Валуйная ставка)
 ```go

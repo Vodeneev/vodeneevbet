@@ -167,40 +167,39 @@ func (p *JSONParser) isMainMatch(event FonbetAPIEvent) bool {
 	return true
 }
 
+// isStatisticalEvent checks if an event is any statistical event (RootKind: 400000)
+func (p *JSONParser) isStatisticalEvent(event FonbetAPIEvent) bool {
+	return event.RootKind == 400000
+}
+
 // isCornerEvent determines if an event is a corner event
 func (p *JSONParser) isCornerEvent(event FonbetAPIEvent) bool {
-	// Corner events have kind: 400100 and rootKind: 400000
-	return event.Kind == 400100 && event.RootKind == 400000
+	return event.Kind == 400100
 }
 
 // isYellowCardEvent determines if an event is a yellow card event
 func (p *JSONParser) isYellowCardEvent(event FonbetAPIEvent) bool {
-	// Yellow card events have kind: 400200 and rootKind: 400000
-	return event.Kind == 400200 && event.RootKind == 400000
+	return event.Kind == 400200
 }
 
 // isFoulEvent determines if an event is a foul event
 func (p *JSONParser) isFoulEvent(event FonbetAPIEvent) bool {
-	// Foul events have kind: 400300 and rootKind: 400000
-	return event.Kind == 400300 && event.RootKind == 400000
+	return event.Kind == 400300
 }
 
 // isShotsOnTargetEvent determines if an event is a shots on target event
 func (p *JSONParser) isShotsOnTargetEvent(event FonbetAPIEvent) bool {
-	// Shots on target events have kind: 400400 and rootKind: 400000
-	return event.Kind == 400400 && event.RootKind == 400000
+	return event.Kind == 400400
 }
 
 // isOffsideEvent determines if an event is an offside event
 func (p *JSONParser) isOffsideEvent(event FonbetAPIEvent) bool {
-	// Offside events have kind: 400500 and rootKind: 400000
-	return event.Kind == 400500 && event.RootKind == 400000
+	return event.Kind == 400500
 }
 
 // isThrowInEvent determines if an event is a throw-in event
 func (p *JSONParser) isThrowInEvent(event FonbetAPIEvent) bool {
-	// Throw-in events have kind: 401000 and rootKind: 400000
-	return event.Kind == 401000 && event.RootKind == 400000
+	return event.Kind == 401000
 }
 
 

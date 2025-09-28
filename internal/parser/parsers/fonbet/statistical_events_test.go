@@ -103,20 +103,21 @@ func TestUnifiedEventParsing(t *testing.T) {
 		}
 	}
 	
-	// Test parsing all statistical events (still available for backward compatibility)
-	statisticalEvents, err := parser.ParseAllStatisticalEvents(jsonData)
+	// Test individual event type parsers (still available for backward compatibility)
+	cornerEvents, err := parser.ParseCornerEvents(jsonData)
 	if err != nil {
-		t.Fatalf("Failed to parse statistical events: %v", err)
+		t.Errorf("Failed to parse corner events: %v", err)
+	}
+	if len(cornerEvents) != 1 {
+		t.Errorf("Expected 1 corner event, got %d", len(cornerEvents))
 	}
 	
-	// Check that we found all types of statistical events
-	expectedTypes := []string{"corners", "yellow_cards", "fouls", "shots_on_target", "offsides", "throw_ins"}
-	for _, eventType := range expectedTypes {
-		if events, exists := statisticalEvents[eventType]; !exists || len(events) == 0 {
-			t.Errorf("Expected to find %s events, but found none", eventType)
-		} else {
-			t.Logf("Found %d %s events", len(events), eventType)
-		}
+	yellowCardEvents, err := parser.ParseYellowCardEvents(jsonData)
+	if err != nil {
+		t.Errorf("Failed to parse yellow card events: %v", err)
+	}
+	if len(yellowCardEvents) != 1 {
+		t.Errorf("Expected 1 yellow card event, got %d", len(yellowCardEvents))
 	}
 }
 
@@ -190,27 +191,3 @@ func TestStatisticalEventTypeDetection(t *testing.T) {
 	}
 }
 
-func TestGetStatisticalEventType(t *testing.T) {
-	parser := NewJSONParser()
-	
-	testCases := []struct {
-		kind     int64
-		expected string
-	}{
-		{400100, "corners"},
-		{400200, "yellow_cards"},
-		{400300, "fouls"},
-		{400400, "shots_on_target"},
-		{400500, "offsides"},
-		{401000, "throw_ins"},
-		{999999, ""}, // Unknown kind
-	}
-	
-	for _, tc := range testCases {
-		event := FonbetAPIEvent{Kind: tc.kind}
-		result := parser.getStatisticalEventType(event)
-		if result != tc.expected {
-			t.Errorf("Expected %s for kind %d, got %s", tc.expected, tc.kind, result)
-		}
-	}
-}

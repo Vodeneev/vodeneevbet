@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"path"
+	"time"
 
 	"github.com/Vodeneev/vodeneevbet/internal/pkg/config"
 	"github.com/Vodeneev/vodeneevbet/internal/pkg/models"
@@ -615,6 +616,38 @@ func (y *YDBClient) CleanTable(ctx context.Context, tableName string) error {
 	}
 	
 	log.Printf("YDB: Table %s cleaned successfully", tableName)
+	return nil
+}
+
+// GetTTLSettings retrieves TTL settings for tables
+func (y *YDBClient) GetTTLSettings(ctx context.Context) (map[string]interface{}, error) {
+	// For now, return a simple status
+	// In a real implementation, you would query YDB for TTL settings
+	return map[string]interface{}{
+		"status": "not_configured",
+		"tables": []string{"matches", "events", "outcomes"},
+	}, nil
+}
+
+// SetupTTL configures TTL for tables
+func (y *YDBClient) SetupTTL(ctx context.Context, expireAfter time.Duration) error {
+	log.Printf("YDB: Setting up TTL with expire after %v", expireAfter)
+	
+	// For now, just log the action
+	// In a real implementation, you would configure TTL on YDB tables
+	log.Println("YDB: TTL setup completed (simulated)")
+	
+	return nil
+}
+
+// DisableTTL disables TTL for tables
+func (y *YDBClient) DisableTTL(ctx context.Context) error {
+	log.Println("YDB: Disabling TTL")
+	
+	// For now, just log the action
+	// In a real implementation, you would disable TTL on YDB tables
+	log.Println("YDB: TTL disabled (simulated)")
+	
 	return nil
 }
 

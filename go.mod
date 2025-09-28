@@ -6,9 +6,9 @@ toolchain go1.24.7
 
 require (
 	github.com/redis/go-redis/v9 v9.14.0
-	github.com/ydb-platform/ydb-go-sdk-auth-environ v0.5.0
 	github.com/ydb-platform/ydb-go-sdk/v3 v3.116.2
 	github.com/ydb-platform/ydb-go-yc v0.12.1
+	github.com/ydb-platform/ydb-go-yc-metadata v0.6.1
 	gopkg.in/yaml.v3 v3.0.1
 )
 
@@ -21,7 +21,6 @@ require (
 	github.com/kr/pretty v0.3.1 // indirect
 	github.com/yandex-cloud/go-genproto v0.0.0-20211115083454-9ca41db5ed9e // indirect
 	github.com/ydb-platform/ydb-go-genproto v0.0.0-20250911135631-b3beddd517d9 // indirect
-	github.com/ydb-platform/ydb-go-yc-metadata v0.6.1 // indirect
 	golang.org/x/net v0.35.0 // indirect
 	golang.org/x/sync v0.11.0 // indirect
 	golang.org/x/sys v0.30.0 // indirect

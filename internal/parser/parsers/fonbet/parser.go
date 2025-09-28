@@ -11,17 +11,24 @@ import (
 	"github.com/Vodeneev/vodeneevbet/internal/pkg/enums"
 	"github.com/Vodeneev/vodeneevbet/internal/pkg/enums/fonbet"
 	"github.com/Vodeneev/vodeneevbet/internal/pkg/models"
-	"github.com/Vodeneev/vodeneevbet/internal/parser/parsers"
+	"github.com/Vodeneev/vodeneevbet/internal/pkg/storage"
 )
+
 
 type Parser struct {
 	httpClient *HTTPClient
-	jsonParser  *JSONParser
-	ydbClient   parsers.YDBClient
-	config      *config.Config
+	jsonParser *JSONParser
+	ydbClient  *storage.YDBClient
+	config     *config.Config
 }
 
-func NewParser(ydbClient parsers.YDBClient, config *config.Config) *Parser {
+func NewParser(config *config.Config) *Parser {
+	// Create YDB client
+	ydbClient, err := storage.NewYDBClient(&config.YDB)
+	if err != nil {
+		fmt.Printf("Warning: Failed to create YDB client: %v\n", err)
+	}
+	
 	return &Parser{
 		httpClient: NewHTTPClient(config),
 		jsonParser: NewJSONParser(),
@@ -209,14 +216,23 @@ func (p *Parser) parseMainMatchOdds(factors []FonbetFactor) map[string]float64 {
 // getEventMarketName returns the market name for an event using standardized mapping
 func (p *Parser) getEventMarketName(event FonbetEvent) string {
 	eventType := p.getEventTypeFromKind(event.Kind)
-	return parsers.GetMarketName(parsers.StandardEventType(eventType))
+	return models.GetMarketName(models.StandardEventType(eventType))
 }
 
 
 func (p *Parser) parseCornerEvents(jsonData []byte) error {
-	cornerEvents, err := p.jsonParser.ParseCornerEvents(jsonData)
+	// Parse all events first
+	events, err := p.jsonParser.ParseEvents(jsonData)
 	if err != nil {
-		return fmt.Errorf("failed to parse corner events: %w", err)
+		return fmt.Errorf("failed to parse events: %w", err)
+	}
+	
+	// Filter corner events (Kind = 400100 for corners)
+	var cornerEvents []FonbetEvent
+	for _, event := range events {
+		if event.Kind == 400100 {
+			cornerEvents = append(cornerEvents, event)
+		}
 	}
 	
 	fmt.Printf("Found %d corner events\n", len(cornerEvents))
@@ -228,16 +244,23 @@ func (p *Parser) parseCornerEvents(jsonData []byte) error {
 			break
 		}
 		
-		fmt.Printf("Processing corner event %d (%s)...\n", cornerEvent.ID, cornerEvent.Name)
+		fmt.Printf("Processing corner event %s (%s)...\n", cornerEvent.ID, cornerEvent.Name)
 		
-		// Get factors for this specific event
-		factorData, err := p.httpClient.GetEventFactors(cornerEvent.ID)
+		// Convert string ID to int64 for API call
+		eventID, err := strconv.ParseInt(cornerEvent.ID, 10, 64)
 		if err != nil {
-			fmt.Printf("Failed to get factors for event %d: %v\n", cornerEvent.ID, err)
+			fmt.Printf("Failed to parse event ID %s: %v\n", cornerEvent.ID, err)
 			continue
 		}
 		
-		fmt.Printf("Received %d bytes for event %d\n", len(factorData), cornerEvent.ID)
+		// Get factors for this specific event
+		factorData, err := p.httpClient.GetEventFactors(eventID)
+		if err != nil {
+			fmt.Printf("Failed to get factors for event %s: %v\n", cornerEvent.ID, err)
+			continue
+		}
+		
+		fmt.Printf("Received %d bytes for event %s\n", len(factorData), cornerEvent.ID)
 		if len(factorData) < 500 {
 			fmt.Printf("Response data: %s\n", string(factorData))
 		}
@@ -245,11 +268,11 @@ func (p *Parser) parseCornerEvents(jsonData []byte) error {
 		// Parse factors from the event-specific response
 		factorGroups, err := p.jsonParser.ParseFactors(factorData)
 		if err != nil {
-			fmt.Printf("Failed to parse factors for event %d: %v\n", cornerEvent.ID, err)
+			fmt.Printf("Failed to parse factors for event %s: %v\n", cornerEvent.ID, err)
 			continue
 		}
 		
-		fmt.Printf("Received %d factor groups for event %d\n", len(factorGroups), cornerEvent.ID)
+		fmt.Printf("Received %d factor groups for event %s\n", len(factorGroups), cornerEvent.ID)
 		for _, group := range factorGroups {
 			fmt.Printf("  Factor group: event %d, factors: %d\n", group.EventID, len(group.Factors))
 		}
@@ -257,7 +280,7 @@ func (p *Parser) parseCornerEvents(jsonData []byte) error {
 		// Find factors for this specific event or its parent
 		var factors []FonbetFactor
 		for _, group := range factorGroups {
-			if group.EventID == cornerEvent.ID || group.EventID == cornerEvent.ParentID {
+			if group.EventID == eventID || group.EventID == cornerEvent.ParentID {
 				factors = group.Factors
 				fmt.Printf("Found factors for event %d (parent: %d)\n", group.EventID, cornerEvent.ParentID)
 				break
@@ -265,41 +288,27 @@ func (p *Parser) parseCornerEvents(jsonData []byte) error {
 		}
 		
 		if len(factors) == 0 {
-			fmt.Printf("No factors found for corner event %d\n", cornerEvent.ID)
+			fmt.Printf("No factors found for corner event %s\n", cornerEvent.ID)
 			continue
 		}
 		
-		fmt.Printf("Found %d factors for corner event %d\n", len(factors), cornerEvent.ID)
+		fmt.Printf("Found %d factors for corner event %s\n", len(factors), cornerEvent.ID)
 		
 		// Parse corner odds
 		cornerOdds := p.parseCornerOdds(factors)
 		if len(cornerOdds) > 0 {
 			fmt.Printf("Extracted corner odds: %+v\n", cornerOdds)
 			
-			// Try to find parent event for team names
-			parentEventName := cornerEvent.Name
-			if cornerEvent.ParentID > 0 {
-				// TODO: Look up parent event to get team names
-				parentEventName = fmt.Sprintf("Corners for event %d", cornerEvent.ParentID)
-			}
+			// Create hierarchical match structure for corner event
+			match := p.createHierarchicalMatchFromCornerEvent(cornerEvent, cornerOdds)
 			
-			odd := &models.Odd{
-				MatchID:   fmt.Sprintf("%d", cornerEvent.ID),
-				Bookmaker: "Fonbet",
-				Market:    "Corners",
-				Outcomes:  cornerOdds,
-				UpdatedAt: time.Now(),
-				MatchName: parentEventName,
-				MatchTime: time.Unix(cornerEvent.StartTime, 0),
-				Sport:     "football",
-			}
-			
-			if err := p.ydbClient.StoreOdd(context.Background(), odd); err != nil {
-				fmt.Printf("Failed to store corner odd: %v\n", err)
+			// Store using hierarchical structure
+			if err := p.storeHierarchicalMatch(context.Background(), match); err != nil {
+				fmt.Printf("Failed to store hierarchical corner match: %v\n", err)
 				continue
 			}
 			
-			fmt.Printf("Stored corner odd for event %d with %d outcomes\n", 
+			fmt.Printf("Stored hierarchical corner match for event %s with %d outcomes\n", 
 				cornerEvent.ID, len(cornerOdds))
 		}
 	}
@@ -535,12 +544,12 @@ func (p *Parser) createHierarchicalMatch(event FonbetEvent, odds map[string]floa
 	}
 	
 	// Create event
-	eventType := p.jsonParser.GetStandardEventType(getEventTypeFromKind(event.Kind))
-	marketName := parsers.GetMarketName(eventType)
+	eventType := p.jsonParser.GetStandardEventType(event.Kind)
+	marketName := models.GetMarketName(eventType)
 	
 	eventModel := models.Event{
 		ID:         fmt.Sprintf("%s_%s", event.ID, eventType),
-		EventType:  eventType,
+		EventType:  string(eventType),
 		MarketName: marketName,
 		Bookmaker:  "Fonbet",
 		Outcomes:   []models.Outcome{},
@@ -552,7 +561,7 @@ func (p *Parser) createHierarchicalMatch(event FonbetEvent, odds map[string]floa
 	for outcomeType, oddsValue := range odds {
 		outcome := models.Outcome{
 			ID:          fmt.Sprintf("%s_%s_%s", eventModel.ID, outcomeType, p.getParameterFromOutcome(outcomeType)),
-			OutcomeType: p.getStandardOutcomeType(outcomeType),
+			OutcomeType: string(p.getStandardOutcomeType(outcomeType)),
 			Parameter:   p.getParameterFromOutcome(outcomeType),
 			Odds:        oddsValue,
 			Bookmaker:   "Fonbet",
@@ -584,17 +593,17 @@ func (p *Parser) extractTeamNames(matchName string) (string, string) {
 func (p *Parser) getStandardOutcomeType(outcome string) models.StandardOutcomeType {
 	switch {
 	case strings.Contains(outcome, "home"):
-		return models.StandardOutcomeHomeWin
+		return models.OutcomeTypeHomeWin
 	case strings.Contains(outcome, "away"):
-		return models.StandardOutcomeAwayWin
+		return models.OutcomeTypeAwayWin
 	case strings.Contains(outcome, "draw"):
-		return models.StandardOutcomeDraw
+		return models.OutcomeTypeDraw
 	case strings.Contains(outcome, "total_+"):
-		return models.StandardOutcomeTotalOver
+		return models.OutcomeTypeTotalOver
 	case strings.Contains(outcome, "total_-"):
-		return models.StandardOutcomeTotalUnder
+		return models.OutcomeTypeTotalUnder
 	case strings.Contains(outcome, "exact_"):
-		return models.StandardOutcomeExactCount
+		return models.OutcomeTypeExactCount
 	default:
 		return models.StandardOutcomeType(outcome)
 	}
@@ -617,34 +626,65 @@ func (p *Parser) getParameterFromOutcome(outcome string) string {
 	return ""
 }
 
-// storeHierarchicalMatch stores match using hierarchical structure
-func (p *Parser) storeHierarchicalMatch(ctx context.Context, match *models.Match) error {
-	// TODO: Replace with HierarchicalYDBClient when ready
-	// For now, we'll use the old YDB client but store in hierarchical format
+// createHierarchicalMatchFromCornerEvent creates a hierarchical match structure from corner event data
+func (p *Parser) createHierarchicalMatchFromCornerEvent(cornerEvent FonbetEvent, odds map[string]float64) *models.Match {
+	now := time.Now()
 	
-	// Convert to old format for compatibility
-	for _, event := range match.Events {
-		outcomes := make(map[string]float64)
-		for _, outcome := range event.Outcomes {
-			outcomes[string(outcome.OutcomeType)] = outcome.Odds
-		}
-		
-		odd := &models.Odd{
-			MatchID:   match.ID,
-			Bookmaker: match.Bookmaker,
-			Market:    event.MarketName,
-			Outcomes:  outcomes,
-			UpdatedAt: match.UpdatedAt,
-			MatchName: match.Name,
-			MatchTime: match.StartTime,
-			Sport:     match.Sport,
-		}
-		
-		if err := p.ydbClient.StoreOdd(ctx, odd); err != nil {
-			return err
-		}
+	// Create match
+	match := &models.Match{
+		ID:         fmt.Sprintf("%d", cornerEvent.ID),
+		Name:       cornerEvent.Name,
+		HomeTeam:   "Unknown Home",
+		AwayTeam:   "Unknown Away",
+		StartTime:  cornerEvent.StartTime,
+		Sport:      "football",
+		Tournament: "Unknown Tournament",
+		Bookmaker:  "Fonbet",
+		Events:     []models.Event{},
+		CreatedAt:  now,
+		UpdatedAt:  now,
 	}
 	
+	// Create corner event
+	eventModel := models.Event{
+		ID:         fmt.Sprintf("%d_corners", cornerEvent.ID),
+		EventType:  "corners",
+		MarketName: "Corners",
+		Bookmaker:  "Fonbet",
+		Outcomes:   []models.Outcome{},
+		CreatedAt:  now,
+		UpdatedAt:  now,
+	}
+	
+	// Create outcomes
+	for outcomeType, oddsValue := range odds {
+		outcome := models.Outcome{
+			ID:          fmt.Sprintf("%d_corners_%s_%s", cornerEvent.ID, outcomeType, p.getParameterFromOutcome(outcomeType)),
+			OutcomeType: string(p.getStandardOutcomeType(outcomeType)),
+			Parameter:   p.getParameterFromOutcome(outcomeType),
+			Odds:        oddsValue,
+			Bookmaker:   "Fonbet",
+			CreatedAt:   now,
+			UpdatedAt:  now,
+		}
+		eventModel.Outcomes = append(eventModel.Outcomes, outcome)
+	}
+	
+	match.Events = append(match.Events, eventModel)
+	return match
+}
+
+// storeHierarchicalMatch stores match using hierarchical structure
+func (p *Parser) storeHierarchicalMatch(ctx context.Context, match *models.Match) error {
+	if p.ydbClient == nil {
+		return fmt.Errorf("YDB client is not available")
+	}
+	
+	if err := p.ydbClient.StoreMatch(ctx, match); err != nil {
+		return fmt.Errorf("failed to store match: %w", err)
+	}
+	
+	fmt.Printf("Successfully stored hierarchical match %s\n", match.ID)
 	return nil
 }
 

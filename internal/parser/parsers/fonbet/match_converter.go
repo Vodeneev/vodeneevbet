@@ -1,4 +1,4 @@
-package parsers
+package fonbet
 
 import (
 	"fmt"
@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"github.com/Vodeneev/vodeneevbet/internal/pkg/models"
-	"github.com/Vodeneev/vodeneevbet/internal/parser/parsers/fonbet"
 )
 
 // MatchConverter converts parser data to YDB match structures
@@ -23,8 +22,8 @@ func NewMatchConverter(bookmaker string) *MatchConverter {
 
 // ConvertToMatch converts parser events to a unified match structure
 func (c *MatchConverter) ConvertToMatch(
-	mainEvent fonbet.FonbetEvent,
-	statisticalEvents []fonbet.FonbetEvent,
+	mainEvent FonbetEvent,
+	statisticalEvents []FonbetEvent,
 	allOutcomes map[string]map[string]float64, // eventID -> outcomes
 ) (*models.Match, error) {
 	
@@ -65,8 +64,8 @@ func (c *MatchConverter) ConvertToMatch(
 	return match, nil
 }
 
-// convertToEvent converts a fonbet.FonbetEvent to a models.Event
-func (c *MatchConverter) convertToEvent(fonbetEvent fonbet.FonbetEvent, outcomes map[string]float64) (*models.Event, error) {
+// convertToEvent converts a FonbetEvent to a models.Event
+func (c *MatchConverter) convertToEvent(fonbetEvent FonbetEvent, outcomes map[string]float64) (*models.Event, error) {
 	// Determine event type based on Kind
 	eventType := c.getStandardEventType(fonbetEvent.Kind)
 	
@@ -168,8 +167,8 @@ func (c *MatchConverter) standardizeOutcomeType(outcomeType string) string {
 }
 
 // GroupEventsByMatch groups events by their parent match
-func (c *MatchConverter) GroupEventsByMatch(events []fonbet.FonbetEvent) map[string][]fonbet.FonbetEvent {
-	groups := make(map[string][]fonbet.FonbetEvent)
+func (c *MatchConverter) GroupEventsByMatch(events []FonbetEvent) map[string][]FonbetEvent {
+	groups := make(map[string][]FonbetEvent)
 	
 	for _, event := range events {
 		var matchID string

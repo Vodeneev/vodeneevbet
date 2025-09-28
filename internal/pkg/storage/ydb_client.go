@@ -2,11 +2,9 @@ package storage
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"log"
 	"path"
-	"time"
 
 	"github.com/Vodeneev/vodeneevbet/internal/pkg/config"
 	"github.com/Vodeneev/vodeneevbet/internal/pkg/models"
@@ -20,22 +18,13 @@ import (
 	ycMetadata "github.com/ydb-platform/ydb-go-yc-metadata"
 )
 
-// mustJSON converts a Go value to JSON string
-func mustJSON(v interface{}) string {
-	data, err := json.Marshal(v)
-	if err != nil {
-		panic(fmt.Sprintf("failed to marshal JSON: %v", err))
-	}
-	return string(data)
-}
-
-// YDBClient provides YDB database operations
+// YDBClient provides YDB operations for hierarchical match data
 type YDBClient struct {
 	db     ydb.Connection
 	config *config.YDBConfig
 }
 
-// NewYDBClient creates a new YDB client
+// NewYDBClient creates a new YDB client for match events
 func NewYDBClient(cfg *config.YDBConfig) (*YDBClient, error) {
 	ctx := context.Background()
 	
@@ -85,72 +74,187 @@ func NewYDBClient(cfg *config.YDBConfig) (*YDBClient, error) {
 		config: cfg,
 	}
 	
-	// Automatic TTL setup if enabled
-	if cfg.TTL.Enabled && cfg.TTL.AutoSetup {
-		ctx := context.Background()
-		if err := client.SetupTTL(ctx, cfg.TTL.ExpireAfter); err != nil {
-			log.Printf("YDB: Warning - failed to setup TTL: %v", err)
-			// Don't return error as TTL is not critical for operation
-		}
+	// Create tables if they don't exist
+	if err := client.createTablesIfNotExist(ctx); err != nil {
+		log.Printf("YDB: Warning - failed to create tables: %v", err)
 	}
 	
 	return client, nil
 }
 
-// StoreOdd stores betting odds in YDB
-func (y *YDBClient) StoreOdd(ctx context.Context, odd *models.Odd) error {
-	log.Printf("YDB: Storing odd for match %s from %s: %+v", 
-		odd.MatchID, odd.Bookmaker, odd.Outcomes)
+// StoreMatch stores a complete match with all its events and outcomes
+func (y *YDBClient) StoreMatch(ctx context.Context, match *models.Match) error {
+	log.Printf("YDB: Storing match %s (%s vs %s) with %d events", 
+		match.ID, match.HomeTeam, match.AwayTeam, len(match.Events))
 	
-	// Create table if not exists
-	if err := y.createTablesIfNotExist(ctx); err != nil {
-		return fmt.Errorf("failed to create tables: %w", err)
+	// Store match metadata
+	if err := y.storeMatchMetadata(ctx, match); err != nil {
+		return fmt.Errorf("failed to store match metadata: %w", err)
 	}
 	
-	// Save coefficient to YDB
-	err := y.db.Table().Do(ctx,
+	// Store events
+	for _, event := range match.Events {
+		if err := y.storeEvent(ctx, match.ID, &event); err != nil {
+			return fmt.Errorf("failed to store event %s: %w", event.ID, err)
+		}
+	}
+	
+	log.Printf("YDB: Successfully stored match %s with %d events", match.ID, len(match.Events))
+	return nil
+}
+
+// storeMatchMetadata stores match basic information
+func (y *YDBClient) storeMatchMetadata(ctx context.Context, match *models.Match) error {
+	return y.db.Table().Do(ctx,
 		func(ctx context.Context, s table.Session) error {
 			_, _, err := s.Execute(ctx, table.TxControl(
 				table.BeginTx(table.WithSerializableReadWrite()),
 				table.CommitTx(),
 			), `
 				DECLARE $match_id AS Utf8;
-				DECLARE $bookmaker AS Utf8;
-				DECLARE $market AS Utf8;
-				DECLARE $outcomes AS Json;
-				DECLARE $updated_at AS Timestamp;
-				DECLARE $match_name AS Utf8;
-				DECLARE $match_time AS Timestamp;
+				DECLARE $name AS Utf8;
+				DECLARE $home_team AS Utf8;
+				DECLARE $away_team AS Utf8;
+				DECLARE $start_time AS Timestamp;
 				DECLARE $sport AS Utf8;
+				DECLARE $tournament AS Utf8;
+				DECLARE $bookmaker AS Utf8;
+				DECLARE $created_at AS Timestamp;
+				DECLARE $updated_at AS Timestamp;
 				
-				UPSERT INTO odds (match_id, bookmaker, market, outcomes, updated_at, match_name, match_time, sport)
-				VALUES ($match_id, $bookmaker, $market, $outcomes, $updated_at, $match_name, $match_time, $sport);
+				UPSERT INTO matches (
+					match_id, name, home_team, away_team, start_time, 
+					sport, tournament, bookmaker, created_at, updated_at
+				) VALUES (
+					$match_id, $name, $home_team, $away_team, $start_time,
+					$sport, $tournament, $bookmaker, $created_at, $updated_at
+				);
 			`, table.NewQueryParameters(
-				table.ValueParam("$match_id", types.UTF8Value(odd.MatchID)),
-				table.ValueParam("$bookmaker", types.UTF8Value(odd.Bookmaker)),
-				table.ValueParam("$market", types.UTF8Value(odd.Market)),
-				table.ValueParam("$outcomes", types.JSONValue(mustJSON(odd.Outcomes))),
-				table.ValueParam("$updated_at", types.TimestampValueFromTime(odd.UpdatedAt)),
-				table.ValueParam("$match_name", types.UTF8Value(odd.MatchName)),
-				table.ValueParam("$match_time", types.TimestampValueFromTime(odd.MatchTime)),
-				table.ValueParam("$sport", types.UTF8Value(odd.Sport)),
+				table.ValueParam("$match_id", types.UTF8Value(match.ID)),
+				table.ValueParam("$name", types.UTF8Value(match.Name)),
+				table.ValueParam("$home_team", types.UTF8Value(match.HomeTeam)),
+				table.ValueParam("$away_team", types.UTF8Value(match.AwayTeam)),
+				table.ValueParam("$start_time", types.TimestampValueFromTime(match.StartTime)),
+				table.ValueParam("$sport", types.UTF8Value(match.Sport)),
+				table.ValueParam("$tournament", types.UTF8Value(match.Tournament)),
+				table.ValueParam("$bookmaker", types.UTF8Value(match.Bookmaker)),
+				table.ValueParam("$created_at", types.TimestampValueFromTime(match.CreatedAt)),
+				table.ValueParam("$updated_at", types.TimestampValueFromTime(match.UpdatedAt)),
 			))
 			return err
 		})
-	
-	if err != nil {
-		return fmt.Errorf("failed to store odd: %w", err)
+}
+
+// storeEvent stores an event with all its outcomes
+func (y *YDBClient) storeEvent(ctx context.Context, matchID string, event *models.Event) error {
+	// Store event metadata
+	if err := y.storeEventMetadata(ctx, matchID, event); err != nil {
+		return err
 	}
 	
-	log.Printf("YDB: Successfully stored odd for match %s", odd.MatchID)
+	// Store outcomes
+	for _, outcome := range event.Outcomes {
+		if err := y.storeOutcome(ctx, event.ID, &outcome); err != nil {
+			return fmt.Errorf("failed to store outcome %s: %w", outcome.ID, err)
+		}
+	}
+	
 	return nil
 }
 
-// GetOddsByMatch retrieves odds for a specific match
-func (y *YDBClient) GetOddsByMatch(ctx context.Context, matchID string) ([]*models.Odd, error) {
-	log.Printf("YDB: Getting odds for match %s", matchID)
+// storeEventMetadata stores event basic information
+func (y *YDBClient) storeEventMetadata(ctx context.Context, matchID string, event *models.Event) error {
+	return y.db.Table().Do(ctx,
+		func(ctx context.Context, s table.Session) error {
+			_, _, err := s.Execute(ctx, table.TxControl(
+				table.BeginTx(table.WithSerializableReadWrite()),
+				table.CommitTx(),
+			), `
+				DECLARE $event_id AS Utf8;
+				DECLARE $match_id AS Utf8;
+				DECLARE $event_type AS Utf8;
+				DECLARE $market_name AS Utf8;
+				DECLARE $bookmaker AS Utf8;
+				DECLARE $created_at AS Timestamp;
+				DECLARE $updated_at AS Timestamp;
+				
+				UPSERT INTO events (
+					event_id, match_id, event_type, market_name, bookmaker, created_at, updated_at
+				) VALUES (
+					$event_id, $match_id, $event_type, $market_name, $bookmaker, $created_at, $updated_at
+				);
+			`, table.NewQueryParameters(
+				table.ValueParam("$event_id", types.UTF8Value(event.ID)),
+				table.ValueParam("$match_id", types.UTF8Value(matchID)),
+				table.ValueParam("$event_type", types.UTF8Value(string(event.EventType))),
+				table.ValueParam("$market_name", types.UTF8Value(event.MarketName)),
+				table.ValueParam("$bookmaker", types.UTF8Value(event.Bookmaker)),
+				table.ValueParam("$created_at", types.TimestampValueFromTime(event.CreatedAt)),
+				table.ValueParam("$updated_at", types.TimestampValueFromTime(event.UpdatedAt)),
+			))
+			return err
+		})
+}
+
+// storeOutcome stores a single outcome
+func (y *YDBClient) storeOutcome(ctx context.Context, eventID string, outcome *models.Outcome) error {
+	return y.db.Table().Do(ctx,
+		func(ctx context.Context, s table.Session) error {
+			_, _, err := s.Execute(ctx, table.TxControl(
+				table.BeginTx(table.WithSerializableReadWrite()),
+				table.CommitTx(),
+			), `
+				DECLARE $outcome_id AS Utf8;
+				DECLARE $event_id AS Utf8;
+				DECLARE $outcome_type AS Utf8;
+				DECLARE $parameter AS Utf8;
+				DECLARE $odds AS Double;
+				DECLARE $bookmaker AS Utf8;
+				DECLARE $created_at AS Timestamp;
+				DECLARE $updated_at AS Timestamp;
+				
+				UPSERT INTO outcomes (
+					outcome_id, event_id, outcome_type, parameter, odds, bookmaker, created_at, updated_at
+				) VALUES (
+					$outcome_id, $event_id, $outcome_type, $parameter, $odds, $bookmaker, $created_at, $updated_at
+				);
+			`, table.NewQueryParameters(
+				table.ValueParam("$outcome_id", types.UTF8Value(outcome.ID)),
+				table.ValueParam("$event_id", types.UTF8Value(eventID)),
+				table.ValueParam("$outcome_type", types.UTF8Value(string(outcome.OutcomeType))),
+				table.ValueParam("$parameter", types.UTF8Value(outcome.Parameter)),
+				table.ValueParam("$odds", types.DoubleValue(outcome.Odds)),
+				table.ValueParam("$bookmaker", types.UTF8Value(outcome.Bookmaker)),
+				table.ValueParam("$created_at", types.TimestampValueFromTime(outcome.CreatedAt)),
+				table.ValueParam("$updated_at", types.TimestampValueFromTime(outcome.UpdatedAt)),
+			))
+			return err
+		})
+}
+
+// GetMatch retrieves a complete match with all events and outcomes
+func (y *YDBClient) GetMatch(ctx context.Context, matchID string) (*models.Match, error) {
+	log.Printf("YDB: Getting match %s", matchID)
 	
-	var odds []*models.Odd
+	// Get match metadata
+	match, err := y.getMatchMetadata(ctx, matchID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get match metadata: %w", err)
+	}
+	
+	// Get events for this match
+	events, err := y.getEventsForMatch(ctx, matchID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get events: %w", err)
+	}
+	
+	match.Events = events
+	return match, nil
+}
+
+// getMatchMetadata retrieves match basic information
+func (y *YDBClient) getMatchMetadata(ctx context.Context, matchID string) (*models.Match, error) {
+	var match *models.Match
 	
 	err := y.db.Table().Do(ctx,
 		func(ctx context.Context, s table.Session) error {
@@ -159,9 +263,62 @@ func (y *YDBClient) GetOddsByMatch(ctx context.Context, matchID string) ([]*mode
 				table.BeginTx(table.WithOnlineReadOnly()),
 				table.CommitTx(),
 			), `
-				DECLARE $match_id AS Utf8;
-				SELECT match_id, bookmaker, market, outcomes, updated_at, match_name, match_time, sport
-				FROM odds
+				SELECT match_id, name, home_team, away_team, start_time, sport, tournament, bookmaker, created_at, updated_at
+				FROM matches
+				WHERE match_id = $match_id;
+			`, table.NewQueryParameters(
+				table.ValueParam("$match_id", types.UTF8Value(matchID)),
+			))
+			if err != nil {
+				return err
+			}
+			defer res.Close()
+			
+			if res.NextResultSet(ctx) && res.NextRow() {
+				match = &models.Match{}
+				err = res.ScanNamed(
+					named.Required("match_id", &match.ID),
+					named.Required("name", &match.Name),
+					named.Required("home_team", &match.HomeTeam),
+					named.Required("away_team", &match.AwayTeam),
+					named.Required("start_time", &match.StartTime),
+					named.Required("sport", &match.Sport),
+					named.Required("tournament", &match.Tournament),
+					named.Required("bookmaker", &match.Bookmaker),
+					named.Required("created_at", &match.CreatedAt),
+					named.Required("updated_at", &match.UpdatedAt),
+				)
+				if err != nil {
+					return err
+				}
+			}
+			return res.Err()
+		})
+	
+	if err != nil {
+		return nil, err
+	}
+	
+	if match == nil {
+		return nil, fmt.Errorf("match %s not found", matchID)
+	}
+	
+	return match, nil
+}
+
+// getEventsForMatch retrieves all events for a match
+func (y *YDBClient) getEventsForMatch(ctx context.Context, matchID string) ([]models.Event, error) {
+	var events []models.Event
+	
+	err := y.db.Table().Do(ctx,
+		func(ctx context.Context, s table.Session) error {
+			var res result.Result
+			_, res, err := s.Execute(ctx, table.TxControl(
+				table.BeginTx(table.WithOnlineReadOnly()),
+				table.CommitTx(),
+			), `
+				SELECT event_id, event_type, market_name, bookmaker, created_at, updated_at
+				FROM events
 				WHERE match_id = $match_id;
 			`, table.NewQueryParameters(
 				table.ValueParam("$match_id", types.UTF8Value(matchID)),
@@ -173,45 +330,42 @@ func (y *YDBClient) GetOddsByMatch(ctx context.Context, matchID string) ([]*mode
 			
 			for res.NextResultSet(ctx) {
 				for res.NextRow() {
-					odd := &models.Odd{}
-					var outcomesJSON string
+					event := models.Event{}
+					var eventTypeStr string
 					err = res.ScanNamed(
-						named.Required("match_id", &odd.MatchID),
-						named.Required("bookmaker", &odd.Bookmaker),
-						named.Required("market", &odd.Market),
-						named.Required("outcomes", &outcomesJSON),
-						named.Required("updated_at", &odd.UpdatedAt),
-						named.Required("match_name", &odd.MatchName),
-						named.Required("match_time", &odd.MatchTime),
-						named.Required("sport", &odd.Sport),
+						named.Required("event_id", &event.ID),
+						named.Required("event_type", &eventTypeStr),
+						named.Required("market_name", &event.MarketName),
+						named.Required("bookmaker", &event.Bookmaker),
+						named.Required("created_at", &event.CreatedAt),
+						named.Required("updated_at", &event.UpdatedAt),
 					)
 					if err != nil {
 						return err
 					}
 					
-					// Parse JSON to map
-					if err := json.Unmarshal([]byte(outcomesJSON), &odd.Outcomes); err != nil {
-						return fmt.Errorf("failed to parse outcomes JSON: %w", err)
-					}
+					// Convert string to StandardEventType
+					event.EventType = string(models.StandardEventType(eventTypeStr))
 					
-					odds = append(odds, odd)
+					// Get outcomes for this event
+					outcomes, err := y.getOutcomesForEvent(ctx, event.ID)
+					if err != nil {
+						return fmt.Errorf("failed to get outcomes for event %s: %w", event.ID, err)
+					}
+					event.Outcomes = outcomes
+					
+					events = append(events, event)
 				}
 			}
 			return res.Err()
 		})
 	
-	if err != nil {
-		return nil, fmt.Errorf("failed to get odds for match %s: %w", matchID, err)
-	}
-	
-	return odds, nil
+	return events, err
 }
 
-// GetAllMatches retrieves all available matches
-func (y *YDBClient) GetAllMatches(ctx context.Context) ([]string, error) {
-	log.Println("YDB: Getting all matches")
-	
-	var matches []string
+// getOutcomesForEvent retrieves all outcomes for an event
+func (y *YDBClient) getOutcomesForEvent(ctx context.Context, eventID string) ([]models.Outcome, error) {
+	var outcomes []models.Outcome
 	
 	err := y.db.Table().Do(ctx,
 		func(ctx context.Context, s table.Session) error {
@@ -220,7 +374,62 @@ func (y *YDBClient) GetAllMatches(ctx context.Context) ([]string, error) {
 				table.BeginTx(table.WithOnlineReadOnly()),
 				table.CommitTx(),
 			), `
-				SELECT DISTINCT match_id FROM odds;
+				SELECT outcome_id, outcome_type, parameter, odds, bookmaker, created_at, updated_at
+				FROM outcomes
+				WHERE event_id = $event_id;
+			`, table.NewQueryParameters(
+				table.ValueParam("$event_id", types.UTF8Value(eventID)),
+			))
+			if err != nil {
+				return err
+			}
+			defer res.Close()
+			
+			for res.NextResultSet(ctx) {
+				for res.NextRow() {
+					outcome := models.Outcome{}
+					var outcomeTypeStr string
+					err = res.ScanNamed(
+						named.Required("outcome_id", &outcome.ID),
+						named.Required("outcome_type", &outcomeTypeStr),
+						named.Required("parameter", &outcome.Parameter),
+						named.Required("odds", &outcome.Odds),
+						named.Required("bookmaker", &outcome.Bookmaker),
+						named.Required("created_at", &outcome.CreatedAt),
+						named.Required("updated_at", &outcome.UpdatedAt),
+					)
+					if err != nil {
+						return err
+					}
+					
+					// Convert string to StandardOutcomeType
+					outcome.OutcomeType = string(models.StandardOutcomeType(outcomeTypeStr))
+					
+					outcomes = append(outcomes, outcome)
+				}
+			}
+			return res.Err()
+		})
+	
+	return outcomes, err
+}
+
+// GetAllMatches retrieves all matches with their events and outcomes
+func (y *YDBClient) GetAllMatches(ctx context.Context) ([]models.Match, error) {
+	log.Println("YDB: Getting all matches")
+	
+	var matches []models.Match
+	
+	err := y.db.Table().Do(ctx,
+		func(ctx context.Context, s table.Session) error {
+			var res result.Result
+			_, res, err := s.Execute(ctx, table.TxControl(
+				table.BeginTx(table.WithOnlineReadOnly()),
+				table.CommitTx(),
+			), `
+				SELECT match_id, name, home_team, away_team, start_time, sport, tournament, bookmaker, created_at, updated_at
+				FROM matches
+				ORDER BY start_time DESC;
 			`, table.NewQueryParameters())
 			if err != nil {
 				return err
@@ -229,14 +438,31 @@ func (y *YDBClient) GetAllMatches(ctx context.Context) ([]string, error) {
 			
 			for res.NextResultSet(ctx) {
 				for res.NextRow() {
-					var matchID string
+					match := models.Match{}
 					err = res.ScanNamed(
-						named.Required("match_id", &matchID),
+						named.Required("match_id", &match.ID),
+						named.Required("name", &match.Name),
+						named.Required("home_team", &match.HomeTeam),
+						named.Required("away_team", &match.AwayTeam),
+						named.Required("start_time", &match.StartTime),
+						named.Required("sport", &match.Sport),
+						named.Required("tournament", &match.Tournament),
+						named.Required("bookmaker", &match.Bookmaker),
+						named.Required("created_at", &match.CreatedAt),
+						named.Required("updated_at", &match.UpdatedAt),
 					)
 					if err != nil {
 						return err
 					}
-					matches = append(matches, matchID)
+					
+					// Get events for this match
+					events, err := y.getEventsForMatch(ctx, match.ID)
+					if err != nil {
+						return fmt.Errorf("failed to get events for match %s: %w", match.ID, err)
+					}
+					match.Events = events
+					
+					matches = append(matches, match)
 				}
 			}
 			return res.Err()
@@ -249,164 +475,70 @@ func (y *YDBClient) GetAllMatches(ctx context.Context) ([]string, error) {
 	return matches, nil
 }
 
-// GetAllOdds retrieves all odds from YDB
-func (y *YDBClient) GetAllOdds(ctx context.Context) ([]*models.Odd, error) {
-	log.Println("YDB: Getting all odds")
-	
-	var odds []*models.Odd
-	
-	err := y.db.Table().Do(ctx,
-		func(ctx context.Context, s table.Session) error {
-			var res result.Result
-			_, res, err := s.Execute(ctx, table.TxControl(
-				table.BeginTx(table.WithOnlineReadOnly()),
-				table.CommitTx(),
-			), `
-				SELECT match_id, bookmaker, market, outcomes, updated_at, match_name, match_time, sport
-				FROM odds
-				ORDER BY updated_at DESC;
-			`, table.NewQueryParameters())
-			if err != nil {
-				return err
-			}
-			defer res.Close()
-			
-			for res.NextResultSet(ctx) {
-				for res.NextRow() {
-					odd := &models.Odd{}
-					var outcomesJSON string
-					err = res.ScanNamed(
-						named.Required("match_id", &odd.MatchID),
-						named.Required("bookmaker", &odd.Bookmaker),
-						named.Required("market", &odd.Market),
-						named.Required("outcomes", &outcomesJSON),
-						named.Required("updated_at", &odd.UpdatedAt),
-						named.Required("match_name", &odd.MatchName),
-						named.Required("match_time", &odd.MatchTime),
-						named.Required("sport", &odd.Sport),
-					)
-					if err != nil {
-						return err
-					}
-					
-					// Parse JSON to map
-					if err := json.Unmarshal([]byte(outcomesJSON), &odd.Outcomes); err != nil {
-						return fmt.Errorf("failed to parse outcomes JSON: %w", err)
-					}
-					
-					odds = append(odds, odd)
-				}
-			}
-			return res.Err()
-		})
-	
-	if err != nil {
-		return nil, fmt.Errorf("failed to get all odds: %w", err)
-	}
-	
-	return odds, nil
-}
-
-// StoreArbitrage stores arbitrage opportunity (stub for compatibility)
-func (y *YDBClient) StoreArbitrage(ctx context.Context, arb *models.Arbitrage) error {
-	log.Printf("YDB: Would store arbitrage %s with profit %.2f%%", 
-		arb.ID, arb.ProfitPercent)
-	return nil
-}
-
-// createTablesIfNotExist creates necessary tables in YDB
+// createTablesIfNotExist creates the hierarchical tables
 func (y *YDBClient) createTablesIfNotExist(ctx context.Context) error {
 	return y.db.Table().Do(ctx,
 		func(ctx context.Context, s table.Session) error {
-			// Create table for coefficients
-			err := s.CreateTable(ctx, path.Join(y.db.Name(), "odds"),
+			// Create matches table
+			err := s.CreateTable(ctx, path.Join(y.db.Name(), "matches"),
 				options.WithColumn("match_id", types.TypeUTF8),
-				options.WithColumn("bookmaker", types.TypeUTF8),
-				options.WithColumn("market", types.TypeUTF8),
-				options.WithColumn("outcomes", types.TypeJSON),
-				options.WithColumn("updated_at", types.TypeTimestamp),
-				options.WithColumn("match_name", types.TypeUTF8),
-				options.WithColumn("match_time", types.TypeTimestamp),
+				options.WithColumn("name", types.TypeUTF8),
+				options.WithColumn("home_team", types.TypeUTF8),
+				options.WithColumn("away_team", types.TypeUTF8),
+				options.WithColumn("start_time", types.TypeTimestamp),
 				options.WithColumn("sport", types.TypeUTF8),
-				options.WithPrimaryKeyColumn("match_id", "bookmaker", "market"),
+				options.WithColumn("tournament", types.TypeUTF8),
+				options.WithColumn("bookmaker", types.TypeUTF8),
+				options.WithColumn("created_at", types.TypeTimestamp),
+				options.WithColumn("updated_at", types.TypeTimestamp),
+				options.WithPrimaryKeyColumn("match_id"),
 			)
 			if err != nil {
-				// Ignore error if table already exists
-				log.Printf("YDB: Table creation result: %v", err)
+				log.Printf("YDB: Matches table creation result: %v", err)
 			} else {
-				log.Println("YDB: Table 'odds' created successfully")
+				log.Println("YDB: Table 'matches' created successfully")
 			}
-			return nil
-		})
-}
-
-// SetupTTL configures TTL for the odds table
-func (y *YDBClient) SetupTTL(ctx context.Context, expireAfter time.Duration) error {
-	log.Printf("YDB: Setting up TTL for odds table with expire after %v", expireAfter)
-	
-	return y.db.Table().Do(ctx,
-		func(ctx context.Context, s table.Session) error {
-			err := s.AlterTable(ctx, path.Join(y.db.Name(), "odds"),
-				options.WithSetTimeToLiveSettings(
-					options.NewTTLSettings().
-						ColumnDateType("match_time").
-						ExpireAfter(expireAfter),
-				),
+			
+			// Create events table
+			err = s.CreateTable(ctx, path.Join(y.db.Name(), "events"),
+				options.WithColumn("event_id", types.TypeUTF8),
+				options.WithColumn("match_id", types.TypeUTF8),
+				options.WithColumn("event_type", types.TypeUTF8),
+				options.WithColumn("market_name", types.TypeUTF8),
+				options.WithColumn("bookmaker", types.TypeUTF8),
+				options.WithColumn("created_at", types.TypeTimestamp),
+				options.WithColumn("updated_at", types.TypeTimestamp),
+				options.WithPrimaryKeyColumn("event_id"),
 			)
 			if err != nil {
-				return fmt.Errorf("failed to setup TTL: %w", err)
+				log.Printf("YDB: Events table creation result: %v", err)
+			} else {
+				log.Println("YDB: Table 'events' created successfully")
 			}
 			
-			log.Printf("YDB: TTL configured successfully - odds will be deleted %v after match_time", expireAfter)
-			return nil
-		})
-}
-
-// GetTTLSettings retrieves current TTL settings for the table
-func (y *YDBClient) GetTTLSettings(ctx context.Context) (*options.TimeToLiveSettings, error) {
-	log.Println("YDB: Getting TTL settings for odds table")
-	
-	var ttlSettings *options.TimeToLiveSettings
-	
-	err := y.db.Table().Do(ctx,
-		func(ctx context.Context, s table.Session) error {
-			desc, err := s.DescribeTable(ctx, path.Join(y.db.Name(), "odds"))
-			if err != nil {
-				return fmt.Errorf("failed to describe table: %w", err)
-			}
-			
-			ttlSettings = desc.TimeToLiveSettings
-			return nil
-		})
-	
-	if err != nil {
-		return nil, fmt.Errorf("failed to get TTL settings: %w", err)
-	}
-	
-	return ttlSettings, nil
-}
-
-// DisableTTL disables TTL for the odds table
-func (y *YDBClient) DisableTTL(ctx context.Context) error {
-	log.Println("YDB: Disabling TTL for odds table")
-	
-	return y.db.Table().Do(ctx,
-		func(ctx context.Context, s table.Session) error {
-			err := s.AlterTable(ctx, path.Join(y.db.Name(), "odds"),
-				options.WithDropTimeToLive(),
+			// Create outcomes table
+			err = s.CreateTable(ctx, path.Join(y.db.Name(), "outcomes"),
+				options.WithColumn("outcome_id", types.TypeUTF8),
+				options.WithColumn("event_id", types.TypeUTF8),
+				options.WithColumn("outcome_type", types.TypeUTF8),
+				options.WithColumn("parameter", types.TypeUTF8),
+				options.WithColumn("odds", types.TypeDouble),
+				options.WithColumn("bookmaker", types.TypeUTF8),
+				options.WithColumn("created_at", types.TypeTimestamp),
+				options.WithColumn("updated_at", types.TypeTimestamp),
+				options.WithPrimaryKeyColumn("outcome_id"),
 			)
 			if err != nil {
-				return fmt.Errorf("failed to disable TTL: %w", err)
+				log.Printf("YDB: Outcomes table creation result: %v", err)
+			} else {
+				log.Println("YDB: Table 'outcomes' created successfully")
 			}
 			
-			log.Println("YDB: TTL disabled successfully")
 			return nil
 		})
 }
 
-// Close closes the YDB connection
+// Close closes the database connection
 func (y *YDBClient) Close() error {
-	log.Println("YDB: Closing connection")
-	ctx := context.Background()
-	return y.db.Close(ctx)
+	return y.db.Close(context.Background())
 }

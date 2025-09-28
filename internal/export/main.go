@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"log"
 	"os"
-	"strings"
 	"time"
 
 	"github.com/Vodeneev/vodeneevbet/internal/pkg/config"
@@ -14,12 +13,6 @@ import (
 	"github.com/Vodeneev/vodeneevbet/internal/pkg/storage"
 )
 
-type ExportData struct {
-	Timestamp   time.Time     `json:"timestamp"`
-	TotalOdds   int           `json:"total_odds"`
-	Matches     []string      `json:"matches"`
-	Odds        []*models.Odd `json:"odds"`
-}
 
 func main() {
 	fmt.Println("📊 Starting hierarchical data export from YDB...")
@@ -40,28 +33,31 @@ func main() {
 	// Get all data from YDB
 	ctx := context.Background()
 	
-	fmt.Println("📥 Fetching all odds from YDB...")
-	odds, err := ydbClient.GetAllOdds(ctx)
-	if err != nil {
-		log.Fatalf("Failed to get odds from YDB: %v", err)
-	}
-	
-	fmt.Println("📥 Fetching all matches from YDB...")
-	matches, err := ydbClient.GetAllMatches(ctx)
+	fmt.Println("📥 Fetching all hierarchical matches from YDB...")
+	hierarchicalMatches, err := ydbClient.GetAllMatches(ctx)
 	if err != nil {
 		log.Fatalf("Failed to get matches from YDB: %v", err)
 	}
 	
-	// Convert to hierarchical format
-	fmt.Println("🔄 Converting to hierarchical format...")
-	hierarchicalMatches, err := convertToHierarchicalFormat(odds, matches)
-	if err != nil {
-		log.Fatalf("Failed to convert to hierarchical format: %v", err)
-	}
-	
-	// Create exports directory
+	// Create exports directory first
 	if err := os.MkdirAll("exports", 0755); err != nil {
 		log.Fatalf("Failed to create exports directory: %v", err)
+	}
+	
+	if len(hierarchicalMatches) == 0 {
+		fmt.Println("⚠️  No hierarchical matches found in YDB")
+		fmt.Println("💡 This means the parser hasn't been updated to use hierarchical storage yet")
+		fmt.Println("💡 Run the parser first to populate hierarchical data")
+		
+		// Create empty info file
+		infoFile := "exports/no_data_info.txt"
+		infoContent := "No hierarchical data found in YDB.\nRun the parser first to populate hierarchical data."
+		if err := os.WriteFile(infoFile, []byte(infoContent), 0644); err != nil {
+			log.Printf("Warning: failed to create info file: %v", err)
+		}
+		
+		fmt.Println("📁 Created empty exports directory with info file")
+		return
 	}
 	
 	// Generate filename with timestamp
@@ -107,165 +103,7 @@ func main() {
 	fmt.Printf("   - %s\n", csvFile)
 }
 
-// convertToHierarchicalFormat converts flat odds data to hierarchical match structure
-func convertToHierarchicalFormat(odds []*models.Odd, matchIDs []string) ([]models.Match, error) {
-	// Group odds by match ID
-	matchMap := make(map[string]*models.Match)
-	
-	for _, odd := range odds {
-		matchID := odd.MatchID
-		
-		// Create match if it doesn't exist
-		if matchMap[matchID] == nil {
-			matchMap[matchID] = &models.Match{
-				ID:         matchID,
-				Name:       odd.MatchName,
-				HomeTeam:   extractHomeTeam(odd.MatchName),
-				AwayTeam:   extractAwayTeam(odd.MatchName),
-				StartTime:  odd.MatchTime,
-				Sport:      odd.Sport,
-				Tournament: "Unknown Tournament", // Could be enhanced to get from YDB
-				Bookmaker:  odd.Bookmaker,
-				Events:    []models.Event{},
-				CreatedAt:  odd.UpdatedAt,
-				UpdatedAt:  odd.UpdatedAt,
-			}
-		}
-		
-		// Create event for this market
-		event := models.Event{
-			ID:         fmt.Sprintf("%s_%s", matchID, getEventTypeFromMarket(odd.Market)),
-			EventType:  getEventTypeFromMarket(odd.Market),
-			MarketName: odd.Market,
-			Bookmaker:  odd.Bookmaker,
-			Outcomes:   []models.Outcome{},
-			CreatedAt:  odd.UpdatedAt,
-			UpdatedAt:  odd.UpdatedAt,
-		}
-		
-		// Convert outcomes
-		for outcomeType, oddsValue := range odd.Outcomes {
-			outcome := models.Outcome{
-				ID:          fmt.Sprintf("%s_%s_%s", event.ID, outcomeType, getParameterFromOutcome(outcomeType)),
-				OutcomeType: getStandardOutcomeType(outcomeType),
-				Parameter:   getParameterFromOutcome(outcomeType),
-				Odds:        oddsValue,
-				Bookmaker:   odd.Bookmaker,
-				CreatedAt:   odd.UpdatedAt,
-				UpdatedAt:   odd.UpdatedAt,
-			}
-			event.Outcomes = append(event.Outcomes, outcome)
-		}
-		
-		// Add event to match
-		matchMap[matchID].Events = append(matchMap[matchID].Events, event)
-	}
-	
-	// Convert map to slice
-	var matches []models.Match
-	for _, match := range matchMap {
-		matches = append(matches, *match)
-	}
-	
-	return matches, nil
-}
 
-// Helper functions for conversion
-func extractHomeTeam(matchName string) string {
-	// Simple extraction - could be enhanced
-	parts := splitMatchName(matchName)
-	if len(parts) >= 1 {
-		return parts[0]
-	}
-	return "Unknown Home"
-}
-
-func extractAwayTeam(matchName string) string {
-	// Simple extraction - could be enhanced
-	parts := splitMatchName(matchName)
-	if len(parts) >= 2 {
-		return parts[1]
-	}
-	return "Unknown Away"
-}
-
-func splitMatchName(matchName string) []string {
-	// Split by " vs " or " - " or similar patterns
-	// This is a simplified version - could be enhanced
-	if matchName == "" {
-		return []string{"Unknown Home", "Unknown Away"}
-	}
-	
-	// Try different separators
-	separators := []string{" vs ", " - ", " v "}
-	for _, sep := range separators {
-		if parts := strings.Split(matchName, sep); len(parts) == 2 {
-			return parts
-		}
-	}
-	
-	// Fallback
-	return []string{matchName, "Unknown Away"}
-}
-
-func getEventTypeFromMarket(market string) string {
-	switch market {
-	case "Match Result":
-		return "main_match"
-	case "Corners":
-		return "corners"
-	case "Yellow Cards":
-		return "yellow_cards"
-	case "Fouls":
-		return "fouls"
-	case "Shots on Target":
-		return "shots_on_target"
-	case "Offsides":
-		return "offsides"
-	case "Throw-ins":
-		return "throw_ins"
-	default:
-		return "unknown"
-	}
-}
-
-func getStandardOutcomeType(outcome string) string {
-	// Map common outcome types to standard types
-	switch {
-	case strings.Contains(outcome, "home"):
-		return "home_win"
-	case strings.Contains(outcome, "away"):
-		return "away_win"
-	case strings.Contains(outcome, "draw"):
-		return "draw"
-	case strings.Contains(outcome, "total_+"):
-		return "total_over"
-	case strings.Contains(outcome, "total_-"):
-		return "total_under"
-	case strings.Contains(outcome, "exact_"):
-		return "exact_count"
-	default:
-		return outcome
-	}
-}
-
-func getParameterFromOutcome(outcome string) string {
-	// Extract parameter from outcome string
-	// This is simplified - could be enhanced
-	if strings.Contains(outcome, "total_") {
-		parts := strings.Split(outcome, "_")
-		if len(parts) > 1 {
-			return parts[1]
-		}
-	}
-	if strings.Contains(outcome, "exact_") {
-		parts := strings.Split(outcome, "_")
-		if len(parts) > 1 {
-			return parts[1]
-		}
-	}
-	return ""
-}
 
 func exportToHierarchicalCSV(matches []models.Match, filename string) error {
 	file, err := os.Create(filename)

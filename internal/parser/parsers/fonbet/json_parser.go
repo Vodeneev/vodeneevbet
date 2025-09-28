@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/Vodeneev/vodeneevbet/internal/parser/parsers"
+	"github.com/Vodeneev/vodeneevbet/internal/pkg/models"
 )
 
 type JSONParser struct{}
@@ -172,16 +172,16 @@ func (p *JSONParser) isMainMatch(event FonbetAPIEvent) bool {
 }
 
 // EventType represents a standardized event type (alias for StandardEventType)
-type EventType = parsers.StandardEventType
+type EventType = models.StandardEventType
 
 const (
-	EventTypeMainMatch      EventType = parsers.StandardEventMainMatch
-	EventTypeCorners        EventType = parsers.StandardEventCorners
-	EventTypeYellowCards    EventType = parsers.StandardEventYellowCards
-	EventTypeFouls          EventType = parsers.StandardEventFouls
-	EventTypeShotsOnTarget  EventType = parsers.StandardEventShotsOnTarget
-	EventTypeOffsides       EventType = parsers.StandardEventOffsides
-	EventTypeThrowIns       EventType = parsers.StandardEventThrowIns
+	EventTypeMainMatch      EventType = models.StandardEventMainMatch
+	EventTypeCorners        EventType = models.StandardEventCorners
+	EventTypeYellowCards    EventType = models.StandardEventYellowCards
+	EventTypeFouls          EventType = models.StandardEventFouls
+	EventTypeShotsOnTarget  EventType = models.StandardEventShotsOnTarget
+	EventTypeOffsides       EventType = models.StandardEventOffsides
+	EventTypeThrowIns       EventType = models.StandardEventThrowIns
 )
 
 // supportedEvents defines which event types are supported by this parser
@@ -242,11 +242,11 @@ func (p *JSONParser) isThrowInEvent(event FonbetAPIEvent) bool {
 // EventMapper interface implementation
 
 // GetStandardEventType maps a Fonbet event ID to a standard event type
-func (p *JSONParser) GetStandardEventType(eventID int64) parsers.StandardEventType {
+func (p *JSONParser) GetStandardEventType(eventID int64) models.StandardEventType {
 	if eventType, exists := supportedEvents[eventID]; exists {
-		return parsers.StandardEventType(eventType)
+		return models.StandardEventType(eventType)
 	}
-	return parsers.StandardEventMainMatch // Default fallback
+	return models.StandardEventMainMatch // Default fallback
 }
 
 // IsSupportedEvent checks if an event type is supported by Fonbet parser
@@ -256,10 +256,10 @@ func (p *JSONParser) IsSupportedEvent(eventID int64) bool {
 }
 
 // GetSupportedEvents returns all supported event types for Fonbet
-func (p *JSONParser) GetSupportedEvents() map[int64]parsers.StandardEventType {
-	result := make(map[int64]parsers.StandardEventType)
+func (p *JSONParser) GetSupportedEvents() map[int64]models.StandardEventType {
+	result := make(map[int64]models.StandardEventType)
 	for kind, eventType := range supportedEvents {
-		result[kind] = parsers.StandardEventType(eventType)
+		result[kind] = models.StandardEventType(eventType)
 	}
 	return result
 }

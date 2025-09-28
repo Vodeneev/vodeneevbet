@@ -4,20 +4,19 @@ import (
 	"context"
 
 	"github.com/Vodeneev/vodeneevbet/internal/pkg/config"
-	"github.com/Vodeneev/vodeneevbet/internal/parser/parsers"
 )
 
 type ParserWrapper struct {
-	*parsers.BaseParser
 	parser *Parser
+	name   string
 }
 
-func NewParserWrapper(ydbClient parsers.YDBClient, config *config.Config) *ParserWrapper {
-	fonbetCoreParser := NewParser(ydbClient, config)
+func NewParserWrapper(config *config.Config) *ParserWrapper {
+	fonbetCoreParser := NewParser(config)
 
 	return &ParserWrapper{
-		BaseParser: parsers.NewBaseParser(ydbClient, config, "Fonbet"),
-		parser:     fonbetCoreParser,
+		parser: fonbetCoreParser,
+		name:   "Fonbet",
 	}
 }
 
@@ -27,4 +26,8 @@ func (p *ParserWrapper) Start(ctx context.Context) error {
 
 func (p *ParserWrapper) Stop() error {
 	return p.parser.Stop()
+}
+
+func (p *ParserWrapper) GetName() string {
+	return p.name
 }

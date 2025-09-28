@@ -10,7 +10,6 @@ import (
 	"syscall"
 
 	"github.com/Vodeneev/vodeneevbet/internal/pkg/config"
-	"github.com/Vodeneev/vodeneevbet/internal/pkg/storage"
 	"github.com/Vodeneev/vodeneevbet/internal/parser/parsers"
 	"github.com/Vodeneev/vodeneevbet/internal/parser/parsers/fonbet"
 )
@@ -31,12 +30,6 @@ func main() {
 	
 	fmt.Println("Config loaded successfully")
 
-	ydbClient, err := storage.NewYDBClient(&cfg.YDB)
-	if err != nil {
-		log.Fatalf("Failed to connect to YDB: %v", err)
-	}
-	defer ydbClient.Close()
-
 	var parser parsers.Parser
 	parserType := cfg.Parser.Type
 	if parserType == "" {
@@ -45,9 +38,9 @@ func main() {
 	
 	switch parserType {
 	case "fonbet":
-		parser = fonbet.NewParserWrapper(ydbClient, cfg)
+		parser = fonbet.NewParserWrapper(cfg)
 	case "test":
-		parser = parsers.NewTestParser(ydbClient, cfg)
+		parser = parsers.NewTestParser(cfg)
 	default:
 		log.Fatalf("Unknown parser type: %s", parserType)
 	}

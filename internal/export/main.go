@@ -29,7 +29,10 @@ func main() {
 		log.Fatalf("Failed to load config: %v", err)
 	}
 	
-	// Create YDB client
+	var odds []*models.Odd
+	var matches []string
+	
+	// Connect to YDB
 	ydbClient, err := storage.NewYDBClient(&cfg.YDB)
 	if err != nil {
 		log.Fatalf("Failed to connect to YDB: %v", err)
@@ -40,15 +43,15 @@ func main() {
 	ctx := context.Background()
 	
 	fmt.Println("📥 Fetching all odds from YDB...")
-	odds, err := ydbClient.GetAllOdds(ctx)
+	odds, err = ydbClient.GetAllOdds(ctx)
 	if err != nil {
-		log.Fatalf("Failed to get odds: %v", err)
+		log.Fatalf("Failed to get odds from YDB: %v", err)
 	}
 	
 	fmt.Println("📥 Fetching all matches from YDB...")
-	matches, err := ydbClient.GetAllMatches(ctx)
+	matches, err = ydbClient.GetAllMatches(ctx)
 	if err != nil {
-		log.Fatalf("Failed to get matches: %v", err)
+		log.Fatalf("Failed to get matches from YDB: %v", err)
 	}
 	
 	// Create export data
@@ -136,3 +139,4 @@ func exportToCSV(odds []*models.Odd, filename string) error {
 	
 	return nil
 }
+

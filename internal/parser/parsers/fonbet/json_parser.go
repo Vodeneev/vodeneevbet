@@ -150,46 +150,6 @@ func (p *JSONParser) ParseThrowInEvents(jsonData []byte) ([]FonbetAPIEvent, erro
 	return throwInEvents, nil
 }
 
-// ParseAllStatisticalEvents finds all statistical events from the response
-func (p *JSONParser) ParseAllStatisticalEvents(jsonData []byte) (map[string][]FonbetAPIEvent, error) {
-	var response FonbetAPIResponse
-	if err := json.Unmarshal(jsonData, &response); err != nil {
-		return nil, fmt.Errorf("failed to unmarshal JSON: %w", err)
-	}
-	
-	statisticalEvents := make(map[string][]FonbetAPIEvent)
-	
-	for _, event := range response.Events {
-		if p.isStatisticalEvent(event) {
-			eventType := p.getStatisticalEventType(event)
-			if eventType != "" {
-				statisticalEvents[eventType] = append(statisticalEvents[eventType], event)
-			}
-		}
-	}
-	
-	return statisticalEvents, nil
-}
-
-// getStatisticalEventType returns the type name for a statistical event
-func (p *JSONParser) getStatisticalEventType(event FonbetAPIEvent) string {
-	switch event.Kind {
-	case 400100:
-		return "corners"
-	case 400200:
-		return "yellow_cards"
-	case 400300:
-		return "fouls"
-	case 400400:
-		return "shots_on_target"
-	case 400500:
-		return "offsides"
-	case 401000:
-		return "throw_ins"
-	default:
-		return ""
-	}
-}
 
 // isMainMatch determines if an event is a main football match
 func (p *JSONParser) isMainMatch(event FonbetAPIEvent) bool {
@@ -243,18 +203,4 @@ func (p *JSONParser) isThrowInEvent(event FonbetAPIEvent) bool {
 	return event.Kind == 401000 && event.RootKind == 400000
 }
 
-// isStatisticalEvent determines if an event is any type of statistical event
-func (p *JSONParser) isStatisticalEvent(event FonbetAPIEvent) bool {
-	// Statistical events that should be filtered out
-	statisticalEventKinds := map[int64]bool{
-		400100: true, // Corner events
-		400200: true, // Yellow cards
-		400300: true, // Fouls
-		400400: true, // Shots on target
-		400500: true, // Offsides
-		401000: true, // Throw-ins
-	}
-	
-	return statisticalEventKinds[event.Kind]
-}
 

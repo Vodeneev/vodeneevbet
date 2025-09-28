@@ -54,6 +54,7 @@
 - **YDB**: Основное хранилище для коэффициентов (быстрый доступ)
 - **PostgreSQL**: История валуйных ставок и метаданные
 - **Интерфейсы**: Абстракция для легкого переключения хранилищ
+- **Иерархическая структура**: Данные хранятся в виде Match → Events → Outcomes
 
 ## 🛠️ Технологический стек
 
@@ -147,6 +148,17 @@ go build -o parser .
 # - Модульная архитектура для легкого расширения
 ```
 
+### 6. Экспорт данных
+```bash
+# Экспорт данных из YDB в JSON и CSV
+./export_data.sh
+
+# Результат:
+# - exports/export_YYYY-MM-DD_HH-MM-SS.json
+# - exports/export_YYYY-MM-DD_HH-MM-SS.csv
+# - Иерархическая структура: Match → Events → Outcomes
+```
+
 ## ⚙️ Конфигурация
 
 ### Основные параметры (`configs/local.yaml`)
@@ -183,19 +195,57 @@ value_calculator:
 
 ## 📊 Модели данных
 
-### Odd (Коэффициент)
+### Иерархическая структура данных
+Система использует иерархическую структуру для хранения данных в YDB:
+```
+Match (Матч)
+├── Events (События)
+│   ├── Event 1 (например, "1X2")
+│   │   └── Outcomes (Исходы)
+│   │       ├── "1" (Победа хозяев)
+│   │       ├── "X" (Ничья)
+│   │       └── "2" (Победа гостей)
+│   └── Event 2 (например, "Total")
+│       └── Outcomes
+│           ├── "Over 2.5"
+│           └── "Under 2.5"
+```
+
+### Match (Матч)
 ```go
-type Odd struct {
-    MatchID    string             `json:"match_id"`
-    Bookmaker  string             `json:"bookmaker"`
-    Market     string             `json:"market"`     // "1x2", "total", "handicap"
-    Outcomes   map[string]float64 `json:"outcomes"`   // {"win_home": 1.5, "draw": 3.0}
-    UpdatedAt  time.Time          `json:"updated_at"`
-    MatchName  string             `json:"match_name"`
-    MatchTime  time.Time          `json:"match_time"`
-    Sport      string             `json:"sport"`
+type Match struct {
+    ID          string    `json:"id"`
+    HomeTeam    string    `json:"home_team"`
+    AwayTeam    string    `json:"away_team"`
+    StartTime   time.Time `json:"start_time"`
+    Sport       string    `json:"sport"`
+    Events      []Event   `json:"events"`
 }
 ```
+
+### Event (Событие)
+```go
+type Event struct {
+    ID          string    `json:"id"`
+    MatchID     string    `json:"match_id"`
+    Type        string    `json:"type"`        // "1x2", "total", "handicap"
+    Name        string    `json:"name"`        // "Основной исход", "Тотал голов"
+    Outcomes    []Outcome `json:"outcomes"`
+}
+```
+
+### Outcome (Исход)
+```go
+type Outcome struct {
+    ID          string    `json:"id"`
+    EventID     string    `json:"event_id"`
+    Name        string    `json:"name"`        // "1", "X", "2", "Over 2.5"
+    Odds        float64   `json:"odds"`        // Коэффициент
+    Bookmaker   string    `json:"bookmaker"`   // "Fonbet", "Bet365"
+    UpdatedAt   time.Time `json:"updated_at"`
+}
+```
+
 
 ### ValueBet (Валуйная ставка)
 ```go
@@ -266,6 +316,9 @@ SELECT * FROM value_bets ORDER BY found_at DESC LIMIT 10;
 - [x] Docker инфраструктура
 - [x] **Fonbet парсер** - Реальный парсер для Fonbet API
 - [x] **Модульная архитектура** - Разделение на HTTP клиент, JSON парсер, основной парсер
+- [x] **Иерархическая структура данных** - Match → Events → Outcomes
+- [x] **YDBClient** - Единый клиент для работы с YDB
+- [x] **Экспорт данных** - JSON и CSV экспорт с иерархической структурой
 
 ### Этап 2: Value Calculator (В процессе)
 - [x] Алгоритм поиска валуйных ставок

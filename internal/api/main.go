@@ -41,13 +41,13 @@ func (s *APIServer) handleOdds(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	
 	// Get real data from YDB
-	odds, err := s.ydbClient.GetAllOdds(context.Background())
+	matches, err := s.ydbClient.GetAllMatches(context.Background())
 	if err != nil {
-		http.Error(w, "Failed to get odds from database", http.StatusInternalServerError)
+		http.Error(w, "Failed to get matches from database", http.StatusInternalServerError)
 		return
 	}
 	
-	json.NewEncoder(w).Encode(odds)
+	json.NewEncoder(w).Encode(matches)
 }
 
 func (s *APIServer) handleMatches(w http.ResponseWriter, r *http.Request) {

@@ -11,6 +11,10 @@ type FonbetEvent struct {
 	StartTime  time.Time `json:"start_time"`
 	Category   string    `json:"category"`
 	Tournament string    `json:"tournament"`
+	Kind       int64     `json:"kind"`
+	RootKind   int64     `json:"root_kind"`
+	Level      int       `json:"level"`
+	ParentID   int64     `json:"parent_id"`
 }
 
 // FonbetAPIResponse represents the response structure from Fonbet API

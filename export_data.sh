@@ -22,7 +22,7 @@ mkdir -p exports
 
 # Run export utility
 cd internal/export
-go run main.go
+go run main.go -config ../../configs/local.yaml
 
 # Move exports to project root
 if [ -d "exports" ]; then
@@ -34,6 +34,7 @@ if [ -d "exports" ]; then
     # Copy new files
     cp internal/export/exports/*.json exports/ 2>/dev/null || true
     cp internal/export/exports/*.csv exports/ 2>/dev/null || true
+    cp internal/export/exports/*.txt exports/ 2>/dev/null || true
     # Clean up temporary exports directory
     rm -rf internal/export/exports 2>/dev/null || true
     echo "✅ Export completed! Check the 'exports' directory."

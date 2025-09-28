@@ -95,13 +95,10 @@ func (p *JSONParser) isStatisticalEvent(event FonbetAPIEvent) bool {
 	statisticalEventKinds := map[int64]bool{
 		400100: true, // Corner events
 		400200: true, // Yellow cards
-		400300: true, // Red cards
-		400400: true, // Fouls
+		400300: true, // Fouls
+		400400: true, // Shots on target
 		400500: true, // Offsides
-		400600: true, // Shots on target
-		400700: true, // Shots off target
-		400800: true, // Goal kicks
-		400900: true, // Throw-ins
+		401000: true, // Throw-ins
 	}
 	
 	return statisticalEventKinds[event.Kind]

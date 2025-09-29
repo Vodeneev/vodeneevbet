@@ -85,21 +85,34 @@ func NewYDBClient(cfg *config.YDBConfig) (*YDBClient, error) {
 
 // StoreMatch stores a complete match with all its events and outcomes
 func (y *YDBClient) StoreMatch(ctx context.Context, match *models.Match) error {
+	startTime := time.Now()
 	log.Printf("YDB: Storing match %s (%s vs %s) with %d events", 
 		match.ID, match.HomeTeam, match.AwayTeam, len(match.Events))
 	
 	// Store match metadata
+	metadataStart := time.Now()
 	if err := y.storeMatchMetadata(ctx, match); err != nil {
 		return fmt.Errorf("failed to store match metadata: %w", err)
 	}
+	metadataDuration := time.Since(metadataStart)
 	
 	// Store events
+	eventsStart := time.Now()
 	for _, event := range match.Events {
+		eventStart := time.Now()
 		if err := y.storeEvent(ctx, match.ID, &event); err != nil {
 			return fmt.Errorf("failed to store event %s: %w", event.ID, err)
 		}
+		eventDuration := time.Since(eventStart)
+		if eventDuration > 50*time.Millisecond {
+			log.Printf("⏱️  YDB Event %s took: %v", event.ID, eventDuration)
+		}
 	}
+	eventsDuration := time.Since(eventsStart)
 	
+	totalDuration := time.Since(startTime)
+	log.Printf("⏱️  YDB StoreMatch %s: metadata=%v, events=%v, total=%v", 
+		match.ID, metadataDuration, eventsDuration, totalDuration)
 	log.Printf("YDB: Successfully stored match %s with %d events", match.ID, len(match.Events))
 	return nil
 }

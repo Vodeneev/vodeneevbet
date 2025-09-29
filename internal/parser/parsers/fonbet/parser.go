@@ -26,20 +26,24 @@ func NewParser(config *config.Config) *Parser {
 	fmt.Printf("YDB config: endpoint=%s, database=%s, key_file=%s\n", 
 		config.YDB.Endpoint, config.YDB.Database, config.YDB.ServiceAccountKeyFile)
 	
-	ydbClient, err := storage.NewYDBClient(&config.YDB)
+	baseYDBClient, err := storage.NewYDBClient(&config.YDB)
+	var ydbClient interfaces.Storage
 	if err != nil {
 		fmt.Printf("❌ Failed to create YDB client: %v\n", err)
 		fmt.Println("⚠️  Parser will run without YDB storage")
 		ydbClient = nil
 	} else {
 		fmt.Println("✅ YDB client created successfully")
+		// Wrap with batch client for better performance
+		ydbClient = storage.NewBatchYDBClient(baseYDBClient)
+		fmt.Println("✅ YDB batch client created successfully")
 	}
 	
 	// Create components
 	eventFetcher := NewEventFetcher(config)
 	oddsParser := NewOddsParser()
 	matchBuilder := NewMatchBuilder("Fonbet")
-	eventProcessor := NewEventProcessor(ydbClient, eventFetcher, oddsParser, matchBuilder)
+	eventProcessor := NewBatchProcessor(ydbClient, eventFetcher, oddsParser, matchBuilder)
 	
 	return &Parser{
 		eventFetcher:   eventFetcher,

@@ -42,8 +42,10 @@ logs/
 .env.production
 
 # Keys and secrets
+.ssh/
 keys/*.json
 !keys/.gitkeep
+internal/export/keys/*.json
 
 # Database files
 *.db

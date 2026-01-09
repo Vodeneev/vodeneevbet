@@ -1,0 +1,11 @@
+# vm-parsers: Parser service only
+
+services:
+  parser:
+    image: ghcr.io/${IMAGE_OWNER}/vodeneevbet-parser:${IMAGE_TAG}
+    container_name: vodeneevbet-parser
+    restart: unless-stopped
+    command: ["/app/parser", "-config", "/app/configs/local.yaml"]
+    volumes:
+      - ./configs:/app/configs:ro
+      - ./keys:/app/keys:ro

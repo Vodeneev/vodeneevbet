@@ -64,11 +64,11 @@ dist/
 build/
 
 # Compiled binaries (should not be committed)
-parser
-api
-export
-calculator
-main
+/parser
+/api
+/export
+/calculator
+/main
 internal/parser/parser
 internal/api/api
 internal/export/export

@@ -24,21 +24,28 @@ jobs:
       - name: Setup SSH
         run: |
           mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
           echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
           chmod 600 ~/.ssh/id_rsa
-          ssh-keyscan -H 158.160.197.172 >> ~/.ssh/known_hosts
-          ssh-keyscan -H vm-parsers >> ~/.ssh/known_hosts || true
-
-      - name: Configure SSH
-        run: |
+          ssh-keyscan -H 158.160.197.172 >> ~/.ssh/known_hosts 2>/dev/null || true
+          
+          # Настраиваем SSH config
           cat >> ~/.ssh/config << EOF
           Host vm-parsers
             HostName 158.160.197.172
             User vodeneevm
             IdentityFile ~/.ssh/id_rsa
             StrictHostKeyChecking no
+            UserKnownHostsFile ~/.ssh/known_hosts
+          Host 158.160.197.172
+            User vodeneevm
+            IdentityFile ~/.ssh/id_rsa
+            StrictHostKeyChecking no
           EOF
           chmod 600 ~/.ssh/config
+          
+          # Тестируем подключение
+          ssh -o ConnectTimeout=10 -o StrictHostKeyChecking=no vodeneevm@158.160.197.172 "echo 'SSH connection test successful'" || echo "Warning: SSH test failed"
 
       - name: Install rsync
         run: sudo apt-get update && sudo apt-get install -y rsync
@@ -50,7 +57,7 @@ jobs:
 
       - name: Verify Deployment
         run: |
-          ssh vm-parsers "sudo systemctl is-active vodeneevbet-parser" || exit 1
+          ssh -o StrictHostKeyChecking=no vodeneevm@158.160.197.172 "sudo systemctl is-active vodeneevbet-parser" || exit 1
 
   deploy-core-services:
     name: Deploy Core Services
@@ -62,21 +69,28 @@ jobs:
       - name: Setup SSH
         run: |
           mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
           echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
           chmod 600 ~/.ssh/id_rsa
-          ssh-keyscan -H 158.160.200.253 >> ~/.ssh/known_hosts
-          ssh-keyscan -H vm-core-services >> ~/.ssh/known_hosts || true
-
-      - name: Configure SSH
-        run: |
+          ssh-keyscan -H 158.160.200.253 >> ~/.ssh/known_hosts 2>/dev/null || true
+          
+          # Настраиваем SSH config
           cat >> ~/.ssh/config << EOF
           Host vm-core-services
             HostName 158.160.200.253
             User vodeneevm
             IdentityFile ~/.ssh/id_rsa
             StrictHostKeyChecking no
+            UserKnownHostsFile ~/.ssh/known_hosts
+          Host 158.160.200.253
+            User vodeneevm
+            IdentityFile ~/.ssh/id_rsa
+            StrictHostKeyChecking no
           EOF
           chmod 600 ~/.ssh/config
+          
+          # Тестируем подключение
+          ssh -o ConnectTimeout=10 -o StrictHostKeyChecking=no vodeneevm@158.160.200.253 "echo 'SSH connection test successful'" || echo "Warning: SSH test failed"
 
       - name: Install rsync
         run: sudo apt-get update && sudo apt-get install -y rsync
@@ -88,5 +102,5 @@ jobs:
 
       - name: Verify Deployment
         run: |
-          ssh vm-core-services "sudo systemctl is-active vodeneevbet-calculator" || exit 1
-          ssh vm-core-services "sudo systemctl is-active vodeneevbet-api" || exit 1
+          ssh -o StrictHostKeyChecking=no vodeneevm@158.160.200.253 "sudo systemctl is-active vodeneevbet-calculator" || exit 1
+          ssh -o StrictHostKeyChecking=no vodeneevm@158.160.200.253 "sudo systemctl is-active vodeneevbet-api" || exit 1

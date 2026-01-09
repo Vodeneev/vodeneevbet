@@ -9,8 +9,9 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 cd "$PROJECT_ROOT"
 
-VM_HOST="vm-parsers"
-VM_USER="vodeneevm"
+# Используем IP напрямую для надежности
+VM_HOST="${VM_HOST:-158.160.197.172}"
+VM_USER="${VM_USER:-vodeneevm}"
 REMOTE_DIR="/home/vodeneevm/vodeneevbet"
 SERVICE_NAME="vodeneevbet-parser"
 
@@ -19,7 +20,7 @@ echo "=========================================="
 
 # Проверка подключения
 echo "📡 Checking SSH connection..."
-if ! ssh -o ConnectTimeout=5 "$VM_USER@$VM_HOST" "echo 'Connection OK'" 2>/dev/null; then
+if ! ssh -o ConnectTimeout=5 -o StrictHostKeyChecking=no "$VM_USER@$VM_HOST" "echo 'Connection OK'" 2>/dev/null; then
     echo "❌ Cannot connect to $VM_HOST. Please check SSH configuration."
     exit 1
 fi

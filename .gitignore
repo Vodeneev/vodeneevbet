@@ -61,6 +61,18 @@ redis_data/
 dist/
 build/
 
+# Compiled binaries (should not be committed)
+parser
+api
+export
+calculator
+main
+internal/parser/parser
+internal/api/api
+internal/export/export
+internal/calculator/calculator
+internal/calculator/calculator/main
+
 # Export files
 exports/
 internal/export/exports/

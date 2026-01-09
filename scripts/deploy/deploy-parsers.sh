@@ -4,6 +4,11 @@ set -e
 # Скрипт деплоя Parser Service на vm-parsers
 # Использование: ./deploy-parsers.sh
 
+# Определяем корневую директорию проекта
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+cd "$PROJECT_ROOT"
+
 VM_HOST="vm-parsers"
 VM_USER="vodeneevm"
 REMOTE_DIR="/home/vodeneevm/vodeneevbet"
@@ -52,7 +57,7 @@ ssh "$VM_USER@$VM_HOST" "cd $REMOTE_DIR && \
 
 # Копирование systemd unit файла
 echo "⚙️  Installing systemd service..."
-scp ./scripts/deploy/systemd/vodeneevbet-parser.service "$VM_USER@$VM_HOST:/tmp/"
+scp "$PROJECT_ROOT/scripts/deploy/systemd/vodeneevbet-parser.service" "$VM_USER@$VM_HOST:/tmp/"
 ssh "$VM_USER@$VM_HOST" "sudo mv /tmp/vodeneevbet-parser.service /etc/systemd/system/ && \
     sudo sed -i 's|REMOTE_DIR|$REMOTE_DIR|g' /etc/systemd/system/vodeneevbet-parser.service && \
     sudo systemctl daemon-reload"

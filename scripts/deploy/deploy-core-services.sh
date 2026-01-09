@@ -4,6 +4,11 @@ set -e
 # Скрипт деплоя Calculator и API Services на vm-core-services
 # Использование: ./deploy-core-services.sh
 
+# Определяем корневую директорию проекта
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+cd "$PROJECT_ROOT"
+
 VM_HOST="vm-core-services"
 VM_USER="vodeneevm"
 REMOTE_DIR="/home/vodeneevm/vodeneevbet"
@@ -67,8 +72,8 @@ ssh "$VM_USER@$VM_HOST" "cd $REMOTE_DIR && \
 
 # Копирование systemd unit файлов
 echo "⚙️  Installing systemd services..."
-scp ./scripts/deploy/systemd/vodeneevbet-calculator.service "$VM_USER@$VM_HOST:/tmp/"
-scp ./scripts/deploy/systemd/vodeneevbet-api.service "$VM_USER@$VM_HOST:/tmp/"
+scp "$PROJECT_ROOT/scripts/deploy/systemd/vodeneevbet-calculator.service" "$VM_USER@$VM_HOST:/tmp/"
+scp "$PROJECT_ROOT/scripts/deploy/systemd/vodeneevbet-api.service" "$VM_USER@$VM_HOST:/tmp/"
 
 ssh "$VM_USER@$VM_HOST" "sudo mv /tmp/vodeneevbet-calculator.service /etc/systemd/system/ && \
     sudo mv /tmp/vodeneevbet-api.service /etc/systemd/system/ && \

@@ -31,7 +31,17 @@ ssh-copy-id -i ~/.ssh/github_actions_deploy.pub vodeneevm@158.160.200.253
    - Имя: `SSH_PRIVATE_KEY`
    - Значение: содержимое файла `~/.ssh/github_actions_deploy` (приватный ключ)
 
-4. **Проверьте, что workflow файл существует:**
+4. **Добавьте адреса VM в GitHub Secrets (обязательно для текущего workflow):**
+
+   - Settings → Secrets and variables → Actions → "New repository secret"
+   - Имя: `VM_PARSERS_HOST` — значение: IP/DNS vm-parsers (например, `158.160.197.172`)
+   - Имя: `VM_CORE_HOST` — значение: IP/DNS vm-core-services (например, `158.160.200.253`)
+
+5. *(Опционально)* **Переопределите пользователя SSH:**
+
+   - Имя: `VM_USER` — значение: имя пользователя на VM (по умолчанию workflow использует `vodeneevm`)
+
+6. **Проверьте, что workflow файл существует:**
 
    Файл `.github/workflows/deploy.yml` уже создан в проекте.
 

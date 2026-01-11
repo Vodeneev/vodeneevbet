@@ -3,6 +3,7 @@ package fonbet
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/Vodeneev/vodeneevbet/internal/pkg/config"
 	"github.com/Vodeneev/vodeneevbet/internal/pkg/enums"
@@ -57,21 +58,47 @@ func NewParser(config *config.Config) *Parser {
 
 func (p *Parser) Start(ctx context.Context) error {
 	fmt.Println("Starting Fonbet parser...")
-	
-	for _, sportStr := range p.config.ValueCalculator.Sports {
-		sport, valid := enums.ParseSport(sportStr)
-		if !valid {
-			fmt.Printf("Unsupported sport: %s\n", sportStr)
-			continue
-		}
-		
-		if err := p.eventProcessor.ProcessSportEvents(sportStr); err != nil {
-			fmt.Printf("Failed to parse %s events: %v\n", sport, err)
-			continue
+
+	interval := p.config.Parser.Interval
+	if interval <= 0 {
+		interval = 30 * time.Second
+	}
+
+	runOnce := func() {
+		for _, sportStr := range p.config.ValueCalculator.Sports {
+			select {
+			case <-ctx.Done():
+				return
+			default:
+			}
+
+			sport, valid := enums.ParseSport(sportStr)
+			if !valid {
+				fmt.Printf("Unsupported sport: %s\n", sportStr)
+				continue
+			}
+
+			if err := p.eventProcessor.ProcessSportEvents(sportStr); err != nil {
+				fmt.Printf("Failed to parse %s events: %v\n", sport, err)
+				continue
+			}
 		}
 	}
-	
-	return nil
+
+	// Run immediately, then on interval (like TestParser).
+	runOnce()
+
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return nil
+		case <-ticker.C:
+			runOnce()
+		}
+	}
 }
 
 func (p *Parser) Stop() error {

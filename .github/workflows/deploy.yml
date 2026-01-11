@@ -107,12 +107,13 @@ jobs:
             exit 1
           fi
           echo \"${GHCR_TOKEN}\" | sudo docker login ghcr.io -u \"${GHCR_USERNAME}\" --password-stdin
-          if command -v docker-compose >/dev/null 2>&1; then
-            sudo docker-compose pull
-            sudo docker-compose up -d --remove-orphans
-          elif docker compose version >/dev/null 2>&1; then
+          # Prefer Compose v2 (docker compose). docker-compose v1 is incompatible with newer Docker versions (e.g. Docker 27+).
+          if docker compose version >/dev/null 2>&1; then
             sudo docker compose pull
             sudo docker compose up -d --remove-orphans
+          elif command -v docker-compose >/dev/null 2>&1; then
+            sudo docker-compose pull
+            sudo docker-compose up -d --remove-orphans
           else
             echo \"Docker Compose is not installed (need docker compose plugin or docker-compose)\" >&2
             exit 1
@@ -164,12 +165,13 @@ jobs:
             exit 1
           fi
           echo \"${GHCR_TOKEN}\" | sudo docker login ghcr.io -u \"${GHCR_USERNAME}\" --password-stdin
-          if command -v docker-compose >/dev/null 2>&1; then
-            sudo docker-compose pull
-            sudo docker-compose up -d --remove-orphans
-          elif docker compose version >/dev/null 2>&1; then
+          # Prefer Compose v2 (docker compose). docker-compose v1 is incompatible with newer Docker versions (e.g. Docker 27+).
+          if docker compose version >/dev/null 2>&1; then
             sudo docker compose pull
             sudo docker compose up -d --remove-orphans
+          elif command -v docker-compose >/dev/null 2>&1; then
+            sudo docker-compose pull
+            sudo docker-compose up -d --remove-orphans
           else
             echo \"Docker Compose is not installed (need docker compose plugin or docker-compose)\" >&2
             exit 1

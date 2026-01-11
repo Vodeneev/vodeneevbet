@@ -70,6 +70,8 @@ jobs:
     env:
       VM_HOST: ${{ secrets.VM_PARSERS_HOST }}
       REMOTE_DIR: /opt/vodeneevbet/parsers
+      GHCR_USERNAME: ${{ secrets.GHCR_USERNAME || github.repository_owner }}
+      GHCR_TOKEN: ${{ secrets.GHCR_TOKEN }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -100,6 +102,11 @@ jobs:
           cd \"${REMOTE_DIR}\"
           # Compose automatically reads .env from the project directory
           printf \"IMAGE_OWNER=%s\nIMAGE_TAG=%s\n\" \"${IMAGE_OWNER}\" \"${IMAGE_TAG}\" > .env
+          if [ -z \"${GHCR_TOKEN}\" ]; then
+            echo \"GHCR_TOKEN is not set. Add it as a GitHub Actions secret to pull private images from ghcr.io\" >&2
+            exit 1
+          fi
+          echo \"${GHCR_TOKEN}\" | sudo docker login ghcr.io -u \"${GHCR_USERNAME}\" --password-stdin
           if command -v docker-compose >/dev/null 2>&1; then
             sudo docker-compose pull
             sudo docker-compose up -d --remove-orphans
@@ -120,6 +127,8 @@ jobs:
     env:
       VM_HOST: ${{ secrets.VM_CORE_HOST }}
       REMOTE_DIR: /opt/vodeneevbet/core
+      GHCR_USERNAME: ${{ secrets.GHCR_USERNAME || github.repository_owner }}
+      GHCR_TOKEN: ${{ secrets.GHCR_TOKEN }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -150,6 +159,11 @@ jobs:
           cd \"${REMOTE_DIR}\"
           # Compose automatically reads .env from the project directory
           printf \"IMAGE_OWNER=%s\nIMAGE_TAG=%s\n\" \"${IMAGE_OWNER}\" \"${IMAGE_TAG}\" > .env
+          if [ -z \"${GHCR_TOKEN}\" ]; then
+            echo \"GHCR_TOKEN is not set. Add it as a GitHub Actions secret to pull private images from ghcr.io\" >&2
+            exit 1
+          fi
+          echo \"${GHCR_TOKEN}\" | sudo docker login ghcr.io -u \"${GHCR_USERNAME}\" --password-stdin
           if command -v docker-compose >/dev/null 2>&1; then
             sudo docker-compose pull
             sudo docker-compose up -d --remove-orphans

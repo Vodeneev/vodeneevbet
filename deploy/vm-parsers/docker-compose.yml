@@ -5,7 +5,8 @@ services:
     image: ghcr.io/${IMAGE_OWNER}/vodeneevbet-parser:${IMAGE_TAG}
     container_name: vodeneevbet-parser
     restart: unless-stopped
-    command: ["/app/parser", "-config", "/app/configs/local.yaml"]
+    command: ["-config", "/app/configs/local.yaml"]
     volumes:
       - ./configs:/app/configs:ro
-      - ./keys:/app/keys:ro
+      # configs/local.yaml uses ../../keys/... (relative to /app), which resolves to /keys/...
+      - ./keys:/keys:ro

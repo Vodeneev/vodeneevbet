@@ -41,7 +41,17 @@ ssh-copy-id -i ~/.ssh/github_actions_deploy.pub vodeneevm@158.160.200.253
 
    - Имя: `VM_USER` — значение: имя пользователя на VM (по умолчанию workflow использует `vodeneevm`)
 
-6. **Проверьте, что workflow файл существует:**
+6. **Добавьте доступ к GHCR для VM (если образы приватные):**
+
+   На VM деплой делает `docker compose pull` с `ghcr.io/...`, поэтому VM должна уметь авторизоваться в GHCR.
+
+   - Создайте GitHub Personal Access Token (PAT) с правом `read:packages`
+     - если репозиторий/пакеты приватные, может понадобиться также `repo`
+   - Добавьте в GitHub Secrets:
+     - `GHCR_TOKEN` — значение: PAT
+     - *(опционально)* `GHCR_USERNAME` — GitHub username (если не задан, workflow использует `${{ github.repository_owner }}`)
+
+7. **Проверьте, что workflow файл существует:**
 
    Файл `.github/workflows/deploy.yml` уже создан в проекте.
 

@@ -109,11 +109,18 @@ jobs:
           echo \"${GHCR_TOKEN}\" | sudo docker login ghcr.io -u \"${GHCR_USERNAME}\" --password-stdin
           # Prefer Compose v2 (docker compose). docker-compose v1 is incompatible with newer Docker versions (e.g. Docker 27+).
           if docker compose version >/dev/null 2>&1; then
+            export COMPOSE_PROJECT_NAME=vodeneevbet_parsers
+            # Cleanup leftovers from previous runs to avoid container name conflicts
+            sudo docker ps -a -q --filter \"name=vodeneevbet-parser\" | xargs -r sudo docker rm -f
+            sudo docker compose down --remove-orphans || true
             sudo docker compose pull
-            sudo docker compose up -d --remove-orphans
+            sudo docker compose up -d --remove-orphans --force-recreate
           elif command -v docker-compose >/dev/null 2>&1; then
+            export COMPOSE_PROJECT_NAME=vodeneevbet_parsers
+            sudo docker ps -a -q --filter \"name=vodeneevbet-parser\" | xargs -r sudo docker rm -f
+            sudo docker-compose down --remove-orphans || true
             sudo docker-compose pull
-            sudo docker-compose up -d --remove-orphans
+            sudo docker-compose up -d --remove-orphans --force-recreate
           else
             echo \"Docker Compose is not installed (need docker compose plugin or docker-compose)\" >&2
             exit 1
@@ -167,11 +174,15 @@ jobs:
           echo \"${GHCR_TOKEN}\" | sudo docker login ghcr.io -u \"${GHCR_USERNAME}\" --password-stdin
           # Prefer Compose v2 (docker compose). docker-compose v1 is incompatible with newer Docker versions (e.g. Docker 27+).
           if docker compose version >/dev/null 2>&1; then
+            export COMPOSE_PROJECT_NAME=vodeneevbet_core
+            sudo docker compose down --remove-orphans || true
             sudo docker compose pull
-            sudo docker compose up -d --remove-orphans
+            sudo docker compose up -d --remove-orphans --force-recreate
           elif command -v docker-compose >/dev/null 2>&1; then
+            export COMPOSE_PROJECT_NAME=vodeneevbet_core
+            sudo docker-compose down --remove-orphans || true
             sudo docker-compose pull
-            sudo docker-compose up -d --remove-orphans
+            sudo docker-compose up -d --remove-orphans --force-recreate
           else
             echo \"Docker Compose is not installed (need docker compose plugin or docker-compose)\" >&2
             exit 1

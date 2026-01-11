@@ -101,16 +101,16 @@ jobs:
           # Compose automatically reads .env from the project directory
           printf \"IMAGE_OWNER=%s\nIMAGE_TAG=%s\n\" \"${IMAGE_OWNER}\" \"${IMAGE_TAG}\" > .env
           if command -v docker-compose >/dev/null 2>&1; then
-            docker-compose pull
-            docker-compose up -d --remove-orphans
+            sudo docker-compose pull
+            sudo docker-compose up -d --remove-orphans
           elif docker compose version >/dev/null 2>&1; then
-            docker compose pull
-            docker compose up -d --remove-orphans
+            sudo docker compose pull
+            sudo docker compose up -d --remove-orphans
           else
             echo \"Docker Compose is not installed (need docker compose plugin or docker-compose)\" >&2
             exit 1
           fi
-          test \"$(docker ps -q -f name=vodeneevbet-parser -f status=running | wc -l)\" -ge 1
+          test \"$(sudo docker ps -q -f name=vodeneevbet-parser -f status=running | wc -l)\" -ge 1
           '"
 
   deploy_core:
@@ -151,16 +151,16 @@ jobs:
           # Compose automatically reads .env from the project directory
           printf \"IMAGE_OWNER=%s\nIMAGE_TAG=%s\n\" \"${IMAGE_OWNER}\" \"${IMAGE_TAG}\" > .env
           if command -v docker-compose >/dev/null 2>&1; then
-            docker-compose pull
-            docker-compose up -d --remove-orphans
+            sudo docker-compose pull
+            sudo docker-compose up -d --remove-orphans
           elif docker compose version >/dev/null 2>&1; then
-            docker compose pull
-            docker compose up -d --remove-orphans
+            sudo docker compose pull
+            sudo docker compose up -d --remove-orphans
           else
             echo \"Docker Compose is not installed (need docker compose plugin or docker-compose)\" >&2
             exit 1
           fi
           curl -fsS http://127.0.0.1:8081/health >/dev/null
-          test \"$(docker ps -q -f name=vodeneevbet-api -f status=running | wc -l)\" -ge 1
-          test \"$(docker ps -q -f name=vodeneevbet-calculator -f status=running | wc -l)\" -ge 1
+          test \"$(sudo docker ps -q -f name=vodeneevbet-api -f status=running | wc -l)\" -ge 1
+          test \"$(sudo docker ps -q -f name=vodeneevbet-calculator -f status=running | wc -l)\" -ge 1
           '"

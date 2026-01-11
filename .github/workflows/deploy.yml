@@ -98,16 +98,18 @@ jobs:
         run: |
           ssh "${VM_USER}@${VM_HOST}" "bash -lc 'set -euo pipefail
           cd \"${REMOTE_DIR}\"
+          # Compose automatically reads .env from the project directory
+          printf \"IMAGE_OWNER=%s\nIMAGE_TAG=%s\n\" \"${IMAGE_OWNER}\" \"${IMAGE_TAG}\" > .env
           if command -v docker-compose >/dev/null 2>&1; then
-            COMPOSE=\"docker-compose\"
+            docker-compose pull
+            docker-compose up -d --remove-orphans
           elif docker compose version >/dev/null 2>&1; then
-            COMPOSE=\"docker compose\"
+            docker compose pull
+            docker compose up -d --remove-orphans
           else
             echo \"Docker Compose is not installed (need docker compose plugin or docker-compose)\" >&2
             exit 1
           fi
-          IMAGE_OWNER=\"${IMAGE_OWNER}\" IMAGE_TAG=\"${IMAGE_TAG}\" $COMPOSE pull
-          IMAGE_OWNER=\"${IMAGE_OWNER}\" IMAGE_TAG=\"${IMAGE_TAG}\" $COMPOSE up -d --remove-orphans
           test \"$(docker ps -q -f name=vodeneevbet-parser -f status=running | wc -l)\" -ge 1
           '"
 
@@ -146,16 +148,18 @@ jobs:
         run: |
           ssh "${VM_USER}@${VM_HOST}" "bash -lc 'set -euo pipefail
           cd \"${REMOTE_DIR}\"
+          # Compose automatically reads .env from the project directory
+          printf \"IMAGE_OWNER=%s\nIMAGE_TAG=%s\n\" \"${IMAGE_OWNER}\" \"${IMAGE_TAG}\" > .env
           if command -v docker-compose >/dev/null 2>&1; then
-            COMPOSE=\"docker-compose\"
+            docker-compose pull
+            docker-compose up -d --remove-orphans
           elif docker compose version >/dev/null 2>&1; then
-            COMPOSE=\"docker compose\"
+            docker compose pull
+            docker compose up -d --remove-orphans
           else
             echo \"Docker Compose is not installed (need docker compose plugin or docker-compose)\" >&2
             exit 1
           fi
-          IMAGE_OWNER=\"${IMAGE_OWNER}\" IMAGE_TAG=\"${IMAGE_TAG}\" $COMPOSE pull
-          IMAGE_OWNER=\"${IMAGE_OWNER}\" IMAGE_TAG=\"${IMAGE_TAG}\" $COMPOSE up -d --remove-orphans
           curl -fsS http://127.0.0.1:8081/health >/dev/null
           test \"$(docker ps -q -f name=vodeneevbet-api -f status=running | wc -l)\" -ge 1
           test \"$(docker ps -q -f name=vodeneevbet-calculator -f status=running | wc -l)\" -ge 1

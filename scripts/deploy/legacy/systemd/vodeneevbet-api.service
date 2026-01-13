@@ -1,17 +1,17 @@
 [Unit]
-Description=VodeneevBet Parser Service
+Description=VodeneevBet API Service
 After=network.target
 
 [Service]
 Type=simple
 User=vodeneevm
-WorkingDirectory=REMOTE_DIR/internal/parser
-ExecStart=REMOTE_DIR/internal/parser/parser -config REMOTE_DIR/configs/local.yaml
+WorkingDirectory=REMOTE_DIR/internal/api
+ExecStart=REMOTE_DIR/internal/api/api
 Restart=always
 RestartSec=10
 StandardOutput=journal
 StandardError=journal
-SyslogIdentifier=vodeneevbet-parser
+SyslogIdentifier=vodeneevbet-api
 
 # Environment variables
 Environment="GOPATH=/home/vodeneevm/go"
@@ -23,3 +23,4 @@ PrivateTmp=true
 
 [Install]
 WantedBy=multi-user.target
+

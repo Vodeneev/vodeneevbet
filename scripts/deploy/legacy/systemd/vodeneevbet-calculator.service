@@ -1,17 +1,17 @@
 [Unit]
-Description=VodeneevBet API Service
+Description=VodeneevBet Value Calculator Service
 After=network.target
 
 [Service]
 Type=simple
 User=vodeneevm
-WorkingDirectory=REMOTE_DIR/internal/api
-ExecStart=REMOTE_DIR/internal/api/api
+WorkingDirectory=REMOTE_DIR/internal/calculator
+ExecStart=REMOTE_DIR/internal/calculator/calculator -config REMOTE_DIR/configs/local.yaml
 Restart=always
 RestartSec=10
 StandardOutput=journal
 StandardError=journal
-SyslogIdentifier=vodeneevbet-api
+SyslogIdentifier=vodeneevbet-calculator
 
 # Environment variables
 Environment="GOPATH=/home/vodeneevm/go"
@@ -23,3 +23,4 @@ PrivateTmp=true
 
 [Install]
 WantedBy=multi-user.target
+

@@ -6,18 +6,18 @@
 
 ### Высокоуровневая схема
 ```
-┌─────────────┐    ┌─────────────┐    ┌─────────────┐
-│   Parser    │    │ Value       │    │    API      │
-│  Service    │───▶│ Calculator  │───▶│  Service    │
-│             │    │             │    │             │
-└─────────────┘    └─────────────┘    └─────────────┘
-       │                   │                   │
-       ▼                   ▼                   ▼
-┌─────────────┐    ┌─────────────┐    ┌─────────────┐
-│    YDB      │    │ PostgreSQL  │    │  Frontend   │
-│ (All Odds)  │    │ (Value      │    │   (Web)     │
-│             │    │  Bets)     │    │             │
-└─────────────┘    └─────────────┘    └─────────────┘
+┌─────────────┐    ┌─────────────┐
+│   Parser    │    │ Value       │
+│  Service    │───▶│ Calculator  │
+│             │    │             │
+└─────────────┘    └─────────────┘
+       │                   │
+       ▼                   ▼
+┌─────────────┐    ┌─────────────┐
+│    YDB      │    │ PostgreSQL  │
+│ (All Odds)  │    │ (Value      │
+│             │    │  Bets)     │
+└─────────────┘    └─────────────┘
 ```
 
 ### Компоненты системы
@@ -43,15 +43,7 @@
 - **Критерии**: Минимальная разница в процентах, настраиваемые фильтры
 - **Результат**: Список найденных value bet с расчетами
 
-#### 3. **API Service** (`internal/api/`)
-- **Назначение**: REST API для доступа к данным
-- **Эндпоинты**: 
-  - `GET /api/value-bets` - список валуйных ставок
-  - `GET /api/odds` - текущие коэффициенты
-  - `GET /api/matches` - доступные матчи
-- **Формат**: JSON API
-
-#### 4. **Storage Layer** (`internal/pkg/storage/`)
+#### 3. **Storage Layer** (`internal/pkg/storage/`)
 - **YDB**: Основное хранилище для коэффициентов (быстрый доступ)
 - **PostgreSQL**: История валуйных ставок и метаданные
 - **Интерфейсы**: Унифицированные интерфейсы для легкого переключения хранилищ
@@ -82,6 +74,10 @@
 
 ```
 vodeneevbet/
+├── cmd/
+│   ├── parser/              # Entry-point сервиса парсера
+│   ├── calculator/          # Entry-point калькулятора
+│   └── tools/               # Утилиты (export/ttl/ydb-*)
 ├── internal/
 │   ├── parser/          # Парсер букмекеров
 │   │   ├── parsers/
@@ -91,7 +87,6 @@ vodeneevbet/
 │   │   │   │   ├── parser.go         # Основной парсер
 │   │   │   │   └── models.go         # Модели данных
 │   │   │   └── test_parser.go        # Тестовый парсер
-│   │   └── main.go
 │   ├── calculator/      # Калькулятор валуйных ставок
 │   └── pkg/             # Общие библиотеки
 │       ├── models/      # Модели данных
@@ -133,12 +128,16 @@ docker ps
 ### 4. Запуск парсера
 ```bash
 # Запуск Fonbet парсера
-cd internal/parser
-go run main.go -config ../../configs/local.yaml
+go run ./cmd/parser -config configs/local.yaml
 
 # Или сборка и запуск
-go build -o parser .
-./parser -config ../../configs/local.yaml
+go build -o ./bin/parser ./cmd/parser
+./bin/parser -config configs/local.yaml
+```
+
+### 5. Запуск калькулятора
+```bash
+go run ./cmd/calculator -config configs/local.yaml
 ```
 
 ### 5. Тестирование Fonbet парсера
@@ -153,7 +152,7 @@ go build -o parser .
 ### 6. Экспорт данных
 ```bash
 # Экспорт данных из YDB в JSON и CSV
-./export_data.sh
+go run ./cmd/tools/export -config configs/local.yaml
 
 # Результат:
 # - exports/export_YYYY-MM-DD_HH-MM-SS.json
@@ -275,29 +274,18 @@ type ValueBet struct {
 3. **Анализ**: Value Calculator читает данные из YDB и сравнивает коэффициенты с референсными (среднее по топ-5 БК)
 4. **Фильтрация**: Отбираются только ставки с разницей выше порога (настраиваемо)
 5. **Сохранение**: Найденные value bet сохраняются в PostgreSQL
-6. **API**: REST API предоставляет доступ к данным
-7. **Frontend**: Веб-интерфейс отображает результаты
+6. *(опционально)* дальнейшая выдача результатов (API/Frontend) — отдельным этапом
 
 ### Взаимодействие сервисов:
 - **Parser** → **YDB**: Сохраняет коэффициенты
 - **Calculator** → **YDB**: Читает коэффициенты для анализа
 - **Calculator** → **PostgreSQL**: Сохраняет найденные value bet
-- **API** → **PostgreSQL**: Предоставляет данные через REST API
 
 ## 🧪 Тестирование
 
 ### Запуск тестов
 ```bash
-# Тест YDB подключения
-go run test_ydb_full.go
-
-# Тест парсера
-cd services/parser
-go run main.go
-
-# Тест Value Calculator
-cd services/calculator
-go run main.go
+go test ./...
 ```
 
 ### Проверка данных
@@ -356,11 +344,6 @@ SELECT * FROM value_bets ORDER BY found_at DESC LIMIT 10;
 
 ### Ручной деплой
 
-**Windows (PowerShell):**
-```powershell
-.\scripts\deploy\deploy-all.ps1
-```
-
 **Linux/Mac:**
 ```bash
 make deploy-all
@@ -371,7 +354,7 @@ make deploy-all
 ### Архитектура деплоя
 
 - **vm-parsers** (158.160.197.172): Parser Service
-- **vm-core-services** (158.160.200.253): Calculator + API Services
+- **vm-core-services** (158.160.200.253): Calculator Service
 
 ### Управление сервисами
 
@@ -382,7 +365,6 @@ make status
 # Просмотр логов
 make logs-parser      # Логи парсера
 make logs-calculator  # Логи калькулятора
-make logs-api         # Логи API
 
 # Остановка/Запуск
 make stop-all

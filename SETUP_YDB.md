@@ -42,7 +42,7 @@
 После настройки запустите тест:
 
 ```bash
-go run test_ydb_full.go
+go run ./cmd/tools/ydb-smoke -config configs/local.yaml
 ```
 
 Если все настроено правильно, вы увидите:
@@ -51,13 +51,13 @@ go run test_ydb_full.go
 - Сохранение тестовых данных
 - Получение данных из YDB
 
-## 6. Обновление парсера
+## Полезные утилиты
 
-После успешного тестирования обновите парсер для использования полного YDB клиента:
-
-```go
-// В internal/parser/main.go замените:
-ydbClient, err := storage.NewYDBSimpleClient(&cfg.YDB)
-// На:
-ydbClient, err := storage.NewYDBFullClient(&cfg.YDB)
-```
+- Проверить, что данные реально пишутся/читаются:
+  ```bash
+  go run ./cmd/tools/ydb-check -config configs/local.yaml
+  ```
+- Очистить таблицы (осторожно, удаляет данные):
+  ```bash
+  go run ./cmd/tools/ydb-clean -config configs/local.yaml
+  ```

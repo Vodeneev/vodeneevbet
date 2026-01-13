@@ -24,35 +24,28 @@ sleep 5
 echo "📊 Exporting current data..."
 ./export_data.sh
 
-echo "🌐 Starting web interface..."
-cd internal/api
-go run main.go &
-API_PID=$!
-
-echo "📊 Starting parser (test mode)..."
-cd ../parser
-go run main.go -config ../../configs/local.yaml &
+echo "📊 Starting parser..."
+go run ./cmd/parser -config configs/local.yaml > logs/parser.log 2>&1 &
 PARSER_PID=$!
+
+echo "🧮 Starting calculator..."
+go run ./cmd/calculator -config configs/local.yaml > logs/calculator.log 2>&1 &
+CALCULATOR_PID=$!
 
 echo ""
 echo "✅ System started successfully!"
 echo ""
-echo "🌐 Web Interface: http://localhost:8081"
-echo "📊 API Endpoints:"
-echo "   - http://localhost:8081/api/odds"
-echo "   - http://localhost:8081/api/matches"
-echo ""
 echo "📝 Logs:"
 echo "   - Parser: logs/parser.log"
-echo "   - API: logs/api.log"
+echo "   - Calculator: logs/calculator.log"
 echo ""
 echo "🛑 To stop the system:"
 echo "   - Press Ctrl+C"
-echo "   - Or run: pkill -f 'go run main.go' && docker-compose down"
+echo "   - Or run: pkill -f 'go run ./cmd/' && docker-compose down"
 echo ""
 
 # Wait for user interrupt
-trap 'echo ""; echo "🛑 Stopping system..."; kill $API_PID $PARSER_PID 2>/dev/null; docker-compose down; echo "✅ System stopped"; exit 0' INT
+trap 'echo ""; echo "🛑 Stopping system..."; kill $PARSER_PID $CALCULATOR_PID 2>/dev/null; docker-compose down; echo "✅ System stopped"; exit 0' INT
 
 # Keep script running
 wait

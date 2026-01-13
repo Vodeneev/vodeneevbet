@@ -9,43 +9,43 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/Vodeneev/vodeneevbet/internal/pkg/config"
 	"github.com/Vodeneev/vodeneevbet/internal/parser/parsers"
 	"github.com/Vodeneev/vodeneevbet/internal/parser/parsers/fonbet"
+	"github.com/Vodeneev/vodeneevbet/internal/pkg/config"
 )
 
 func main() {
 	fmt.Println("Starting parser...")
-	
+
 	var configPath string
-	flag.StringVar(&configPath, "config", "../../configs/local.yaml", "Path to config file")
+	flag.StringVar(&configPath, "config", "configs/local.yaml", "Path to config file")
 	flag.Parse()
 
 	fmt.Printf("Loading config from: %s\n", configPath)
-	
+
 	cfg, err := config.Load(configPath)
 	if err != nil {
 		log.Fatalf("Failed to load config: %v", err)
 	}
-	
+
 	fmt.Println("Config loaded successfully")
 
-	var parser parsers.Parser
+	var p parsers.Parser
 	parserType := cfg.Parser.Type
 	if parserType == "" {
 		parserType = "test"
 	}
-	
+
 	switch parserType {
 	case "fonbet":
-		parser = fonbet.NewParserWrapper(cfg)
+		p = fonbet.NewParserWrapper(cfg)
 	case "test":
-		parser = parsers.NewTestParser(cfg)
+		p = parsers.NewTestParser(cfg)
 	default:
 		log.Fatalf("Unknown parser type: %s", parserType)
 	}
-	
-	fmt.Printf("Using parser: %s\n", parser.GetName())
+
+	fmt.Printf("Using parser: %s\n", p.GetName())
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -60,9 +60,10 @@ func main() {
 	}()
 
 	log.Println("Starting parser...")
-	if err := parser.Start(ctx); err != nil {
+	if err := p.Start(ctx); err != nil {
 		log.Fatalf("Parser failed: %v", err)
 	}
 
 	log.Println("Parser stopped")
 }
+

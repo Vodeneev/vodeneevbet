@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"path/filepath"
 	"time"
 
 	"gopkg.in/yaml.v3"
@@ -71,6 +72,13 @@ func Load(configPath string) (*Config, error) {
 	var config Config
 	if err := yaml.Unmarshal(data, &config); err != nil {
 		return nil, fmt.Errorf("failed to parse config file: %w", err)
+	}
+
+	// Resolve relative paths inside config against the config file directory,
+	// not against the current working directory.
+	if config.YDB.ServiceAccountKeyFile != "" && !filepath.IsAbs(config.YDB.ServiceAccountKeyFile) {
+		baseDir := filepath.Dir(configPath)
+		config.YDB.ServiceAccountKeyFile = filepath.Clean(filepath.Join(baseDir, config.YDB.ServiceAccountKeyFile))
 	}
 
 	return &config, nil

@@ -13,7 +13,7 @@ echo "🚀 Deploying all services"
 echo "========================"
 echo ""
 
-# Деплой парсера
+# Деплой парсера (docker compose)
 echo "📡 Deploying Parser Service..."
 bash "$SCRIPT_DIR/deploy-parsers.sh"
 
@@ -21,14 +21,13 @@ echo ""
 echo "---"
 echo ""
 
-# Деплой core сервисов
-echo "📡 Deploying Core Services..."
+# Деплой core сервисов (docker compose)
+echo "📡 Deploying Core Services (Calculator)..."
 bash "$SCRIPT_DIR/deploy-core-services.sh"
 
 echo ""
 echo "✅ All services deployed successfully!"
 echo ""
 echo "📊 Quick commands:"
-echo "  - Parser logs:    ssh vm-parsers 'sudo journalctl -u vodeneevbet-parser -f'"
-echo "  - Calculator logs: ssh vm-core-services 'sudo journalctl -u vodeneevbet-calculator -f'"
-echo "  - API logs:        ssh vm-core-services 'sudo journalctl -u vodeneevbet-api -f'"
+echo "  - Parser logs:     ssh vm-parsers 'sudo docker logs -f vodeneevbet-parser'"
+echo "  - Calculator logs: ssh vm-core-services 'sudo docker logs -f vodeneevbet-calculator'"

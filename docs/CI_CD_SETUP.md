@@ -213,13 +213,13 @@ git checkout main
 
 ### Деплой падает с ошибкой сборки
 
-- Проверьте, что на VM установлен Go нужной версии
+- Для compose-деплоя Go на VM не нужен — проверьте, что на VM установлен Docker и Docker Compose
 - Проверьте логи в Actions/Pipelines
 - Попробуйте запустить деплой вручную для диагностики
 
 ### Сервисы не запускаются после деплоя
 
-- Проверьте логи на VM: `ssh vm-parsers "sudo journalctl -u vodeneevbet-parser -n 50"`
+- Проверьте логи на VM: `ssh vm-parsers "sudo docker logs --tail=200 vodeneevbet-parser"`
 - Убедитесь, что конфигурация правильная
 - Проверьте права на файлы
 

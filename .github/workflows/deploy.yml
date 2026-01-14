@@ -22,9 +22,6 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - service: api
-            dockerfile: internal/api/Dockerfile
-            image: vodeneevbet-api
           - service: parser
             dockerfile: internal/parser/Dockerfile
             image: vodeneevbet-parser
@@ -187,7 +184,5 @@ jobs:
             echo \"Docker Compose is not installed (need docker compose plugin or docker-compose)\" >&2
             exit 1
           fi
-          curl -fsS http://127.0.0.1:8081/health >/dev/null
-          test \"$(sudo docker ps -q -f name=vodeneevbet-api -f status=running | wc -l)\" -ge 1
           test \"$(sudo docker ps -q -f name=vodeneevbet-calculator -f status=running | wc -l)\" -ge 1
           '"

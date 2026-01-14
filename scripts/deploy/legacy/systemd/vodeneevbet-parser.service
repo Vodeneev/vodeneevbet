@@ -1,17 +1,17 @@
 [Unit]
-Description=VodeneevBet Value Calculator Service
+Description=VodeneevBet Parser Service
 After=network.target
 
 [Service]
 Type=simple
 User=vodeneevm
-WorkingDirectory=REMOTE_DIR/internal/calculator
-ExecStart=REMOTE_DIR/internal/calculator/calculator -config REMOTE_DIR/configs/local.yaml
+WorkingDirectory=REMOTE_DIR/internal/parser
+ExecStart=REMOTE_DIR/internal/parser/parser -config REMOTE_DIR/configs/local.yaml
 Restart=always
 RestartSec=10
 StandardOutput=journal
 StandardError=journal
-SyslogIdentifier=vodeneevbet-calculator
+SyslogIdentifier=vodeneevbet-parser
 
 # Environment variables
 Environment="GOPATH=/home/vodeneevm/go"
@@ -23,3 +23,4 @@ PrivateTmp=true
 
 [Install]
 WantedBy=multi-user.target
+

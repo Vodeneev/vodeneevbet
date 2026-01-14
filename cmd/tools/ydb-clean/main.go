@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"flag"
 	"fmt"
 	"log"
 	"time"
@@ -14,17 +15,15 @@ func main() {
 	fmt.Println("🧹 YDB Data Cleaner")
 	fmt.Println("==================")
 
-	// Load config
-	cfg, err := config.Load("configs/local.yaml")
+	var configPath string
+	flag.StringVar(&configPath, "config", "configs/local.yaml", "Path to config file")
+	flag.Parse()
+
+	cfg, err := config.Load(configPath)
 	if err != nil {
 		log.Fatalf("Failed to load config: %v", err)
 	}
-	
-	// Fix key path for current directory
-	cfg.YDB.ServiceAccountKeyFile = "keys/service-account-key.json"
 
-	// Create YDB client
-	fmt.Println("Connecting to YDB...")
 	ydbClient, err := storage.NewYDBClient(&cfg.YDB)
 	if err != nil {
 		log.Fatalf("Failed to create YDB client: %v", err)
@@ -33,25 +32,21 @@ func main() {
 
 	ctx := context.Background()
 
-	// Clean all tables in correct order (due to foreign key constraints)
 	tables := []string{"outcomes", "events", "matches"}
-	
+
 	fmt.Printf("🗑️  Cleaning %d tables...\n", len(tables))
-	
 	for i, tableName := range tables {
 		fmt.Printf("⏳ Cleaning table %d/%d: %s\n", i+1, len(tables), tableName)
-		
+
 		startTime := time.Now()
-		err := ydbClient.CleanTable(ctx, tableName)
-		if err != nil {
+		if err := ydbClient.CleanTable(ctx, tableName); err != nil {
 			log.Printf("❌ Failed to clean table %s: %v", tableName, err)
 			continue
 		}
-		
-		duration := time.Since(startTime)
-		fmt.Printf("✅ Table %s cleaned in %v\n", tableName, duration)
+
+		fmt.Printf("✅ Table %s cleaned in %v\n", tableName, time.Since(startTime))
 	}
 
 	fmt.Println("🎉 All tables cleaned successfully!")
-	fmt.Println("YDB is now empty and ready for fresh data.")
 }
+

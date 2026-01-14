@@ -93,6 +93,11 @@ jobs:
           ssh "${VM_USER}@${VM_HOST}" "sudo mkdir -p '${REMOTE_DIR}' && sudo chown -R '${VM_USER}:${VM_USER}' '${REMOTE_DIR}'"
           scp "deploy/vm-parsers/docker-compose.yml" "${VM_USER}@${VM_HOST}:${REMOTE_DIR}/docker-compose.yml"
 
+      - name: Upload configs
+        run: |
+          ssh "${VM_USER}@${VM_HOST}" "mkdir -p '${REMOTE_DIR}/configs'"
+          rsync -az --delete "configs/" "${VM_USER}@${VM_HOST}:${REMOTE_DIR}/configs/"
+
       - name: Pull & up
         run: |
           ssh "${VM_USER}@${VM_HOST}" "bash -lc 'set -euo pipefail
@@ -123,6 +128,18 @@ jobs:
             exit 1
           fi
           test \"$(sudo docker ps -q -f name=vodeneevbet-parser -f status=running | wc -l)\" -ge 1
+          '"
+
+      - name: Debug on failure
+        if: failure()
+        run: |
+          ssh "${VM_USER}@${VM_HOST}" "bash -lc 'set -u
+          cd \"${REMOTE_DIR}\" || exit 0
+          echo \"--- docker ps -a\"; sudo docker ps -a || true
+          echo \"--- docker compose ps\"; (sudo docker compose ps || sudo docker-compose ps) 2>/dev/null || true
+          echo \"--- parser logs (tail)\"; sudo docker logs --tail=200 vodeneevbet-parser 2>/dev/null || true
+          echo \"--- configs listing\"; ls -la \"${REMOTE_DIR}/configs\" || true
+          echo \"--- config head\"; sed -n \"1,120p\" \"${REMOTE_DIR}/configs/local.yaml\" 2>/dev/null || true
           '"
 
   deploy_core:
@@ -158,6 +175,11 @@ jobs:
           ssh "${VM_USER}@${VM_HOST}" "sudo mkdir -p '${REMOTE_DIR}' && sudo chown -R '${VM_USER}:${VM_USER}' '${REMOTE_DIR}'"
           scp "deploy/vm-core/docker-compose.yml" "${VM_USER}@${VM_HOST}:${REMOTE_DIR}/docker-compose.yml"
 
+      - name: Upload configs
+        run: |
+          ssh "${VM_USER}@${VM_HOST}" "mkdir -p '${REMOTE_DIR}/configs'"
+          rsync -az --delete "configs/" "${VM_USER}@${VM_HOST}:${REMOTE_DIR}/configs/"
+
       - name: Pull & up + healthcheck
         run: |
           ssh "${VM_USER}@${VM_HOST}" "bash -lc 'set -euo pipefail
@@ -185,4 +207,16 @@ jobs:
             exit 1
           fi
           test \"$(sudo docker ps -q -f name=vodeneevbet-calculator -f status=running | wc -l)\" -ge 1
+          '"
+
+      - name: Debug on failure
+        if: failure()
+        run: |
+          ssh "${VM_USER}@${VM_HOST}" "bash -lc 'set -u
+          cd \"${REMOTE_DIR}\" || exit 0
+          echo \"--- docker ps -a\"; sudo docker ps -a || true
+          echo \"--- docker compose ps\"; (sudo docker compose ps || sudo docker-compose ps) 2>/dev/null || true
+          echo \"--- calculator logs (tail)\"; sudo docker logs --tail=200 vodeneevbet-calculator 2>/dev/null || true
+          echo \"--- configs listing\"; ls -la \"${REMOTE_DIR}/configs\" || true
+          echo \"--- config head\"; sed -n \"1,120p\" \"${REMOTE_DIR}/configs/local.yaml\" 2>/dev/null || true
           '"

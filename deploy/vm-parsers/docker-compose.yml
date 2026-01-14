@@ -8,5 +8,5 @@ services:
     command: ["-config", "/app/configs/local.yaml"]
     volumes:
       - ./configs:/app/configs:ro
-      # configs/local.yaml uses ../../keys/... (relative to /app), which resolves to /keys/...
-      - ./keys:/keys:ro
+      # configs/local.yaml uses ../keys/... (relative to /app/configs), which resolves to /app/keys/...
+      - ./keys:/app/keys:ro

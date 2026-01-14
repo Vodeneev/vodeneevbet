@@ -61,3 +61,7 @@ go run ./cmd/tools/ydb-smoke -config configs/local.yaml
   ```bash
   go run ./cmd/tools/ydb-clean -config configs/local.yaml
   ```
+- Управление TTL (статус/настройка/отключение):
+  ```bash
+  go run ./cmd/tools/ttl-manager -config configs/local.yaml -action=status
+  ```

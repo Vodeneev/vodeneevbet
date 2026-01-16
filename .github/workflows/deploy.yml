@@ -129,14 +129,14 @@ jobs:
           fi
           # Wait for container to be running (avoid flakiness right after up -d)
           ok=0
-          for i in $(seq 1 30); do
-            if [ \"$(sudo docker ps -q -f name=vodeneevbet-parser -f status=running | wc -l)\" -ge 1 ]; then
+          for ((i=1; i<=30; i++)); do
+            if [ \"\\$(sudo docker ps -q -f name=vodeneevbet-parser -f status=running | wc -l)\" -ge 1 ]; then
               ok=1
               break
             fi
             sleep 2
           done
-          if [ \"$ok\" -ne 1 ]; then
+          if [ \"\\$ok\" -ne 1 ]; then
             echo \"Parser container is not running after 60s\" >&2
             sudo docker ps -a --filter name=vodeneevbet-parser || true
             sudo docker logs --tail=200 vodeneevbet-parser 2>/dev/null || true
@@ -222,14 +222,14 @@ jobs:
           fi
           # Wait for container to be running (avoid flakiness right after up -d)
           ok=0
-          for i in $(seq 1 30); do
-            if [ \"$(sudo docker ps -q -f name=vodeneevbet-calculator -f status=running | wc -l)\" -ge 1 ]; then
+          for ((i=1; i<=30; i++)); do
+            if [ \"\\$(sudo docker ps -q -f name=vodeneevbet-calculator -f status=running | wc -l)\" -ge 1 ]; then
               ok=1
               break
             fi
             sleep 2
           done
-          if [ \"$ok\" -ne 1 ]; then
+          if [ \"\\$ok\" -ne 1 ]; then
             echo \"Calculator container is not running after 60s\" >&2
             sudo docker ps -a --filter name=vodeneevbet-calculator || true
             sudo docker logs --tail=200 vodeneevbet-calculator 2>/dev/null || true

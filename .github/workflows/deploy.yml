@@ -100,49 +100,57 @@ jobs:
 
       - name: Pull & up
         run: |
-          ssh "${VM_USER}@${VM_HOST}" "bash -lc 'set -euo pipefail
-          cd \"${REMOTE_DIR}\"
-          # Compose automatically reads .env from the project directory
-          printf \"IMAGE_OWNER=%s\nIMAGE_TAG=%s\n\" \"${IMAGE_OWNER}\" \"${IMAGE_TAG}\" > .env
-          if [ -z \"${GHCR_TOKEN}\" ]; then
-            echo \"GHCR_TOKEN is not set. Add it as a GitHub Actions secret to pull private images from ghcr.io\" >&2
+          if [ -z "${GHCR_TOKEN}" ]; then
+            echo "GHCR_TOKEN is not set. Add it as a GitHub Actions secret to pull private images from ghcr.io" >&2
             exit 1
           fi
-          echo \"${GHCR_TOKEN}\" | sudo docker login ghcr.io -u \"${GHCR_USERNAME}\" --password-stdin
+
+          # Login by streaming token via stdin (avoid quoting issues).
+          printf %s "${GHCR_TOKEN}" | ssh "${VM_USER}@${VM_HOST}" "sudo docker login ghcr.io -u \"${GHCR_USERNAME}\" --password-stdin"
+
+          # Run the deploy script on the VM via stdin (avoid nested quote escaping).
+          ssh "${VM_USER}@${VM_HOST}" "REMOTE_DIR='${REMOTE_DIR}' IMAGE_OWNER='${IMAGE_OWNER}' IMAGE_TAG='${IMAGE_TAG}' bash -s" <<'EOF'
+          set -euo pipefail
+          cd "${REMOTE_DIR}"
+
+          # Compose automatically reads .env from the project directory
+          printf "IMAGE_OWNER=%s\nIMAGE_TAG=%s\n" "${IMAGE_OWNER}" "${IMAGE_TAG}" > .env
+
           # Prefer Compose v2 (docker compose). docker-compose v1 is incompatible with newer Docker versions (e.g. Docker 27+).
+          export COMPOSE_PROJECT_NAME=vodeneevbet_parsers
           if docker compose version >/dev/null 2>&1; then
-            export COMPOSE_PROJECT_NAME=vodeneevbet_parsers
             # Cleanup leftovers from previous runs to avoid container name conflicts
-            sudo docker ps -a -q --filter \"name=vodeneevbet-parser\" | xargs -r sudo docker rm -f
+            sudo docker ps -a -q --filter "name=vodeneevbet-parser" | xargs -r sudo docker rm -f
             sudo docker compose down --remove-orphans || true
             sudo docker compose pull
             sudo docker compose up -d --remove-orphans --force-recreate
           elif command -v docker-compose >/dev/null 2>&1; then
-            export COMPOSE_PROJECT_NAME=vodeneevbet_parsers
-            sudo docker ps -a -q --filter \"name=vodeneevbet-parser\" | xargs -r sudo docker rm -f
+            sudo docker ps -a -q --filter "name=vodeneevbet-parser" | xargs -r sudo docker rm -f
             sudo docker-compose down --remove-orphans || true
             sudo docker-compose pull
             sudo docker-compose up -d --remove-orphans --force-recreate
           else
-            echo \"Docker Compose is not installed (need docker compose plugin or docker-compose)\" >&2
+            echo "Docker Compose is not installed (need docker compose plugin or docker-compose)" >&2
             exit 1
           fi
+
           # Wait for container to be running (avoid flakiness right after up -d)
           ok=0
-          for ((i=1; i<=30; i++)); do
-            if [ \"\\$(sudo docker ps -q -f name=vodeneevbet-parser -f status=running | wc -l)\" -ge 1 ]; then
+          for i in {1..30}; do
+            if [ "$(sudo docker ps -q -f name=vodeneevbet-parser -f status=running | wc -l)" -ge 1 ]; then
               ok=1
               break
             fi
             sleep 2
           done
-          if [ \"\\$ok\" -ne 1 ]; then
-            echo \"Parser container is not running after 60s\" >&2
+
+          if [ "$ok" -ne 1 ]; then
+            echo "Parser container is not running after 60s" >&2
             sudo docker ps -a --filter name=vodeneevbet-parser || true
             sudo docker logs --tail=200 vodeneevbet-parser 2>/dev/null || true
             exit 1
           fi
-          '"
+          EOF
 
       - name: Debug on failure
         if: failure()
@@ -196,46 +204,54 @@ jobs:
 
       - name: Pull & up + healthcheck
         run: |
-          ssh "${VM_USER}@${VM_HOST}" "bash -lc 'set -euo pipefail
-          cd \"${REMOTE_DIR}\"
-          # Compose automatically reads .env from the project directory
-          printf \"IMAGE_OWNER=%s\nIMAGE_TAG=%s\n\" \"${IMAGE_OWNER}\" \"${IMAGE_TAG}\" > .env
-          if [ -z \"${GHCR_TOKEN}\" ]; then
-            echo \"GHCR_TOKEN is not set. Add it as a GitHub Actions secret to pull private images from ghcr.io\" >&2
+          if [ -z "${GHCR_TOKEN}" ]; then
+            echo "GHCR_TOKEN is not set. Add it as a GitHub Actions secret to pull private images from ghcr.io" >&2
             exit 1
           fi
-          echo \"${GHCR_TOKEN}\" | sudo docker login ghcr.io -u \"${GHCR_USERNAME}\" --password-stdin
+
+          # Login by streaming token via stdin (avoid quoting issues).
+          printf %s "${GHCR_TOKEN}" | ssh "${VM_USER}@${VM_HOST}" "sudo docker login ghcr.io -u \"${GHCR_USERNAME}\" --password-stdin"
+
+          # Run the deploy script on the VM via stdin (avoid nested quote escaping).
+          ssh "${VM_USER}@${VM_HOST}" "REMOTE_DIR='${REMOTE_DIR}' IMAGE_OWNER='${IMAGE_OWNER}' IMAGE_TAG='${IMAGE_TAG}' bash -s" <<'EOF'
+          set -euo pipefail
+          cd "${REMOTE_DIR}"
+
+          # Compose automatically reads .env from the project directory
+          printf "IMAGE_OWNER=%s\nIMAGE_TAG=%s\n" "${IMAGE_OWNER}" "${IMAGE_TAG}" > .env
+
           # Prefer Compose v2 (docker compose). docker-compose v1 is incompatible with newer Docker versions (e.g. Docker 27+).
+          export COMPOSE_PROJECT_NAME=vodeneevbet_core
           if docker compose version >/dev/null 2>&1; then
-            export COMPOSE_PROJECT_NAME=vodeneevbet_core
             sudo docker compose down --remove-orphans || true
             sudo docker compose pull
             sudo docker compose up -d --remove-orphans --force-recreate
           elif command -v docker-compose >/dev/null 2>&1; then
-            export COMPOSE_PROJECT_NAME=vodeneevbet_core
             sudo docker-compose down --remove-orphans || true
             sudo docker-compose pull
             sudo docker-compose up -d --remove-orphans --force-recreate
           else
-            echo \"Docker Compose is not installed (need docker compose plugin or docker-compose)\" >&2
+            echo "Docker Compose is not installed (need docker compose plugin or docker-compose)" >&2
             exit 1
           fi
+
           # Wait for container to be running (avoid flakiness right after up -d)
           ok=0
-          for ((i=1; i<=30; i++)); do
-            if [ \"\\$(sudo docker ps -q -f name=vodeneevbet-calculator -f status=running | wc -l)\" -ge 1 ]; then
+          for i in {1..30}; do
+            if [ "$(sudo docker ps -q -f name=vodeneevbet-calculator -f status=running | wc -l)" -ge 1 ]; then
               ok=1
               break
             fi
             sleep 2
           done
-          if [ \"\\$ok\" -ne 1 ]; then
-            echo \"Calculator container is not running after 60s\" >&2
+
+          if [ "$ok" -ne 1 ]; then
+            echo "Calculator container is not running after 60s" >&2
             sudo docker ps -a --filter name=vodeneevbet-calculator || true
             sudo docker logs --tail=200 vodeneevbet-calculator 2>/dev/null || true
             exit 1
           fi
-          '"
+          EOF
 
       - name: Debug on failure
         if: failure()

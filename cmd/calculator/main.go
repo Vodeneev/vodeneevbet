@@ -11,6 +11,7 @@ import (
 
 	"github.com/Vodeneev/vodeneevbet/internal/calculator/calculator"
 	"github.com/Vodeneev/vodeneevbet/internal/pkg/config"
+	"github.com/Vodeneev/vodeneevbet/internal/pkg/health"
 	"github.com/Vodeneev/vodeneevbet/internal/pkg/storage"
 )
 
@@ -18,7 +19,9 @@ func main() {
 	fmt.Println("Starting Value Bet Calculator...")
 
 	var configPath string
+	var healthAddr string
 	flag.StringVar(&configPath, "config", "configs/local.yaml", "Path to config file")
+	flag.StringVar(&healthAddr, "health-addr", ":8080", "Health server listen address (e.g. :8080)")
 	flag.Parse()
 
 	fmt.Printf("Loading config from: %s\n", configPath)
@@ -50,6 +53,8 @@ func main() {
 		cancel()
 	}()
 
+	health.Run(ctx, healthAddr, "calculator")
+
 	log.Println("Starting Value Bet Calculator...")
 	if err := valueCalculator.Start(ctx); err != nil {
 		log.Fatalf("Calculator failed: %v", err)
@@ -57,4 +62,3 @@ func main() {
 
 	log.Println("Value Bet Calculator stopped")
 }
-

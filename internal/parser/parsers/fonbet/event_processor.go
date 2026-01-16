@@ -87,6 +87,10 @@ func (p *EventProcessor) ProcessEvent(event interface{}) error {
 		// Store using new hierarchical structure
 		if match != nil {
 			if matchModel, ok := (*match).(*models.Match); ok {
+				// Storage is optional: allow running without YDB.
+				if p.storage == nil {
+					return nil
+				}
 				if err := p.storage.StoreMatch(context.Background(), matchModel); err != nil {
 					return fmt.Errorf("failed to store match: %w", err)
 				}
@@ -199,6 +203,10 @@ func (p *EventProcessor) processMatchWithEvents(mainEvent interface{}, statistic
 	}
 
 	// Store the match
+	// Storage is optional: allow running without YDB.
+	if p.storage == nil {
+		return nil
+	}
 	if err := p.storage.StoreMatch(context.Background(), match); err != nil {
 		return fmt.Errorf("failed to store match: %w", err)
 	}

@@ -227,6 +227,11 @@ func (p *OptimizedEventProcessor) processMatchWithEventsAndFactors(
 	buildDuration := time.Since(buildStart)
 
 	if matchModel, ok := (*match).(*models.Match); ok {
+		// Storage is optional: allow running without YDB.
+		if p.storage == nil {
+			fmt.Printf("⚠️  Storage is not configured, skipping store (match %d)\n", mainEvent.ID)
+			return nil
+		}
 		// Store the match
 		storeStart := time.Now()
 		if err := p.storage.StoreMatch(context.Background(), matchModel); err != nil {

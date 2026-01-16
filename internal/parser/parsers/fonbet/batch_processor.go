@@ -433,6 +433,11 @@ func (p *BatchProcessor) processMatchWithEventsAndFactors(
 	}
 
 	if matchModel, ok := (*match).(*models.Match); ok {
+		// Storage is optional: if YDB client failed to initialize, we still want
+		// the parser to keep running (e.g. for debugging / dry-run parsing).
+		if p.storage == nil {
+			return nil
+		}
 		// Use batch storage for better performance
 		if batchStorage, ok := p.storage.(*storage.BatchYDBClient); ok {
 			if err := batchStorage.StoreMatchBatch(context.Background(), matchModel); err != nil {

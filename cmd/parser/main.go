@@ -12,13 +12,16 @@ import (
 	"github.com/Vodeneev/vodeneevbet/internal/parser/parsers"
 	"github.com/Vodeneev/vodeneevbet/internal/parser/parsers/fonbet"
 	"github.com/Vodeneev/vodeneevbet/internal/pkg/config"
+	"github.com/Vodeneev/vodeneevbet/internal/pkg/health"
 )
 
 func main() {
 	fmt.Println("Starting parser...")
 
 	var configPath string
+	var healthAddr string
 	flag.StringVar(&configPath, "config", "configs/local.yaml", "Path to config file")
+	flag.StringVar(&healthAddr, "health-addr", ":8080", "Health server listen address (e.g. :8080)")
 	flag.Parse()
 
 	fmt.Printf("Loading config from: %s\n", configPath)
@@ -59,6 +62,8 @@ func main() {
 		cancel()
 	}()
 
+	health.Run(ctx, healthAddr, "parser")
+
 	log.Println("Starting parser...")
 	if err := p.Start(ctx); err != nil {
 		log.Fatalf("Parser failed: %v", err)
@@ -66,4 +71,3 @@ func main() {
 
 	log.Println("Parser stopped")
 }
-

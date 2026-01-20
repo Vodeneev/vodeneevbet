@@ -7,7 +7,6 @@ set -euo pipefail
 # - docker + docker compose plugin (or docker-compose)
 # - access to GHCR if images are private (GHCR_TOKEN)
 #
-# Legacy systemd deploy is available at: scripts/deploy/legacy/deploy-parsers.systemd.sh
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
@@ -49,7 +48,7 @@ else
   echo "🔐 Skipping keys upload (set COPY_KEYS=1 to sync ./keys)"
 fi
 
-echo "🚦 Stopping legacy systemd service if exists..."
+echo "🚦 Stopping old systemd service if exists..."
 ssh "${VM_USER}@${VM_HOST}" "sudo systemctl stop vodeneevbet-parser >/dev/null 2>&1 || true"
 
 echo "🐳 Pull & up..."

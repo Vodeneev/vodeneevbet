@@ -101,12 +101,6 @@ make stop-all
 make start-all
 ```
 
-## Legacy: systemd деплой
-
-Старые systemd-скрипты сохранены для истории в `scripts/deploy/legacy/`, но **не рекомендуются**:
-- `scripts/deploy/legacy/deploy-parsers.systemd.sh`
-- `scripts/deploy/legacy/deploy-core-services.systemd.sh`
-
 ## Требования
 
 ### На удаленных машинах должно быть установлено:

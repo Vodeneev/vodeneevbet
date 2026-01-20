@@ -456,12 +456,10 @@ func (p *BatchProcessor) processMatchWithEventsAndFactors(
 	return fmt.Errorf("failed to convert match")
 }
 
-// ProcessEvent - legacy method for compatibility
 func (p *BatchProcessor) ProcessEvent(event interface{}) error {
 	return fmt.Errorf("ProcessEvent not supported in batch processor")
 }
 
-// ProcessEvents - legacy method for compatibility  
 func (p *BatchProcessor) ProcessEvents(events []interface{}) error {
 	return fmt.Errorf("ProcessEvents not supported in batch processor")
 }

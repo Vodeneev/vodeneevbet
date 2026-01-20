@@ -247,12 +247,10 @@ func (p *OptimizedEventProcessor) processMatchWithEventsAndFactors(
 	return fmt.Errorf("failed to convert match")
 }
 
-// ProcessEvent - legacy method for compatibility
 func (p *OptimizedEventProcessor) ProcessEvent(event interface{}) error {
 	return fmt.Errorf("ProcessEvent not supported in optimized processor")
 }
 
-// ProcessEvents - legacy method for compatibility  
 func (p *OptimizedEventProcessor) ProcessEvents(events []interface{}) error {
 	return fmt.Errorf("ProcessEvents not supported in optimized processor")
 }

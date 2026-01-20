@@ -2,8 +2,6 @@
 set -euo pipefail
 
 # Docker compose deploy script for vm-core-services (calculator service only).
-#
-# Legacy systemd deploy is available at: scripts/deploy/legacy/deploy-core-services.systemd.sh
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
@@ -45,7 +43,7 @@ else
   echo "🔐 Skipping keys upload (set COPY_KEYS=1 to sync ./keys)"
 fi
 
-echo "🚦 Stopping legacy systemd service(s) if exists..."
+echo "🚦 Stopping old systemd service(s) if exists..."
 ssh "${VM_USER}@${VM_HOST}" "sudo systemctl stop vodeneevbet-calculator >/dev/null 2>&1 || true; sudo systemctl stop vodeneevbet-api >/dev/null 2>&1 || true"
 
 echo "🐳 Pull & up..."

@@ -22,13 +22,13 @@ func (p *OddsParser) ParseEvents(jsonData []byte) ([]interface{}, error) {
 	if err := json.Unmarshal(jsonData, &response); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal JSON: %w", err)
 	}
-	
+
 	// Convert to interface{} slice
 	events := make([]interface{}, len(response.Events))
 	for i, event := range response.Events {
 		events[i] = event
 	}
-	
+
 	return events, nil
 }
 
@@ -38,13 +38,13 @@ func (p *OddsParser) ParseFactors(jsonData []byte) ([]interface{}, error) {
 	if err := json.Unmarshal(jsonData, &response); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal JSON: %w", err)
 	}
-	
+
 	// Convert to interface{} slice
 	factors := make([]interface{}, len(response.CustomFactors))
 	for i, factor := range response.CustomFactors {
 		factors[i] = factor
 	}
-	
+
 	return factors, nil
 }
 
@@ -52,7 +52,7 @@ func (p *OddsParser) ParseFactors(jsonData []byte) ([]interface{}, error) {
 func (p *OddsParser) ParseEventOdds(event FonbetEvent, factors []FonbetFactor) map[string]float64 {
 	// Determine event type based on Kind
 	eventType := p.getEventTypeFromKind(event.Kind)
-	
+
 	switch eventType {
 	case "corners":
 		return p.parseCornerOdds(factors)
@@ -107,10 +107,30 @@ func addIfParamSigned(odds map[string]float64, keyPrefix string, param string, v
 	odds[keyPrefix+param] = value
 }
 
+func addTotalFromFactor(odds map[string]float64, keyPrefix string, factor FonbetFactor) {
+	// Prefer pt when present (usually already formatted like "2.5" or "23.5").
+	param := factor.Pt
+	if param == "" && factor.P != 0 {
+		// Fallback: p is often pt*100 (e.g. 2250 => "22.5").
+		param = fmt.Sprintf("%.1f", float64(factor.P)/100.0)
+	}
+	addIfParam(odds, keyPrefix, param, factor.V)
+}
+
+func addHandicap(odds map[string]float64, factor FonbetFactor) {
+	switch factor.F {
+	// Validated on match handicaps (PAOK vs Betis) and corners handicaps.
+	case 910, 989, 1569, 927, 1672, 1677, 1680:
+		addIfParamSigned(odds, "handicap_home_", factor.Pt, factor.V)
+	case 912, 991, 1572, 928, 1675, 1678, 1681:
+		addIfParamSigned(odds, "handicap_away_", factor.Pt, factor.V)
+	}
+}
+
 // parseMainMatchOdds parses basic match odds (1X2, totals, etc.)
 func (p *OddsParser) parseMainMatchOdds(factors []FonbetFactor) map[string]float64 {
 	odds := make(map[string]float64)
-	
+
 	for _, factor := range factors {
 		switch factor.F {
 		// 1X2 odds (Fonbet list response commonly uses 921/922/923).
@@ -123,27 +143,22 @@ func (p *OddsParser) parseMainMatchOdds(factors []FonbetFactor) map[string]float
 
 		// Match total goals over/under (Fonbet commonly uses 930/931).
 		case 930: // Total over
-			addIfParam(odds, "total_over_", factor.Pt, factor.V)
+			addTotalFromFactor(odds, "total_over_", factor)
 		case 931: // Total under
-			addIfParam(odds, "total_under_", factor.Pt, factor.V)
+			addTotalFromFactor(odds, "total_under_", factor)
 
-		// Asian handicap (match) – validated on PAOK vs Betis:
-		// home side lines: 910(-1.5), 989(-1), 1569(+1), 927(0), 1672(+1.5), 1677(+2), 1680(+2.5)
-		// away side lines: 912(+1.5), 991(+1), 1572(-1), 928(0), 1675(-1.5), 1678(-2), 1681(-2.5)
-		case 910, 989, 1569, 927, 1672, 1677, 1680:
-			addIfParamSigned(odds, "handicap_home_", factor.Pt, factor.V)
-		case 912, 991, 1572, 928, 1675, 1678, 1681:
-			addIfParamSigned(odds, "handicap_away_", factor.Pt, factor.V)
+		default:
+			addHandicap(odds, factor)
 		}
 	}
-	
+
 	return odds
 }
 
 // parseCornerOdds parses corner betting odds
 func (p *OddsParser) parseCornerOdds(factors []FonbetFactor) map[string]float64 {
 	odds := make(map[string]float64)
-	
+
 	for _, factor := range factors {
 		switch factor.F {
 		// 1X2 for corners (team1/team2/draw in corners market).
@@ -156,19 +171,22 @@ func (p *OddsParser) parseCornerOdds(factors []FonbetFactor) map[string]float64 
 
 		// Total corners over/under.
 		case 930:
-			addIfParam(odds, "total_over_", factor.Pt, factor.V)
+			addTotalFromFactor(odds, "total_over_", factor)
 		case 931:
-			addIfParam(odds, "total_under_", factor.Pt, factor.V)
+			addTotalFromFactor(odds, "total_under_", factor)
+		default:
+			// Corners handicap uses the same signed pt mechanism.
+			addHandicap(odds, factor)
 		}
 	}
-	
+
 	return odds
 }
 
 // parseYellowCardOdds parses yellow card betting odds
 func (p *OddsParser) parseYellowCardOdds(factors []FonbetFactor) map[string]float64 {
 	odds := make(map[string]float64)
-	
+
 	for _, factor := range factors {
 		switch factor.F {
 		case 921:
@@ -178,19 +196,21 @@ func (p *OddsParser) parseYellowCardOdds(factors []FonbetFactor) map[string]floa
 		case 923:
 			odds["outcome_3"] = factor.V
 		case 930:
-			addIfParam(odds, "total_over_", factor.Pt, factor.V)
+			addTotalFromFactor(odds, "total_over_", factor)
 		case 931:
-			addIfParam(odds, "total_under_", factor.Pt, factor.V)
+			addTotalFromFactor(odds, "total_under_", factor)
+		default:
+			addHandicap(odds, factor)
 		}
 	}
-	
+
 	return odds
 }
 
 // parseFoulOdds parses foul betting odds
 func (p *OddsParser) parseFoulOdds(factors []FonbetFactor) map[string]float64 {
 	odds := make(map[string]float64)
-	
+
 	for _, factor := range factors {
 		switch factor.F {
 		case 921:
@@ -200,19 +220,26 @@ func (p *OddsParser) parseFoulOdds(factors []FonbetFactor) map[string]float64 {
 		case 923:
 			odds["outcome_3"] = factor.V
 		case 930:
-			addIfParam(odds, "total_over_", factor.Pt, factor.V)
+			addTotalFromFactor(odds, "total_over_", factor)
 		case 931:
-			addIfParam(odds, "total_under_", factor.Pt, factor.V)
+			addTotalFromFactor(odds, "total_under_", factor)
+		// Some fouls markets use 1696/1697 for totals over/under.
+		case 1696:
+			addTotalFromFactor(odds, "total_over_", factor)
+		case 1697:
+			addTotalFromFactor(odds, "total_under_", factor)
+		default:
+			addHandicap(odds, factor)
 		}
 	}
-	
+
 	return odds
 }
 
 // parseShotsOnTargetOdds parses shots on target betting odds
 func (p *OddsParser) parseShotsOnTargetOdds(factors []FonbetFactor) map[string]float64 {
 	odds := make(map[string]float64)
-	
+
 	for _, factor := range factors {
 		switch factor.F {
 		case 921:
@@ -222,19 +249,21 @@ func (p *OddsParser) parseShotsOnTargetOdds(factors []FonbetFactor) map[string]f
 		case 923:
 			odds["outcome_3"] = factor.V
 		case 930:
-			addIfParam(odds, "total_over_", factor.Pt, factor.V)
+			addTotalFromFactor(odds, "total_over_", factor)
 		case 931:
-			addIfParam(odds, "total_under_", factor.Pt, factor.V)
+			addTotalFromFactor(odds, "total_under_", factor)
+		default:
+			addHandicap(odds, factor)
 		}
 	}
-	
+
 	return odds
 }
 
 // parseOffsideOdds parses offside betting odds
 func (p *OddsParser) parseOffsideOdds(factors []FonbetFactor) map[string]float64 {
 	odds := make(map[string]float64)
-	
+
 	for _, factor := range factors {
 		switch factor.F {
 		case 921:
@@ -244,19 +273,21 @@ func (p *OddsParser) parseOffsideOdds(factors []FonbetFactor) map[string]float64
 		case 923:
 			odds["outcome_3"] = factor.V
 		case 930:
-			addIfParam(odds, "total_over_", factor.Pt, factor.V)
+			addTotalFromFactor(odds, "total_over_", factor)
 		case 931:
-			addIfParam(odds, "total_under_", factor.Pt, factor.V)
+			addTotalFromFactor(odds, "total_under_", factor)
+		default:
+			addHandicap(odds, factor)
 		}
 	}
-	
+
 	return odds
 }
 
 // parseThrowInOdds parses throw-in betting odds
 func (p *OddsParser) parseThrowInOdds(factors []FonbetFactor) map[string]float64 {
 	odds := make(map[string]float64)
-	
+
 	for _, factor := range factors {
 		switch factor.F {
 		case 921:
@@ -266,11 +297,13 @@ func (p *OddsParser) parseThrowInOdds(factors []FonbetFactor) map[string]float64
 		case 923:
 			odds["outcome_3"] = factor.V
 		case 930:
-			addIfParam(odds, "total_over_", factor.Pt, factor.V)
+			addTotalFromFactor(odds, "total_over_", factor)
 		case 931:
-			addIfParam(odds, "total_under_", factor.Pt, factor.V)
+			addTotalFromFactor(odds, "total_under_", factor)
+		default:
+			addHandicap(odds, factor)
 		}
 	}
-	
+
 	return odds
 }

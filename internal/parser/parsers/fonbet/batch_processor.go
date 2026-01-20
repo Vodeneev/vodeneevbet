@@ -4,7 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -21,6 +21,7 @@ type BatchProcessor struct {
 	matchBuilder interfaces.MatchBuilder
 	batchSize    int
 	workers      int
+	testLimit    int
 	// Динамические параметры
 	avgBatchTime time.Duration
 	targetBatchTime time.Duration
@@ -34,6 +35,7 @@ func NewBatchProcessor(
 	eventFetcher interfaces.EventFetcher,
 	oddsParser interfaces.OddsParser,
 	matchBuilder interfaces.MatchBuilder,
+	testLimit int,
 ) interfaces.EventProcessor {
 	return &BatchProcessor{
 		storage:      storage,
@@ -42,11 +44,56 @@ func NewBatchProcessor(
 		matchBuilder: matchBuilder,
 		batchSize:    50,  // Начальный размер батча
 		workers:      5,   // 5 параллельных воркеров
+		testLimit:    testLimit,
 		// Динамические параметры
 		avgBatchTime:   0,
 		targetBatchTime: 2 * time.Second, // Целевое время батча: 2 секунды
 		minBatchSize:   10,  // Минимальный размер батча
 		maxBatchSize:   200, // Максимальный размер батча
+	}
+}
+
+func splitTeamsFromName(name string) (string, string, bool) {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return "", "", false
+	}
+
+	// Common separators in match names.
+	separators := []string{" vs ", " - ", " — ", " – "}
+	for _, sep := range separators {
+		parts := strings.Split(name, sep)
+		if len(parts) != 2 {
+			continue
+		}
+		home := strings.TrimSpace(parts[0])
+		away := strings.TrimSpace(parts[1])
+		if home == "" || away == "" {
+			return "", "", false
+		}
+		return home, away, true
+	}
+
+	return "", "", false
+}
+
+func (p *BatchProcessor) normalizeMainEventTeams(event *FonbetAPIEvent) {
+	if event == nil {
+		return
+	}
+	if event.Team1 != "" && event.Team2 != "" {
+		return
+	}
+
+	home, away, ok := splitTeamsFromName(event.Name)
+	if !ok {
+		return
+	}
+	if event.Team1 == "" {
+		event.Team1 = home
+	}
+	if event.Team2 == "" {
+		event.Team2 = away
 	}
 }
 
@@ -76,9 +123,19 @@ func (p *BatchProcessor) ProcessSportEvents(sport string) error {
 	fmt.Printf("📊 Found %d events and %d factor groups in API response\n", 
 		len(apiResponse.Events), len(apiResponse.CustomFactors))
 
+	// Index custom factors by event id for fast lookup.
+	factorsByEventID := make(map[int64]FonbetFactorGroup, len(apiResponse.CustomFactors))
+	for _, g := range apiResponse.CustomFactors {
+		factorsByEventID[g.EventID] = g
+	}
+
+	// Build allowed sport IDs for requested sport (Fonbet uses hierarchical sport IDs;
+	// events often reference a "segment" id that belongs to a top-level sport category).
+	allowedSportIDs := p.getAllowedSportIDs(apiResponse.Sports, sport)
+
 	// Group events by match (Level 1 events are main matches)
 	groupStart := time.Now()
-	eventsByMatch := p.groupEventsByMatchFromAPI(apiResponse.Events)
+	eventsByMatch := p.groupEventsByMatchFromAPI(apiResponse.Events, allowedSportIDs)
 	groupDuration := time.Since(groupStart)
 	fmt.Printf("⏱️  Event grouping took: %v\n", groupDuration)
 	
@@ -86,7 +143,7 @@ func (p *BatchProcessor) ProcessSportEvents(sport string) error {
 
 	// Process matches in batches with parallel workers
 	processStart := time.Now()
-	processedCount := p.processMatchesInBatches(eventsByMatch, apiResponse.CustomFactors)
+	processedCount := p.processMatchesInBatches(eventsByMatch, factorsByEventID)
 	processDuration := time.Since(processStart)
 	
 	totalDuration := time.Since(startTime)
@@ -100,7 +157,7 @@ func (p *BatchProcessor) ProcessSportEvents(sport string) error {
 // processMatchesInBatches processes matches in batches with parallel workers
 func (p *BatchProcessor) processMatchesInBatches(
 	eventsByMatch map[string][]FonbetAPIEvent, 
-	customFactors []FonbetFactorGroup,
+	factorsByEventID map[int64]FonbetFactorGroup,
 ) int {
 	// Convert to slice for batch processing with filtering
 	matches := make([]MatchData, 0, len(eventsByMatch))
@@ -112,6 +169,7 @@ func (p *BatchProcessor) processMatchesInBatches(
 		}
 		
 		mainEvent := matchEvents[0]
+		p.normalizeMainEventTeams(&mainEvent)
 		
 		// Применяем фильтры к матчу
 		if !p.isValidMatch(mainEvent) {
@@ -120,17 +178,41 @@ func (p *BatchProcessor) processMatchesInBatches(
 		}
 		
 		statisticalEvents := matchEvents[1:]
-		matchFactors := p.getFactorsForMatch(matchID, customFactors)
+		// Ensure stat events have teams too (often missing in API list response).
+		for i := range statisticalEvents {
+			if statisticalEvents[i].Team1 == "" {
+				statisticalEvents[i].Team1 = mainEvent.Team1
+			}
+			if statisticalEvents[i].Team2 == "" {
+				statisticalEvents[i].Team2 = mainEvent.Team2
+			}
+		}
+
+		// Collect factor groups for main + statistical events (if available).
+		factorGroups := make([]FonbetFactorGroup, 0, 1+len(statisticalEvents))
+		if g, ok := factorsByEventID[mainEvent.ID]; ok {
+			factorGroups = append(factorGroups, g)
+		}
+		for _, se := range statisticalEvents {
+			if g, ok := factorsByEventID[se.ID]; ok {
+				factorGroups = append(factorGroups, g)
+			}
+		}
 		
 		matches = append(matches, MatchData{
 			ID:                matchID,
 			MainEvent:         mainEvent,
 			StatisticalEvents: statisticalEvents,
-			Factors:           matchFactors,
+			FactorGroups:      factorGroups,
 		})
 	}
 	
-	fmt.Printf("🔍 Filtered out %d matches with empty teams\n", filteredCount)
+	fmt.Printf("🔍 Filtered out %d matches (invalid teams/name)\n", filteredCount)
+
+	if p.testLimit > 0 && len(matches) > p.testLimit {
+		fmt.Printf("🧪 Test limit enabled: processing first %d matches (out of %d)\n", p.testLimit, len(matches))
+		matches = matches[:p.testLimit]
+	}
 	
 	fmt.Printf("🔄 Processing %d matches in batches of %d with %d workers\n", 
 		len(matches), p.batchSize, p.workers)
@@ -183,11 +265,6 @@ func (p *BatchProcessor) isValidMatch(event FonbetAPIEvent) bool {
 		return false
 	}
 	
-	// Фильтр 5: Пропускаем матчи без названия
-	if event.Name == "" {
-		return false
-	}
-	
 	// Фильтр 6: Пропускаем матчи с общими названиями команд
 	genericTeams := []string{
 		"Хозяева", "Гости", "Home", "Away", "Team 1", "Team 2", "TBD", "vs",
@@ -199,8 +276,9 @@ func (p *BatchProcessor) isValidMatch(event FonbetAPIEvent) bool {
 		}
 	}
 	
-	// Фильтр 7: Пропускаем матчи с очень короткими названиями (менее 5 символов)
-	if len(event.Name) < 5 {
+	// Фильтр 7: если имя есть — отбрасываем совсем короткие; пустое имя допускаем
+	// (у Fonbet в некоторых ответах `name` бывает пустым при наличии team1/team2).
+	if event.Name != "" && len(event.Name) < 5 {
 		return false
 	}
 	
@@ -296,7 +374,7 @@ func (p *BatchProcessor) worker(
 		err := p.processMatchWithEventsAndFactors(
 			match.MainEvent, 
 			match.StatisticalEvents, 
-			match.Factors,
+			match.FactorGroups,
 		)
 		
 		duration := time.Since(startTime)
@@ -319,7 +397,7 @@ type MatchData struct {
 	ID                string
 	MainEvent         FonbetAPIEvent
 	StatisticalEvents []FonbetAPIEvent
-	Factors           []FonbetFactor
+	FactorGroups      []FonbetFactorGroup
 }
 
 // ProcessResult represents the result of processing a match
@@ -330,13 +408,44 @@ type ProcessResult struct {
 	Duration time.Duration
 }
 
+func (p *BatchProcessor) getAllowedSportIDs(sports []FonbetSport, sportAlias string) map[int64]struct{} {
+	// Find top-level sport category id.
+	sportCategoryID := 0
+	for _, s := range sports {
+		if s.Kind == "sport" && s.Alias == sportAlias {
+			sportCategoryID = s.ID
+			break
+		}
+	}
+	if sportCategoryID == 0 {
+		return nil
+	}
+
+	allowed := make(map[int64]struct{}, len(sports))
+	for _, s := range sports {
+		// "segment" entries carry sportCategoryId which points to the top-level sport id.
+		if s.SportCategoryID == sportCategoryID {
+			allowed[int64(s.ID)] = struct{}{}
+		}
+	}
+
+	// Include the category id itself as a safety net (some responses may use it directly).
+	allowed[int64(sportCategoryID)] = struct{}{}
+	return allowed
+}
+
 // groupEventsByMatchFromAPI groups events by their parent match ID from API response
-func (p *BatchProcessor) groupEventsByMatchFromAPI(events []FonbetAPIEvent) map[string][]FonbetAPIEvent {
+func (p *BatchProcessor) groupEventsByMatchFromAPI(events []FonbetAPIEvent, allowedSportIDs map[int64]struct{}) map[string][]FonbetAPIEvent {
 	groups := make(map[string][]FonbetAPIEvent)
 	
 	// First, find all main matches (Level 1)
 	mainMatches := make(map[string]FonbetAPIEvent)
 	for _, event := range events {
+		if len(allowedSportIDs) > 0 {
+			if _, ok := allowedSportIDs[event.SportID]; !ok {
+				continue
+			}
+		}
 		if event.Level == 1 {
 			matchID := fmt.Sprintf("%d", event.ID)
 			mainMatches[matchID] = event
@@ -350,6 +459,11 @@ func (p *BatchProcessor) groupEventsByMatchFromAPI(events []FonbetAPIEvent) map[
 		
 		// Find all statistical events for this match
 		for _, event := range events {
+			if len(allowedSportIDs) > 0 {
+				if _, ok := allowedSportIDs[event.SportID]; !ok {
+					continue
+				}
+			}
 			if event.Level > 1 && event.ParentID > 0 {
 				parentID := fmt.Sprintf("%d", event.ParentID)
 				if parentID == matchID {
@@ -362,28 +476,11 @@ func (p *BatchProcessor) groupEventsByMatchFromAPI(events []FonbetAPIEvent) map[
 	return groups
 }
 
-// getFactorsForMatch gets factors for a specific match from the main API response
-func (p *BatchProcessor) getFactorsForMatch(matchID string, customFactors []FonbetFactorGroup) []FonbetFactor {
-	matchIDInt, err := strconv.ParseInt(matchID, 10, 64)
-	if err != nil {
-		return []FonbetFactor{}
-	}
-
-	// Find factors for this specific match
-	for _, factorGroup := range customFactors {
-		if factorGroup.EventID == matchIDInt {
-			return factorGroup.Factors
-		}
-	}
-
-	return []FonbetFactor{}
-}
-
 // processMatchWithEventsAndFactors processes a main match with all its statistical events and factors
 func (p *BatchProcessor) processMatchWithEventsAndFactors(
 	mainEvent FonbetAPIEvent, 
 	statisticalEvents []FonbetAPIEvent, 
-	factors []FonbetFactor,
+	factorGroups []FonbetFactorGroup,
 ) error {
 	// Convert main event to FonbetEvent
 	mainFonbetEvent := FonbetEvent{
@@ -420,9 +517,9 @@ func (p *BatchProcessor) processMatchWithEventsAndFactors(
 	}
 
 	// Convert factors to interface{}
-	factorsInterface := make([]interface{}, len(factors))
-	for i, factor := range factors {
-		factorsInterface[i] = factor
+	factorsInterface := make([]interface{}, len(factorGroups))
+	for i, g := range factorGroups {
+		factorsInterface[i] = g
 	}
 
 	// Use match builder to create the match

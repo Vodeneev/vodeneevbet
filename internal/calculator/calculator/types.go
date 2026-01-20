@@ -1,0 +1,28 @@
+package calculator
+
+import "time"
+
+// DiffBet represents a "same bet" odds diff between bookmakers.
+type DiffBet struct {
+	MatchGroupKey string    `json:"match_group_key"`
+	MatchName     string    `json:"match_name"`
+	StartTime     time.Time `json:"start_time"`
+	Sport         string    `json:"sport"`
+
+	EventType    string `json:"event_type"`   // e.g. main_match, corners
+	OutcomeType  string `json:"outcome_type"` // e.g. total_over, home_win
+	Parameter    string `json:"parameter"`    // e.g. 2.5, +1.5
+	BetKey       string `json:"bet_key"`      // eventType|outcomeType|parameter
+	Bookmakers   int    `json:"bookmakers"`   // number of bookmakers contributing
+
+	MinBookmaker string  `json:"min_bookmaker"`
+	MinOdd       float64 `json:"min_odd"`
+	MaxBookmaker string  `json:"max_bookmaker"`
+	MaxOdd       float64 `json:"max_odd"`
+
+	DiffAbs     float64 `json:"diff_abs"`     // max - min
+	DiffPercent float64 `json:"diff_percent"` // (max/min - 1) * 100
+
+	CalculatedAt time.Time `json:"calculated_at"`
+}
+

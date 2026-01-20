@@ -5,13 +5,14 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"github.com/Vodeneev/vodeneevbet/internal/calculator/calculator"
 	"github.com/Vodeneev/vodeneevbet/internal/pkg/config"
-	"github.com/Vodeneev/vodeneevbet/internal/pkg/health"
 	"github.com/Vodeneev/vodeneevbet/internal/pkg/storage"
 )
 
@@ -35,9 +36,13 @@ func main() {
 
 	ydbClient, err := storage.NewYDBClient(&cfg.YDB)
 	if err != nil {
-		log.Fatalf("Failed to connect to YDB: %v", err)
+		log.Printf("Failed to connect to YDB: %v", err)
+		log.Printf("calculator: starting without YDB (endpoints will return empty data)")
+		ydbClient = nil
 	}
-	defer ydbClient.Close()
+	if ydbClient != nil {
+		defer ydbClient.Close()
+	}
 
 	valueCalculator := calculator.NewValueCalculator(ydbClient, &cfg.ValueCalculator)
 
@@ -53,7 +58,35 @@ func main() {
 		cancel()
 	}()
 
-	health.Run(ctx, healthAddr, "calculator")
+	mux := http.NewServeMux()
+	mux.HandleFunc("/ping", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+		_, _ = w.Write([]byte("pong\n"))
+	})
+	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+		_, _ = w.Write([]byte("ok\n"))
+	})
+	valueCalculator.RegisterHTTP(mux)
+
+	srv := &http.Server{
+		Addr:              healthAddr,
+		Handler:           mux,
+		ReadHeaderTimeout: 5 * time.Second,
+	}
+
+	go func() {
+		<-ctx.Done()
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		_ = srv.Shutdown(shutdownCtx)
+	}()
+	go func() {
+		log.Printf("calculator: http server listening on %s", healthAddr)
+		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			log.Printf("calculator: http server error: %v", err)
+		}
+	}()
 
 	log.Println("Starting Value Bet Calculator...")
 	if err := valueCalculator.Start(ctx); err != nil {

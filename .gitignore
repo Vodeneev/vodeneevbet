@@ -73,8 +73,6 @@ bin/
 internal/parser/parser
 internal/api/api
 internal/export/export
-internal/calculator/calculator
-internal/calculator/calculator/main
 
 # Export files
 exports/

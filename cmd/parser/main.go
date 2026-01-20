@@ -36,14 +36,12 @@ func main() {
 	var p parsers.Parser
 	parserType := cfg.Parser.Type
 	if parserType == "" {
-		parserType = "test"
+		parserType = "fonbet"
 	}
 
 	switch parserType {
 	case "fonbet":
 		p = fonbet.NewParserWrapper(cfg)
-	case "test":
-		p = parsers.NewTestParser(cfg)
 	default:
 		log.Fatalf("Unknown parser type: %s", parserType)
 	}

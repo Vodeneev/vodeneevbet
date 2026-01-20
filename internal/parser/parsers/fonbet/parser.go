@@ -44,7 +44,7 @@ func NewParser(config *config.Config) *Parser {
 	eventFetcher := NewEventFetcher(config)
 	oddsParser := NewOddsParser()
 	matchBuilder := NewMatchBuilder("Fonbet")
-	eventProcessor := NewBatchProcessor(ydbClient, eventFetcher, oddsParser, matchBuilder)
+	eventProcessor := NewBatchProcessor(ydbClient, eventFetcher, oddsParser, matchBuilder, config.Parser.Fonbet.TestLimit)
 	
 	return &Parser{
 		eventFetcher:   eventFetcher,

@@ -19,44 +19,45 @@ type FonbetEvent struct {
 
 // FonbetAPIResponse represents the response structure from Fonbet API
 type FonbetAPIResponse struct {
-	PacketVersion                int64           `json:"packetVersion"`
-	FromVersion                  int64           `json:"fromVersion"`
-	CatalogTablesVersion         int64           `json:"catalogTablesVersion"`
-	CatalogSpecialTablesVersion  int64           `json:"catalogSpecialTablesVersion"`
-	CatalogEventViewVersion      int64           `json:"catalogEventViewVersion"`
-	SportBasicMarketsVersion     int64           `json:"sportBasicMarketsVersion"`
-	SportBasicFactorsVersion     int64           `json:"sportBasicFactorsVersion"`
-	IndependentFactorsVersion    int64           `json:"independentFactorsVersion"`
-	FactorsVersion               int64           `json:"factorsVersion"`
-	ComboFactorsVersion          int64           `json:"comboFactorsVersion"`
-	SportKindsVersion            int64           `json:"sportKindsVersion"`
-	TopCompetitionsVersion       int64           `json:"topCompetitionsVersion"`
-	EventSmartFiltersVersion     int64           `json:"eventSmartFiltersVersion"`
-	GeoCategoriesVersion         int64           `json:"geoCategoriesVersion"`
-	SportCategoriesVersion       int64           `json:"sportCategoriesVersion"`
-	PublicPromos                 []interface{}     `json:"publicPromos"`
-	TournamentInfos              []FonbetTournament `json:"tournamentInfos"`
-	Sports                       []FonbetSport      `json:"sports"`
-	Events                       []FonbetAPIEvent   `json:"events"`
-	CustomFactors                []FonbetFactorGroup `json:"customFactors"`
+	PacketVersion               int64               `json:"packetVersion"`
+	FromVersion                 int64               `json:"fromVersion"`
+	CatalogTablesVersion        int64               `json:"catalogTablesVersion"`
+	CatalogSpecialTablesVersion int64               `json:"catalogSpecialTablesVersion"`
+	CatalogEventViewVersion     int64               `json:"catalogEventViewVersion"`
+	SportBasicMarketsVersion    int64               `json:"sportBasicMarketsVersion"`
+	SportBasicFactorsVersion    int64               `json:"sportBasicFactorsVersion"`
+	IndependentFactorsVersion   int64               `json:"independentFactorsVersion"`
+	FactorsVersion              int64               `json:"factorsVersion"`
+	ComboFactorsVersion         int64               `json:"comboFactorsVersion"`
+	SportKindsVersion           int64               `json:"sportKindsVersion"`
+	TopCompetitionsVersion      int64               `json:"topCompetitionsVersion"`
+	EventSmartFiltersVersion    int64               `json:"eventSmartFiltersVersion"`
+	GeoCategoriesVersion        int64               `json:"geoCategoriesVersion"`
+	SportCategoriesVersion      int64               `json:"sportCategoriesVersion"`
+	PublicPromos                []interface{}       `json:"publicPromos"`
+	TournamentInfos             []FonbetTournament  `json:"tournamentInfos"`
+	Sports                      []FonbetSport       `json:"sports"`
+	Events                      []FonbetAPIEvent    `json:"events"`
+	CustomFactors               []FonbetFactorGroup `json:"customFactors"`
 }
 
 // FonbetTournament represents a tournament from Fonbet API
 type FonbetTournament struct {
-	ID               int    `json:"id"`
-	BasicSportID     int    `json:"basicSportId,omitempty"`
-	Caption          string `json:"caption"`
-	BackgroundColor  int    `json:"backgroundColor,omitempty"`
-	Icon             string `json:"icon,omitempty"`
-	TabCaption       string `json:"tabCaption,omitempty"`
+	ID              int    `json:"id"`
+	BasicSportID    int    `json:"basicSportId,omitempty"`
+	Caption         string `json:"caption"`
+	BackgroundColor int    `json:"backgroundColor,omitempty"`
+	Icon            string `json:"icon,omitempty"`
+	TabCaption      string `json:"tabCaption,omitempty"`
 }
 
 // FonbetSport represents a sport from Fonbet API
 type FonbetSport struct {
-	ID       int    `json:"id"`
-	Kind     string `json:"kind"`
-	Name     string `json:"name"`
-	Alias    string `json:"alias"`
+	ID              int    `json:"id"`
+	Kind            string `json:"kind"`
+	Name            string `json:"name"`
+	Alias           string `json:"alias"`
+	SportCategoryID int    `json:"sportCategoryId,omitempty"`
 }
 
 // FonbetAPIEvent represents an event from Fonbet API
@@ -77,9 +78,9 @@ type FonbetAPIEvent struct {
 
 // FonbetFactorGroup represents a group of factors for an event
 type FonbetFactorGroup struct {
-	EventID   int64          `json:"e"`
-	CountAll  int            `json:"countAll"`
-	Factors   []FonbetFactor `json:"factors"`
+	EventID  int64          `json:"e"`
+	CountAll int            `json:"countAll"`
+	Factors  []FonbetFactor `json:"factors"`
 }
 
 // FonbetFactor represents a betting factor from Fonbet API
@@ -89,4 +90,3 @@ type FonbetFactor struct {
 	P  int     `json:"p"`  // Parameter
 	Pt string  `json:"pt"` // Parameter text
 }
-

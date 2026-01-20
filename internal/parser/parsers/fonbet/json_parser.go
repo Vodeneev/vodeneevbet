@@ -23,18 +23,14 @@ func (p *JSONParser) ParseEvents(jsonData []byte) ([]FonbetEvent, error) {
 	// First, create a map of parent events to get team names
 	parentEvents := make(map[int64]FonbetAPIEvent)
 	for _, event := range response.Events {
-		if event.Level == 1 && event.Team1 != "" && event.Team2 != "" {
+		// Main match may come as level 0 or 1 depending on source/test.
+		if (event.Level == 0 || event.Level == 1) && event.Team1 != "" && event.Team2 != "" {
 			parentEvents[event.ID] = event
 		}
 	}
 	
 	var events []FonbetEvent
 	for _, event := range response.Events {
-		// Filter out events where one of the teams is 0 (missing team)
-		if event.Team1ID == 0 || event.Team2ID == 0 {
-			continue
-		}
-		
 		// Only include supported events
 		if p.isSupportedEvent(event) {
 			homeTeam := event.Team1
@@ -46,6 +42,20 @@ func (p *JSONParser) ParseEvents(jsonData []byte) ([]FonbetEvent, error) {
 					homeTeam = parent.Team1
 					awayTeam = parent.Team2
 				}
+			}
+
+			// In some test/legacy payloads, sub-events may come as level=1 with parentId.
+			// Treat them as statistical events for team attribution.
+			if event.Level == 1 && event.ParentID > 0 {
+				if parent, exists := parentEvents[event.ParentID]; exists {
+					homeTeam = parent.Team1
+					awayTeam = parent.Team2
+				}
+			}
+
+			// Skip events we can't attribute to teams at all.
+			if homeTeam == "" || awayTeam == "" {
+				continue
 			}
 			
 			events = append(events, FonbetEvent{
@@ -85,11 +95,6 @@ func (p *JSONParser) ParseCornerEvents(jsonData []byte) ([]FonbetAPIEvent, error
 	
 	var cornerEvents []FonbetAPIEvent
 	for _, event := range response.Events {
-		// Filter out events where one of the teams is 0 (missing team)
-		if event.Team1ID == 0 || event.Team2ID == 0 {
-			continue
-		}
-		
 		if p.isCornerEvent(event) {
 			cornerEvents = append(cornerEvents, event)
 		}
@@ -107,11 +112,6 @@ func (p *JSONParser) ParseYellowCardEvents(jsonData []byte) ([]FonbetAPIEvent, e
 	
 	var yellowCardEvents []FonbetAPIEvent
 	for _, event := range response.Events {
-		// Filter out events where one of the teams is 0 (missing team)
-		if event.Team1ID == 0 || event.Team2ID == 0 {
-			continue
-		}
-		
 		if p.isYellowCardEvent(event) {
 			yellowCardEvents = append(yellowCardEvents, event)
 		}
@@ -129,11 +129,6 @@ func (p *JSONParser) ParseFoulEvents(jsonData []byte) ([]FonbetAPIEvent, error) 
 	
 	var foulEvents []FonbetAPIEvent
 	for _, event := range response.Events {
-		// Filter out events where one of the teams is 0 (missing team)
-		if event.Team1ID == 0 || event.Team2ID == 0 {
-			continue
-		}
-		
 		if p.isFoulEvent(event) {
 			foulEvents = append(foulEvents, event)
 		}
@@ -151,11 +146,6 @@ func (p *JSONParser) ParseShotsOnTargetEvents(jsonData []byte) ([]FonbetAPIEvent
 	
 	var shotsEvents []FonbetAPIEvent
 	for _, event := range response.Events {
-		// Filter out events where one of the teams is 0 (missing team)
-		if event.Team1ID == 0 || event.Team2ID == 0 {
-			continue
-		}
-		
 		if p.isShotsOnTargetEvent(event) {
 			shotsEvents = append(shotsEvents, event)
 		}
@@ -173,11 +163,6 @@ func (p *JSONParser) ParseOffsideEvents(jsonData []byte) ([]FonbetAPIEvent, erro
 	
 	var offsideEvents []FonbetAPIEvent
 	for _, event := range response.Events {
-		// Filter out events where one of the teams is 0 (missing team)
-		if event.Team1ID == 0 || event.Team2ID == 0 {
-			continue
-		}
-		
 		if p.isOffsideEvent(event) {
 			offsideEvents = append(offsideEvents, event)
 		}
@@ -195,11 +180,6 @@ func (p *JSONParser) ParseThrowInEvents(jsonData []byte) ([]FonbetAPIEvent, erro
 	
 	var throwInEvents []FonbetAPIEvent
 	for _, event := range response.Events {
-		// Filter out events where one of the teams is 0 (missing team)
-		if event.Team1ID == 0 || event.Team2ID == 0 {
-			continue
-		}
-		
 		if p.isThrowInEvent(event) {
 			throwInEvents = append(throwInEvents, event)
 		}

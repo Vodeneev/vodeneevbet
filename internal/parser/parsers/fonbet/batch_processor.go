@@ -22,7 +22,6 @@ type BatchProcessor struct {
 	batchSize    int
 	workers      int
 	testLimit    int
-	debugOnce    sync.Once
 	// Динамические параметры
 	avgBatchTime time.Duration
 	targetBatchTime time.Duration
@@ -531,34 +530,8 @@ func (p *BatchProcessor) processMatchWithEventsAndFactors(
 	}
 
 	if matchModel, ok := (*match).(*models.Match); ok {
-		p.debugOnce.Do(func() {
-			fmt.Printf("🧾 Sample match built: id=%s home=%q away=%q start=%s events=%d\n",
-				matchModel.ID,
-				matchModel.HomeTeam,
-				matchModel.AwayTeam,
-				matchModel.StartTime.Format(time.RFC3339),
-				len(matchModel.Events),
-			)
-
-			maxEvents := 3
-			if len(matchModel.Events) < maxEvents {
-				maxEvents = len(matchModel.Events)
-			}
-			for i := 0; i < maxEvents; i++ {
-				ev := matchModel.Events[i]
-				fmt.Printf("  - event[%d] type=%s outcomes=%d\n", i, ev.EventType, len(ev.Outcomes))
-				maxOutcomes := 3
-				if len(ev.Outcomes) < maxOutcomes {
-					maxOutcomes = len(ev.Outcomes)
-				}
-				for j := 0; j < maxOutcomes; j++ {
-					o := ev.Outcomes[j]
-					fmt.Printf("    - outcome[%d] type=%s param=%q odds=%.4f\n", j, o.OutcomeType, o.Parameter, o.Odds)
-				}
-			}
-		})
-
-		// Storage is optional: allow running without YDB (e.g. local validation).
+		// Storage is optional: if YDB client failed to initialize, we still want
+		// the parser to keep running (e.g. for debugging / dry-run parsing).
 		if p.storage == nil {
 			return nil
 		}

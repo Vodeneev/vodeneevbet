@@ -33,6 +33,9 @@ ssh "${VM_USER}@${VM_HOST}" "sudo mkdir -p '${REMOTE_DIR}' '${REMOTE_DIR}/config
 echo "📦 Uploading docker-compose.yml..."
 scp "deploy/vm-core/docker-compose.yml" "${VM_USER}@${VM_HOST}:${REMOTE_DIR}/docker-compose.yml"
 
+echo "📦 Uploading nginx.conf..."
+scp "deploy/vm-core/nginx.conf" "${VM_USER}@${VM_HOST}:${REMOTE_DIR}/nginx.conf"
+
 echo "📦 Syncing configs..."
 rsync -avz --delete "./configs/" "${VM_USER}@${VM_HOST}:${REMOTE_DIR}/configs/"
 

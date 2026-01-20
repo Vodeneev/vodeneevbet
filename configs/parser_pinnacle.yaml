@@ -1,0 +1,29 @@
+# Parser config: Pinnacle -> YDB (auto-discovery)
+
+ydb:
+  endpoint: "grpcs://ydb.serverless.yandexcloud.net:2135"
+  database: "/ru-central1/b1gttv06r5rq0hc4filn/etn1sqa39tgha69fe2mt"
+  service_account_key_file: "../keys/service-account-key.json"
+  ttl:
+    enabled: true
+    expire_after: 4h
+    auto_setup: true
+
+postgres:
+  dsn: "host=localhost user=arb_user password=arb_password dbname=arb_db port=5432 sslmode=disable"
+
+parser:
+  type: "pinnacle"
+  interval: 60s
+  user_agent: "ValueBetBot/1.0 (https://github.com/Vodeneev/vodeneevbet)"
+  timeout: 30s
+  headers: {}
+  pinnacle:
+    base_url: "https://guest.api.arcadia.pinnacle.com"
+    api_key: ""        # optionally via ENV PINNACLE_API_KEY
+    device_uuid: ""    # optionally via ENV PINNACLE_DEVICE_UUID
+    matchup_ids: []    # empty => auto-discovery mode
+
+value_calculator:
+  sports: ["football"]
+

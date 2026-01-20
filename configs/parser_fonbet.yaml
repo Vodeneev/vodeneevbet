@@ -1,0 +1,39 @@
+# Parser config: Fonbet -> YDB (canonical match IDs)
+
+ydb:
+  endpoint: "grpcs://ydb.serverless.yandexcloud.net:2135"
+  database: "/ru-central1/b1gttv06r5rq0hc4filn/etn1sqa39tgha69fe2mt"
+  service_account_key_file: "../keys/service-account-key.json"
+  ttl:
+    enabled: true
+    expire_after: 4h
+    auto_setup: true
+
+postgres:
+  dsn: "host=localhost user=arb_user password=arb_password dbname=arb_db port=5432 sslmode=disable"
+
+parser:
+  type: "fonbet"
+  interval: 30s
+  user_agent: "ValueBetBot/1.0 (https://github.com/Vodeneev/vodeneevbet)"
+  timeout: 120s
+  headers:
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8"
+    "Accept-Language": "en-US,en;q=0.9"
+    "Accept-Encoding": "gzip, deflate, br"
+    "Connection": "keep-alive"
+    "Upgrade-Insecure-Requests": "1"
+  fonbet:
+    base_url: "https://line55w.bk6bba-resources.com/events/list"
+    lang: "en"
+    version: "60312723953"
+    test_limit: 0
+  pinnacle:
+    base_url: "https://guest.api.arcadia.pinnacle.com"
+    api_key: ""
+    device_uuid: ""
+    matchup_ids: []
+
+value_calculator:
+  sports: ["football"]
+

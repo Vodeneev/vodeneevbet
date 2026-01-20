@@ -413,4 +413,3 @@ func splitTeamsFromName(name string) (string, string, bool) {
 func isFinitePositiveOdd(v float64) bool {
 	return v > 1.000001 && !math.IsInf(v, 0) && !math.IsNaN(v)
 }
-

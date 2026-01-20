@@ -1,14 +1,23 @@
-# vm-parsers: Parser service only
+# vm-parsers: Parser service (Fonbet + Pinnacle)
 
 services:
-  parser:
+  parser_fonbet:
     image: ghcr.io/${IMAGE_OWNER}/vodeneevbet-parser:${IMAGE_TAG}
-    container_name: vodeneevbet-parser
+    container_name: vodeneevbet-parser-fonbet
     restart: unless-stopped
-    command: ["-config", "/app/configs/local.yaml"]
+    command: ["-config", "/app/configs/parser_fonbet.yaml"]
     ports:
       - "127.0.0.1:18080:8080"
     volumes:
       - ./configs:/app/configs:ro
       # configs/local.yaml uses ../keys/... (relative to /app/configs), which resolves to /app/keys/...
+      - ./keys:/app/keys:ro
+
+  parser_pinnacle:
+    image: ghcr.io/${IMAGE_OWNER}/vodeneevbet-parser:${IMAGE_TAG}
+    container_name: vodeneevbet-parser-pinnacle
+    restart: unless-stopped
+    command: ["-config", "/app/configs/parser_pinnacle.yaml"]
+    volumes:
+      - ./configs:/app/configs:ro
       - ./keys:/app/keys:ro

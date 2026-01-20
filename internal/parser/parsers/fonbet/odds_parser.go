@@ -107,6 +107,16 @@ func addIfParamSigned(odds map[string]float64, keyPrefix string, param string, v
 	odds[keyPrefix+param] = value
 }
 
+func addHandicap(odds map[string]float64, factor FonbetFactor) {
+	switch factor.F {
+	// Validated on match handicaps (PAOK vs Betis) and corners handicaps.
+	case 910, 989, 1569, 927, 1672, 1677, 1680:
+		addIfParamSigned(odds, "handicap_home_", factor.Pt, factor.V)
+	case 912, 991, 1572, 928, 1675, 1678, 1681:
+		addIfParamSigned(odds, "handicap_away_", factor.Pt, factor.V)
+	}
+}
+
 // parseMainMatchOdds parses basic match odds (1X2, totals, etc.)
 func (p *OddsParser) parseMainMatchOdds(factors []FonbetFactor) map[string]float64 {
 	odds := make(map[string]float64)
@@ -127,13 +137,8 @@ func (p *OddsParser) parseMainMatchOdds(factors []FonbetFactor) map[string]float
 		case 931: // Total under
 			addIfParam(odds, "total_under_", factor.Pt, factor.V)
 
-		// Asian handicap (match) – validated on PAOK vs Betis:
-		// home side lines: 910(-1.5), 989(-1), 1569(+1), 927(0), 1672(+1.5), 1677(+2), 1680(+2.5)
-		// away side lines: 912(+1.5), 991(+1), 1572(-1), 928(0), 1675(-1.5), 1678(-2), 1681(-2.5)
-		case 910, 989, 1569, 927, 1672, 1677, 1680:
-			addIfParamSigned(odds, "handicap_home_", factor.Pt, factor.V)
-		case 912, 991, 1572, 928, 1675, 1678, 1681:
-			addIfParamSigned(odds, "handicap_away_", factor.Pt, factor.V)
+		default:
+			addHandicap(odds, factor)
 		}
 	}
 	
@@ -159,6 +164,9 @@ func (p *OddsParser) parseCornerOdds(factors []FonbetFactor) map[string]float64 
 			addIfParam(odds, "total_over_", factor.Pt, factor.V)
 		case 931:
 			addIfParam(odds, "total_under_", factor.Pt, factor.V)
+		default:
+			// Corners handicap uses the same signed pt mechanism.
+			addHandicap(odds, factor)
 		}
 	}
 	
@@ -181,6 +189,8 @@ func (p *OddsParser) parseYellowCardOdds(factors []FonbetFactor) map[string]floa
 			addIfParam(odds, "total_over_", factor.Pt, factor.V)
 		case 931:
 			addIfParam(odds, "total_under_", factor.Pt, factor.V)
+		default:
+			addHandicap(odds, factor)
 		}
 	}
 	
@@ -203,6 +213,8 @@ func (p *OddsParser) parseFoulOdds(factors []FonbetFactor) map[string]float64 {
 			addIfParam(odds, "total_over_", factor.Pt, factor.V)
 		case 931:
 			addIfParam(odds, "total_under_", factor.Pt, factor.V)
+		default:
+			addHandicap(odds, factor)
 		}
 	}
 	
@@ -225,6 +237,8 @@ func (p *OddsParser) parseShotsOnTargetOdds(factors []FonbetFactor) map[string]f
 			addIfParam(odds, "total_over_", factor.Pt, factor.V)
 		case 931:
 			addIfParam(odds, "total_under_", factor.Pt, factor.V)
+		default:
+			addHandicap(odds, factor)
 		}
 	}
 	
@@ -247,6 +261,8 @@ func (p *OddsParser) parseOffsideOdds(factors []FonbetFactor) map[string]float64
 			addIfParam(odds, "total_over_", factor.Pt, factor.V)
 		case 931:
 			addIfParam(odds, "total_under_", factor.Pt, factor.V)
+		default:
+			addHandicap(odds, factor)
 		}
 	}
 	
@@ -269,6 +285,8 @@ func (p *OddsParser) parseThrowInOdds(factors []FonbetFactor) map[string]float64
 			addIfParam(odds, "total_over_", factor.Pt, factor.V)
 		case 931:
 			addIfParam(odds, "total_under_", factor.Pt, factor.V)
+		default:
+			addHandicap(odds, factor)
 		}
 	}
 	

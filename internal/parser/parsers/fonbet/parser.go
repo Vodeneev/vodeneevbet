@@ -85,7 +85,7 @@ func (p *Parser) Start(ctx context.Context) error {
 		}
 	}
 
-	// Run immediately, then on interval (like TestParser).
+	// Run immediately, then on interval.
 	runOnce()
 
 	ticker := time.NewTicker(interval)

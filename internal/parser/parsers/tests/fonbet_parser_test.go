@@ -8,8 +8,8 @@ import (
 	"github.com/Vodeneev/vodeneevbet/internal/parser/parsers/fonbet"
 )
 
-// createTestParser creates a parser for testing
-func createTestParser() *fonbet.ParserWrapper {
+// createParser creates a parser for testing
+func createParser() *fonbet.ParserWrapper {
 	cfg := &config.Config{
 		ValueCalculator: config.ValueCalculatorConfig{
 			Sports: []string{"football"},
@@ -23,7 +23,7 @@ func createTestParser() *fonbet.ParserWrapper {
 }
 
 func TestFonbetParser_Stop(t *testing.T) {
-	parser := createTestParser()
+	parser := createParser()
 
 	// Test stopping parser
 	err := parser.Stop()

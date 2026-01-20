@@ -3,7 +3,9 @@ package pinnacle
 import (
 	"context"
 	"fmt"
+	"sort"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/Vodeneev/vodeneevbet/internal/pkg/config"
@@ -83,6 +85,7 @@ func (p *Parser) processMatchup(ctx context.Context, matchupID int64) error {
 	if err != nil {
 		return err
 	}
+	logRelatedMapping(matchupID, related)
 	markets, err := p.client.GetRelatedStraightMarkets(matchupID)
 	if err != nil {
 		return err
@@ -154,71 +157,220 @@ func buildMatchFromPinnacle(matchupID int64, related []RelatedMatchup, markets [
 		UpdatedAt:  now,
 	}
 
-	event := models.Event{
-		ID:         matchID + "_main_match",
-		MatchID:    matchID,
-		EventType:  string(models.StandardEventMainMatch),
-		MarketName: models.GetMarketName(models.StandardEventMainMatch),
-		Bookmaker:  "Pinnacle",
-		Outcomes:   []models.Outcome{},
-		CreatedAt:  now,
-		UpdatedAt:  now,
+	// Map matchupId -> standard event type (main + related children).
+	matchupEventType := map[int64]models.StandardEventType{
+		matchupID: models.StandardEventMainMatch,
+	}
+	foundByParent := false
+	for _, r := range related {
+		if r.ParentID == nil || *r.ParentID != matchupID {
+			continue
+		}
+		if et, ok := inferStandardEventType(r); ok {
+			matchupEventType[r.ID] = et
+			foundByParent = true
+		}
+	}
+	// Fallback: some guest API responses may not include parentId; in that case
+	// treat other related matchup entities as candidates based on units/name.
+	if !foundByParent {
+		for _, r := range related {
+			if r.ID == matchupID {
+				continue
+			}
+			if et, ok := inferStandardEventType(r); ok {
+				matchupEventType[r.ID] = et
+			}
+		}
+	}
+
+	eventsByType := map[models.StandardEventType]*models.Event{}
+	getOrCreate := func(et models.StandardEventType) *models.Event {
+		if ev, ok := eventsByType[et]; ok {
+			return ev
+		}
+		ev := &models.Event{
+			ID:         matchID + "_" + string(et),
+			MatchID:    matchID,
+			EventType:  string(et),
+			MarketName: models.GetMarketName(et),
+			Bookmaker:  "Pinnacle",
+			Outcomes:   []models.Outcome{},
+			CreatedAt:  now,
+			UpdatedAt:  now,
+		}
+		eventsByType[et] = ev
+		return ev
 	}
 
 	// Period 0 only for now.
-	for _, m := range markets {
-		if m.MatchupID != matchupID || m.Period != 0 || m.Status != "open" {
+	for _, mkt := range markets {
+		if mkt.Period != 0 || mkt.Status != "open" {
 			continue
 		}
-		switch m.Type {
-		case "moneyline":
-			for _, pr := range m.Prices {
-				odds := americanToDecimal(pr.Price)
-				switch pr.Designation {
-				case "home":
-					event.Outcomes = append(event.Outcomes, newOutcome(event.ID, "home_win", "", odds))
-				case "away":
-					event.Outcomes = append(event.Outcomes, newOutcome(event.ID, "away_win", "", odds))
-				case "draw":
-					event.Outcomes = append(event.Outcomes, newOutcome(event.ID, "draw", "", odds))
-				}
-			}
-		case "total":
-			for _, pr := range m.Prices {
-				if pr.Points == nil {
-					continue
-				}
-				line := formatLine(*pr.Points)
-				odds := americanToDecimal(pr.Price)
-				switch pr.Designation {
-				case "over":
-					event.Outcomes = append(event.Outcomes, newOutcome(event.ID, "total_over", line, odds))
-				case "under":
-					event.Outcomes = append(event.Outcomes, newOutcome(event.ID, "total_under", line, odds))
-				}
-			}
-		case "spread":
-			// In Pinnacle spread points are symmetric: home is typically -points, away is +points.
-			for _, pr := range m.Prices {
-				if pr.Points == nil {
-					continue
-				}
-				odds := americanToDecimal(pr.Price)
-				switch pr.Designation {
-				case "home":
-					event.Outcomes = append(event.Outcomes, newOutcome(event.ID, "handicap_home", formatSignedLine(-*pr.Points), odds))
-				case "away":
-					event.Outcomes = append(event.Outcomes, newOutcome(event.ID, "handicap_away", formatSignedLine(+*pr.Points), odds))
-				}
-			}
+		et, ok := matchupEventType[mkt.MatchupID]
+		if !ok {
+			continue
 		}
+		ev := getOrCreate(et)
+		appendMarketOutcomes(ev, mkt)
 	}
 
-	if len(event.Outcomes) > 0 {
-		match.Events = append(match.Events, event)
+	// Emit events in stable order (main_match first).
+	ordered := []models.StandardEventType{
+		models.StandardEventMainMatch,
+		models.StandardEventCorners,
+		models.StandardEventYellowCards,
+		models.StandardEventFouls,
+		models.StandardEventShotsOnTarget,
+		models.StandardEventOffsides,
+		models.StandardEventThrowIns,
+	}
+	seen := map[models.StandardEventType]bool{}
+	for _, et := range ordered {
+		seen[et] = true
+		if ev := eventsByType[et]; ev != nil && len(ev.Outcomes) > 0 {
+			match.Events = append(match.Events, *ev)
+		}
+	}
+	// Any extra event types (future mappings) sorted by name for determinism.
+	var rest []string
+	restByName := map[string]models.StandardEventType{}
+	for et := range eventsByType {
+		if seen[et] {
+			continue
+		}
+		name := string(et)
+		rest = append(rest, name)
+		restByName[name] = et
+	}
+	sort.Strings(rest)
+	for _, name := range rest {
+		et := restByName[name]
+		if ev := eventsByType[et]; ev != nil && len(ev.Outcomes) > 0 {
+			match.Events = append(match.Events, *ev)
+		}
 	}
 
 	return match, nil
+}
+
+func inferStandardEventType(r RelatedMatchup) (models.StandardEventType, bool) {
+	// Pinnacle related matchup can encode statistical market via units="Corners" (etc)
+	// or via league name. We try both.
+	u := strings.ToLower(strings.TrimSpace(r.Units))
+	ln := strings.ToLower(strings.TrimSpace(r.League.Name))
+	s := u
+	if s == "" {
+		s = ln
+	}
+
+	switch {
+	case strings.Contains(s, "corner"):
+		return models.StandardEventCorners, true
+	case strings.Contains(s, "booking"):
+		// Pinnacle uses "Bookings" for cards market; we standardize into yellow_cards for now.
+		return models.StandardEventYellowCards, true
+	case strings.Contains(s, "yellow"):
+		return models.StandardEventYellowCards, true
+	case strings.Contains(s, "card"):
+		return models.StandardEventYellowCards, true
+	case strings.Contains(s, "foul"):
+		return models.StandardEventFouls, true
+	case strings.Contains(s, "shot") && strings.Contains(s, "target"):
+		return models.StandardEventShotsOnTarget, true
+	case strings.Contains(s, "offside"):
+		return models.StandardEventOffsides, true
+	case strings.Contains(s, "throw"):
+		return models.StandardEventThrowIns, true
+	default:
+		return "", false
+	}
+}
+
+func appendMarketOutcomes(ev *models.Event, m Market) {
+	switch m.Type {
+	case "moneyline":
+		for _, pr := range m.Prices {
+			odds := americanToDecimal(pr.Price)
+			switch pr.Designation {
+			case "home":
+				ev.Outcomes = append(ev.Outcomes, newOutcome(ev.ID, "home_win", "", odds))
+			case "away":
+				ev.Outcomes = append(ev.Outcomes, newOutcome(ev.ID, "away_win", "", odds))
+			case "draw":
+				ev.Outcomes = append(ev.Outcomes, newOutcome(ev.ID, "draw", "", odds))
+			}
+		}
+	case "total":
+		for _, pr := range m.Prices {
+			if pr.Points == nil {
+				continue
+			}
+			line := formatLine(*pr.Points)
+			odds := americanToDecimal(pr.Price)
+			switch pr.Designation {
+			case "over":
+				ev.Outcomes = append(ev.Outcomes, newOutcome(ev.ID, "total_over", line, odds))
+			case "under":
+				ev.Outcomes = append(ev.Outcomes, newOutcome(ev.ID, "total_under", line, odds))
+			}
+		}
+	case "spread":
+		// In Pinnacle spread points are symmetric: home is typically -points, away is +points.
+		for _, pr := range m.Prices {
+			if pr.Points == nil {
+				continue
+			}
+			odds := americanToDecimal(pr.Price)
+			switch pr.Designation {
+			case "home":
+				ev.Outcomes = append(ev.Outcomes, newOutcome(ev.ID, "handicap_home", formatSignedLine(-*pr.Points), odds))
+			case "away":
+				ev.Outcomes = append(ev.Outcomes, newOutcome(ev.ID, "handicap_away", formatSignedLine(+*pr.Points), odds))
+			}
+		}
+	}
+}
+
+func logRelatedMapping(matchupID int64, related []RelatedMatchup) {
+	// Debug helper: print how related matchups map to StandardEventType.
+	// This is critical for validating that Pinnacle "units"/league names map correctly.
+	type row struct {
+		id       int64
+		parentID *int64
+		units    string
+		league   string
+		mapped   string
+	}
+	var rows []row
+	for _, r := range related {
+		if r.ID == matchupID {
+			continue
+		}
+		mapped := "SKIP"
+		if et, ok := inferStandardEventType(r); ok {
+			mapped = string(et)
+		}
+		rows = append(rows, row{
+			id:       r.ID,
+			parentID: r.ParentID,
+			units:    r.Units,
+			league:   r.League.Name,
+			mapped:   mapped,
+		})
+	}
+	if len(rows) == 0 {
+		return
+	}
+	fmt.Printf("Pinnacle: related mapping for main matchup=%d (showing %d related)\n", matchupID, len(rows))
+	for _, it := range rows {
+		pid := "nil"
+		if it.parentID != nil {
+			pid = strconv.FormatInt(*it.parentID, 10)
+		}
+		fmt.Printf("  - related matchup=%d parentId=%s units=%q league=%q => %s\n", it.id, pid, it.units, it.league, it.mapped)
+	}
 }
 
 func americanToDecimal(american int) float64 {

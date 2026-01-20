@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"github.com/Vodeneev/vodeneevbet/internal/parser/parsers"
 	"github.com/Vodeneev/vodeneevbet/internal/parser/parsers/fonbet"
@@ -21,8 +22,10 @@ func main() {
 
 	var configPath string
 	var healthAddr string
+	var runFor time.Duration
 	flag.StringVar(&configPath, "config", "configs/local.yaml", "Path to config file")
 	flag.StringVar(&healthAddr, "health-addr", ":8080", "Health server listen address (e.g. :8080)")
+	flag.DurationVar(&runFor, "run-for", 0, "Auto-stop after duration (e.g. 10s, 1m). 0 = run until SIGINT/SIGTERM")
 	flag.Parse()
 
 	fmt.Printf("Loading config from: %s\n", configPath)
@@ -51,7 +54,13 @@ func main() {
 
 	fmt.Printf("Using parser: %s\n", p.GetName())
 
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx := context.Background()
+	var cancel context.CancelFunc = func() {}
+	if runFor > 0 {
+		ctx, cancel = context.WithTimeout(ctx, runFor)
+	} else {
+		ctx, cancel = context.WithCancel(ctx)
+	}
 	defer cancel()
 
 	sigChan := make(chan os.Signal, 1)

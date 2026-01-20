@@ -4,6 +4,7 @@ package pinnacle
 
 type RelatedMatchup struct {
 	ID        int64  `json:"id"`
+	ParentID  *int64 `json:"parentId,omitempty"`
 	StartTime string `json:"startTime"` // RFC3339
 	Type      string `json:"type"`      // "matchup"
 	Units     string `json:"units"`

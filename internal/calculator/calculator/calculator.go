@@ -157,7 +157,7 @@ func (c *ValueCalculator) recalculate(ctx context.Context) {
 
 	// We only need enough data to compute top-5 diffs.
 	// Keep this low because YDB joined reads can return lots of rows.
-	const matchLimit = 5
+	const matchLimit = 100
 
 	var (
 		matches []models.Match

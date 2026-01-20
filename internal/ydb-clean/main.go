@@ -19,7 +19,7 @@ func main() {
 	if err != nil {
 		log.Fatalf("Failed to load config: %v", err)
 	}
-	
+
 	// Fix key path for current directory
 	cfg.YDB.ServiceAccountKeyFile = "keys/service-account-key.json"
 
@@ -35,19 +35,19 @@ func main() {
 
 	// Clean all tables in correct order (due to foreign key constraints)
 	tables := []string{"outcomes", "events", "matches"}
-	
+
 	fmt.Printf("🗑️  Cleaning %d tables...\n", len(tables))
-	
+
 	for i, tableName := range tables {
 		fmt.Printf("⏳ Cleaning table %d/%d: %s\n", i+1, len(tables), tableName)
-		
+
 		startTime := time.Now()
 		err := ydbClient.CleanTable(ctx, tableName)
 		if err != nil {
 			log.Printf("❌ Failed to clean table %s: %v", tableName, err)
 			continue
 		}
-		
+
 		duration := time.Since(startTime)
 		fmt.Printf("✅ Table %s cleaned in %v\n", tableName, duration)
 	}
@@ -55,3 +55,4 @@ func main() {
 	fmt.Println("🎉 All tables cleaned successfully!")
 	fmt.Println("YDB is now empty and ready for fresh data.")
 }
+

@@ -88,26 +88,52 @@ func (p *OddsParser) getStandardEventType(event FonbetAPIEvent) models.StandardE
 	return models.StandardEventMainMatch // Default fallback
 }
 
+func addIfParam(odds map[string]float64, keyPrefix string, param string, value float64) {
+	if param == "" {
+		return
+	}
+	// In Fonbet, handicap-like lines are often encoded with a sign in pt (e.g. "+1.5", "-2").
+	// For totals we only want unsigned numeric lines (e.g. "2.5").
+	if param[0] == '+' || param[0] == '-' {
+		return
+	}
+	odds[keyPrefix+param] = value
+}
+
+func addIfParamSigned(odds map[string]float64, keyPrefix string, param string, value float64) {
+	if param == "" {
+		return
+	}
+	odds[keyPrefix+param] = value
+}
+
 // parseMainMatchOdds parses basic match odds (1X2, totals, etc.)
 func (p *OddsParser) parseMainMatchOdds(factors []FonbetFactor) map[string]float64 {
 	odds := make(map[string]float64)
 	
 	for _, factor := range factors {
 		switch factor.F {
-		case 1, 2, 3: // 1X2 odds
-			odds[fmt.Sprintf("outcome_%d", factor.F)] = factor.V
-		case 910, 912: // Total goals over/under (main totals)
-			if factor.Pt != "" {
-				odds[fmt.Sprintf("total_%s", factor.Pt)] = factor.V
-			}
-		default:
-			// Handle all other factors with parameters
-			if factor.Pt != "" {
-				odds[fmt.Sprintf("total_%s", factor.Pt)] = factor.V
-			} else if factor.P != 0 {
-				paramStr := fmt.Sprintf("%.1f", float64(factor.P)/100.0)
-				odds[fmt.Sprintf("total_%s", paramStr)] = factor.V
-			}
+		// 1X2 odds (Fonbet list response commonly uses 921/922/923).
+		case 921:
+			odds["outcome_1"] = factor.V
+		case 922:
+			odds["outcome_2"] = factor.V
+		case 923:
+			odds["outcome_3"] = factor.V
+
+		// Match total goals over/under (Fonbet commonly uses 930/931).
+		case 930: // Total over
+			addIfParam(odds, "total_over_", factor.Pt, factor.V)
+		case 931: // Total under
+			addIfParam(odds, "total_under_", factor.Pt, factor.V)
+
+		// Asian handicap (match) – validated on PAOK vs Betis:
+		// home side lines: 910(-1.5), 989(-1), 1569(+1), 927(0), 1672(+1.5), 1677(+2), 1680(+2.5)
+		// away side lines: 912(+1.5), 991(+1), 1572(-1), 928(0), 1675(-1.5), 1678(-2), 1681(-2.5)
+		case 910, 989, 1569, 927, 1672, 1677, 1680:
+			addIfParamSigned(odds, "handicap_home_", factor.Pt, factor.V)
+		case 912, 991, 1572, 928, 1675, 1678, 1681:
+			addIfParamSigned(odds, "handicap_away_", factor.Pt, factor.V)
 		}
 	}
 	
@@ -120,16 +146,19 @@ func (p *OddsParser) parseCornerOdds(factors []FonbetFactor) map[string]float64 
 	
 	for _, factor := range factors {
 		switch factor.F {
-		case 910, 912: // Total corners over/under
-			if factor.Pt != "" {
-				odds[fmt.Sprintf("total_%s", factor.Pt)] = factor.V
-			}
-		case 921, 922, 923, 924, 925: // Exact corner counts
-			odds[fmt.Sprintf("exact_%d", factor.F)] = factor.V
-		case 927, 928: // Alternative totals
-			if factor.Pt != "" {
-				odds[fmt.Sprintf("alt_total_%s", factor.Pt)] = factor.V
-			}
+		// 1X2 for corners (team1/team2/draw in corners market).
+		case 921:
+			odds["outcome_1"] = factor.V
+		case 922:
+			odds["outcome_2"] = factor.V
+		case 923:
+			odds["outcome_3"] = factor.V
+
+		// Total corners over/under.
+		case 930:
+			addIfParam(odds, "total_over_", factor.Pt, factor.V)
+		case 931:
+			addIfParam(odds, "total_under_", factor.Pt, factor.V)
 		}
 	}
 	
@@ -142,16 +171,16 @@ func (p *OddsParser) parseYellowCardOdds(factors []FonbetFactor) map[string]floa
 	
 	for _, factor := range factors {
 		switch factor.F {
-		case 910, 912: // Total yellow cards over/under
-			if factor.Pt != "" {
-				odds[fmt.Sprintf("total_%s", factor.Pt)] = factor.V
-			}
-		case 921, 922, 923, 924, 925: // Exact yellow card counts
-			odds[fmt.Sprintf("exact_%d", factor.F)] = factor.V
-		case 927, 928: // Alternative totals
-			if factor.Pt != "" {
-				odds[fmt.Sprintf("alt_total_%s", factor.Pt)] = factor.V
-			}
+		case 921:
+			odds["outcome_1"] = factor.V
+		case 922:
+			odds["outcome_2"] = factor.V
+		case 923:
+			odds["outcome_3"] = factor.V
+		case 930:
+			addIfParam(odds, "total_over_", factor.Pt, factor.V)
+		case 931:
+			addIfParam(odds, "total_under_", factor.Pt, factor.V)
 		}
 	}
 	
@@ -164,16 +193,16 @@ func (p *OddsParser) parseFoulOdds(factors []FonbetFactor) map[string]float64 {
 	
 	for _, factor := range factors {
 		switch factor.F {
-		case 910, 912: // Total fouls over/under
-			if factor.Pt != "" {
-				odds[fmt.Sprintf("total_%s", factor.Pt)] = factor.V
-			}
-		case 921, 922, 923, 924, 925: // Exact foul counts
-			odds[fmt.Sprintf("exact_%d", factor.F)] = factor.V
-		case 927, 928: // Alternative totals
-			if factor.Pt != "" {
-				odds[fmt.Sprintf("alt_total_%s", factor.Pt)] = factor.V
-			}
+		case 921:
+			odds["outcome_1"] = factor.V
+		case 922:
+			odds["outcome_2"] = factor.V
+		case 923:
+			odds["outcome_3"] = factor.V
+		case 930:
+			addIfParam(odds, "total_over_", factor.Pt, factor.V)
+		case 931:
+			addIfParam(odds, "total_under_", factor.Pt, factor.V)
 		}
 	}
 	
@@ -186,16 +215,16 @@ func (p *OddsParser) parseShotsOnTargetOdds(factors []FonbetFactor) map[string]f
 	
 	for _, factor := range factors {
 		switch factor.F {
-		case 910, 912: // Total shots on target over/under
-			if factor.Pt != "" {
-				odds[fmt.Sprintf("total_%s", factor.Pt)] = factor.V
-			}
-		case 921, 922, 923, 924, 925: // Exact shots on target counts
-			odds[fmt.Sprintf("exact_%d", factor.F)] = factor.V
-		case 927, 928: // Alternative totals
-			if factor.Pt != "" {
-				odds[fmt.Sprintf("alt_total_%s", factor.Pt)] = factor.V
-			}
+		case 921:
+			odds["outcome_1"] = factor.V
+		case 922:
+			odds["outcome_2"] = factor.V
+		case 923:
+			odds["outcome_3"] = factor.V
+		case 930:
+			addIfParam(odds, "total_over_", factor.Pt, factor.V)
+		case 931:
+			addIfParam(odds, "total_under_", factor.Pt, factor.V)
 		}
 	}
 	
@@ -208,16 +237,16 @@ func (p *OddsParser) parseOffsideOdds(factors []FonbetFactor) map[string]float64
 	
 	for _, factor := range factors {
 		switch factor.F {
-		case 910, 912: // Total offsides over/under
-			if factor.Pt != "" {
-				odds[fmt.Sprintf("total_%s", factor.Pt)] = factor.V
-			}
-		case 921, 922, 923, 924, 925: // Exact offside counts
-			odds[fmt.Sprintf("exact_%d", factor.F)] = factor.V
-		case 927, 928: // Alternative totals
-			if factor.Pt != "" {
-				odds[fmt.Sprintf("alt_total_%s", factor.Pt)] = factor.V
-			}
+		case 921:
+			odds["outcome_1"] = factor.V
+		case 922:
+			odds["outcome_2"] = factor.V
+		case 923:
+			odds["outcome_3"] = factor.V
+		case 930:
+			addIfParam(odds, "total_over_", factor.Pt, factor.V)
+		case 931:
+			addIfParam(odds, "total_under_", factor.Pt, factor.V)
 		}
 	}
 	
@@ -230,16 +259,16 @@ func (p *OddsParser) parseThrowInOdds(factors []FonbetFactor) map[string]float64
 	
 	for _, factor := range factors {
 		switch factor.F {
-		case 910, 912: // Total throw-ins over/under
-			if factor.Pt != "" {
-				odds[fmt.Sprintf("total_%s", factor.Pt)] = factor.V
-			}
-		case 921, 922, 923, 924, 925: // Exact throw-in counts
-			odds[fmt.Sprintf("exact_%d", factor.F)] = factor.V
-		case 927, 928: // Alternative totals
-			if factor.Pt != "" {
-				odds[fmt.Sprintf("alt_total_%s", factor.Pt)] = factor.V
-			}
+		case 921:
+			odds["outcome_1"] = factor.V
+		case 922:
+			odds["outcome_2"] = factor.V
+		case 923:
+			odds["outcome_3"] = factor.V
+		case 930:
+			addIfParam(odds, "total_over_", factor.Pt, factor.V)
+		case 931:
+			addIfParam(odds, "total_under_", factor.Pt, factor.V)
 		}
 	}
 	

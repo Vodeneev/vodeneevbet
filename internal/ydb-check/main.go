@@ -18,7 +18,7 @@ func main() {
 	if err != nil {
 		log.Fatalf("Failed to load config: %v", err)
 	}
-	
+
 	// Fix key path for current directory
 	cfg.YDB.ServiceAccountKeyFile = "keys/service-account-key.json"
 
@@ -34,20 +34,20 @@ func main() {
 
 	// Check each table
 	tables := []string{"matches", "events", "outcomes"}
-	
+
 	fmt.Println("📊 Checking YDB tables...")
-	
+
 	for _, tableName := range tables {
 		fmt.Printf("\n🔍 Checking table: %s\n", tableName)
-		
+
 		count, err := getTableCount(ctx, ydbClient, tableName)
 		if err != nil {
 			fmt.Printf("❌ Error checking table %s: %v\n", tableName, err)
 			continue
 		}
-		
+
 		fmt.Printf("📈 Table %s contains %d records\n", tableName, count)
-		
+
 		if count > 0 {
 			// Show sample data
 			fmt.Printf("📋 Sample data from %s:\n", tableName)
@@ -64,7 +64,7 @@ func main() {
 func getTableCount(ctx context.Context, client *storage.YDBClient, tableName string) (int, error) {
 	// This is a simplified version - in real implementation you would use YDB SDK
 	// For now, we'll use the existing GetMatchesWithLimit method as a proxy
-	
+
 	if tableName == "matches" {
 		matches, err := client.GetMatchesWithLimit(ctx, 1000) // Large limit to get all
 		if err != nil {
@@ -72,7 +72,7 @@ func getTableCount(ctx context.Context, client *storage.YDBClient, tableName str
 		}
 		return len(matches), nil
 	}
-	
+
 	// For events and outcomes, we would need to implement specific methods
 	// For now, return 0 as we don't have direct count methods
 	return 0, nil
@@ -84,14 +84,15 @@ func showSampleData(ctx context.Context, client *storage.YDBClient, tableName st
 		if err != nil {
 			return err
 		}
-		
+
 		for i, match := range matches {
-			fmt.Printf("  %d. Match ID: %s, Name: %s, Teams: %s vs %s\n", 
+			fmt.Printf("  %d. Match ID: %s, Name: %s, Teams: %s vs %s\n",
 				i+1, match.ID, match.Name, match.HomeTeam, match.AwayTeam)
-			fmt.Printf("     Events: %d, Created: %s\n", 
+			fmt.Printf("     Events: %d, Created: %s\n",
 				len(match.Events), match.CreatedAt.Format("2006-01-02 15:04:05"))
 		}
 	}
-	
+
 	return nil
 }
+

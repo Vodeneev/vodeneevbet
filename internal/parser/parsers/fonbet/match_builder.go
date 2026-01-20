@@ -3,6 +3,7 @@ package fonbet
 import (
 	"fmt"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/Vodeneev/vodeneevbet/internal/pkg/interfaces"
@@ -29,11 +30,11 @@ func (b *MatchBuilder) BuildMatch(mainEvent interface{}, statisticalEvents []int
 		return nil, fmt.Errorf("invalid main event type")
 	}
 
-	// Convert factors
-	fonbetFactors := make([]FonbetFactor, len(factors))
-	for i, factor := range factors {
-		if f, ok := factor.(FonbetFactor); ok {
-			fonbetFactors[i] = f
+	// Convert factor groups (customFactors) - each group belongs to a specific event ID.
+	factorGroups := make([]FonbetFactorGroup, 0, len(factors))
+	for _, factor := range factors {
+		if g, ok := factor.(FonbetFactorGroup); ok {
+			factorGroups = append(factorGroups, g)
 		}
 	}
 
@@ -66,7 +67,7 @@ func (b *MatchBuilder) BuildMatch(mainEvent interface{}, statisticalEvents []int
 	}
 	
 	// Add main match event
-	mainEventModel, err := b.buildMainEvent(fonbetEvent, fonbetFactors)
+	mainEventModel, err := b.buildMainEvent(fonbetEvent, factorGroups)
 	if err != nil {
 		return nil, fmt.Errorf("failed to build main event: %w", err)
 	}
@@ -82,7 +83,7 @@ func (b *MatchBuilder) BuildMatch(mainEvent interface{}, statisticalEvents []int
 		}
 		
 		// Get factors for this statistical event
-		statFactors := b.getFactorsForEvent(statEventID, fonbetFactors)
+		statFactors := b.getFactorsForEvent(statEventID, factorGroups)
 		if len(statFactors) > 0 {
 			statEventModel, err := b.buildStatisticalEvent(statEvent, statFactors)
 			if err != nil {
@@ -116,8 +117,13 @@ func (b *MatchBuilder) BuildEvent(eventData interface{}, odds map[string]float64
 }
 
 // buildMainEvent builds the main match event
-func (b *MatchBuilder) buildMainEvent(fonbetEvent FonbetEvent, factors []FonbetFactor) (*models.Event, error) {
+func (b *MatchBuilder) buildMainEvent(fonbetEvent FonbetEvent, factorGroups []FonbetFactorGroup) (*models.Event, error) {
 	// Parse odds for main event
+	eventID, err := strconv.ParseInt(fonbetEvent.ID, 10, 64)
+	if err != nil {
+		return nil, nil
+	}
+	factors := b.getFactorsForEvent(eventID, factorGroups)
 	oddsParser := &OddsParser{}
 	mainOdds := oddsParser.ParseEventOdds(fonbetEvent, factors)
 	
@@ -146,7 +152,11 @@ func (b *MatchBuilder) buildEventModel(fonbetEvent FonbetEvent, odds map[string]
 	now := time.Now()
 	
 	// Determine event type
-	eventType := b.getStandardEventType(fonbetEvent.Kind)
+	eventType, ok := b.getStandardEventType(fonbetEvent)
+	if !ok {
+		// Do not downgrade unknown statistical events into main_match.
+		return nil, nil
+	}
 	marketName := models.GetMarketName(eventType)
 	
 	event := &models.Event{
@@ -176,25 +186,30 @@ func (b *MatchBuilder) buildEventModel(fonbetEvent FonbetEvent, odds map[string]
 	return event, nil
 }
 
-// getStandardEventType maps Fonbet Kind to standard event type
-func (b *MatchBuilder) getStandardEventType(kind int64) models.StandardEventType {
-	switch kind {
+// getStandardEventType maps Fonbet event Kind/Level to standard event type.
+func (b *MatchBuilder) getStandardEventType(event FonbetEvent) (models.StandardEventType, bool) {
+	switch event.Kind {
 	case 1:
-		return models.StandardEventMainMatch
+		return models.StandardEventMainMatch, true
 	case 400100:
-		return models.StandardEventCorners
+		return models.StandardEventCorners, true
 	case 400200:
-		return models.StandardEventYellowCards
+		return models.StandardEventYellowCards, true
 	case 400300:
-		return models.StandardEventFouls
+		return models.StandardEventFouls, true
 	case 400400:
-		return models.StandardEventShotsOnTarget
+		return models.StandardEventShotsOnTarget, true
 	case 400500:
-		return models.StandardEventOffsides
+		return models.StandardEventOffsides, true
 	case 401000:
-		return models.StandardEventThrowIns
+		return models.StandardEventThrowIns, true
 	default:
-		return models.StandardEventMainMatch
+		// Unknown kind: keep main match only for actual main match-like events,
+		// but skip unknown statistical events.
+		if event.Level > 1 || event.RootKind == 400000 {
+			return "", false
+		}
+		return models.StandardEventMainMatch, true
 	}
 }
 
@@ -204,12 +219,22 @@ func (b *MatchBuilder) getStandardOutcomeType(outcome string) models.StandardOut
 	case outcome == "outcome_1":
 		return models.OutcomeTypeHomeWin
 	case outcome == "outcome_2":
-		return models.OutcomeTypeAwayWin
-	case outcome == "outcome_3":
 		return models.OutcomeTypeDraw
-	case len(outcome) > 6 && outcome[:6] == "total_":
+	case outcome == "outcome_3":
+		return models.OutcomeTypeAwayWin
+	case strings.HasPrefix(outcome, "handicap_home_"):
+		return models.StandardOutcomeType("handicap_home")
+	case strings.HasPrefix(outcome, "handicap_away_"):
+		return models.StandardOutcomeType("handicap_away")
+	case strings.HasPrefix(outcome, "total_over_"):
 		return models.OutcomeTypeTotalOver
-	case len(outcome) > 7 && outcome[:7] == "exact_":
+	case strings.HasPrefix(outcome, "total_under_"):
+		return models.OutcomeTypeTotalUnder
+	case strings.HasPrefix(outcome, "alt_total_over_"):
+		return models.OutcomeTypeAltTotalOver
+	case strings.HasPrefix(outcome, "alt_total_under_"):
+		return models.OutcomeTypeAltTotalUnder
+	case strings.HasPrefix(outcome, "exact_"):
 		return models.OutcomeTypeExactCount
 	default:
 		return models.StandardOutcomeType(outcome)
@@ -218,22 +243,36 @@ func (b *MatchBuilder) getStandardOutcomeType(outcome string) models.StandardOut
 
 // getParameterFromOutcome extracts parameter from outcome string
 func (b *MatchBuilder) getParameterFromOutcome(outcome string) string {
-	if len(outcome) > 6 && outcome[:6] == "total_" {
-		return outcome[6:]
+	if strings.HasPrefix(outcome, "handicap_home_") {
+		return strings.TrimPrefix(outcome, "handicap_home_")
 	}
-	if len(outcome) > 7 && outcome[:7] == "exact_" {
-		return outcome[7:]
+	if strings.HasPrefix(outcome, "handicap_away_") {
+		return strings.TrimPrefix(outcome, "handicap_away_")
+	}
+	if strings.HasPrefix(outcome, "total_over_") {
+		return strings.TrimPrefix(outcome, "total_over_")
+	}
+	if strings.HasPrefix(outcome, "total_under_") {
+		return strings.TrimPrefix(outcome, "total_under_")
+	}
+	if strings.HasPrefix(outcome, "alt_total_over_") {
+		return strings.TrimPrefix(outcome, "alt_total_over_")
+	}
+	if strings.HasPrefix(outcome, "alt_total_under_") {
+		return strings.TrimPrefix(outcome, "alt_total_under_")
+	}
+	if strings.HasPrefix(outcome, "exact_") {
+		return strings.TrimPrefix(outcome, "exact_")
 	}
 	return ""
 }
 
 // getFactorsForEvent gets factors for a specific event
-func (b *MatchBuilder) getFactorsForEvent(eventID int64, allFactors []FonbetFactor) []FonbetFactor {
-	var factors []FonbetFactor
-	for _, factor := range allFactors {
-		// This is a simplified implementation
-		// In reality, you'd need to match factors to events properly
-		factors = append(factors, factor)
+func (b *MatchBuilder) getFactorsForEvent(eventID int64, groups []FonbetFactorGroup) []FonbetFactor {
+	for _, g := range groups {
+		if g.EventID == eventID {
+			return g.Factors
+		}
 	}
-	return factors
+	return nil
 }

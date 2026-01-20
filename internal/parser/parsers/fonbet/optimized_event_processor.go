@@ -227,6 +227,11 @@ func (p *OptimizedEventProcessor) processMatchWithEventsAndFactors(
 	buildDuration := time.Since(buildStart)
 
 	if matchModel, ok := (*match).(*models.Match); ok {
+		// Storage is optional: allow running without YDB.
+		if p.storage == nil {
+			fmt.Printf("⚠️  Storage is not configured, skipping store (match %d)\n", mainEvent.ID)
+			return nil
+		}
 		// Store the match
 		storeStart := time.Now()
 		if err := p.storage.StoreMatch(context.Background(), matchModel); err != nil {
@@ -242,12 +247,10 @@ func (p *OptimizedEventProcessor) processMatchWithEventsAndFactors(
 	return fmt.Errorf("failed to convert match")
 }
 
-// ProcessEvent - legacy method for compatibility
 func (p *OptimizedEventProcessor) ProcessEvent(event interface{}) error {
 	return fmt.Errorf("ProcessEvent not supported in optimized processor")
 }
 
-// ProcessEvents - legacy method for compatibility  
 func (p *OptimizedEventProcessor) ProcessEvents(events []interface{}) error {
 	return fmt.Errorf("ProcessEvents not supported in optimized processor")
 }

@@ -1,24 +1,14 @@
-# vm-core-services: API + Calculator
+# vm-core-services: Calculator only
 
 services:
-  api:
-    image: ghcr.io/${IMAGE_OWNER}/vodeneevbet-api:${IMAGE_TAG}
-    container_name: vodeneevbet-api
-    restart: unless-stopped
-    command: ["-config", "/app/configs/local.yaml"]
-    ports:
-      - "8081:8081"
-    volumes:
-      - ./configs:/app/configs:ro
-      # configs/local.yaml uses ../../keys/... (relative to /app), which resolves to /keys/...
-      - ./keys:/keys:ro
-
   calculator:
     image: ghcr.io/${IMAGE_OWNER}/vodeneevbet-calculator:${IMAGE_TAG}
     container_name: vodeneevbet-calculator
     restart: unless-stopped
     command: ["-config", "/app/configs/local.yaml"]
+    ports:
+      - "127.0.0.1:18080:8080"
     volumes:
       - ./configs:/app/configs:ro
-      # configs/local.yaml uses ../../keys/... (relative to /app), which resolves to /keys/...
-      - ./keys:/keys:ro
+      # configs/local.yaml uses ../keys/... (relative to /app/configs), which resolves to /app/keys/...
+      - ./keys:/app/keys:ro

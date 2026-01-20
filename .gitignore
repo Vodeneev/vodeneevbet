@@ -62,6 +62,7 @@ redis_data/
 # Build artifacts
 dist/
 build/
+bin/
 
 # Compiled binaries (should not be committed)
 /parser
@@ -77,4 +78,3 @@ internal/calculator/calculator/main
 
 # Export files
 exports/
-internal/export/exports/

@@ -22,13 +22,13 @@ func (p *OddsParser) ParseEvents(jsonData []byte) ([]interface{}, error) {
 	if err := json.Unmarshal(jsonData, &response); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal JSON: %w", err)
 	}
-	
+
 	// Convert to interface{} slice
 	events := make([]interface{}, len(response.Events))
 	for i, event := range response.Events {
 		events[i] = event
 	}
-	
+
 	return events, nil
 }
 
@@ -38,13 +38,13 @@ func (p *OddsParser) ParseFactors(jsonData []byte) ([]interface{}, error) {
 	if err := json.Unmarshal(jsonData, &response); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal JSON: %w", err)
 	}
-	
+
 	// Convert to interface{} slice
 	factors := make([]interface{}, len(response.CustomFactors))
 	for i, factor := range response.CustomFactors {
 		factors[i] = factor
 	}
-	
+
 	return factors, nil
 }
 
@@ -52,7 +52,7 @@ func (p *OddsParser) ParseFactors(jsonData []byte) ([]interface{}, error) {
 func (p *OddsParser) ParseEventOdds(event FonbetEvent, factors []FonbetFactor) map[string]float64 {
 	// Determine event type based on Kind
 	eventType := p.getEventTypeFromKind(event.Kind)
-	
+
 	switch eventType {
 	case "corners":
 		return p.parseCornerOdds(factors)
@@ -130,7 +130,7 @@ func addHandicap(odds map[string]float64, factor FonbetFactor) {
 // parseMainMatchOdds parses basic match odds (1X2, totals, etc.)
 func (p *OddsParser) parseMainMatchOdds(factors []FonbetFactor) map[string]float64 {
 	odds := make(map[string]float64)
-	
+
 	for _, factor := range factors {
 		switch factor.F {
 		// 1X2 odds (Fonbet list response commonly uses 921/922/923).
@@ -151,14 +151,14 @@ func (p *OddsParser) parseMainMatchOdds(factors []FonbetFactor) map[string]float
 			addHandicap(odds, factor)
 		}
 	}
-	
+
 	return odds
 }
 
 // parseCornerOdds parses corner betting odds
 func (p *OddsParser) parseCornerOdds(factors []FonbetFactor) map[string]float64 {
 	odds := make(map[string]float64)
-	
+
 	for _, factor := range factors {
 		switch factor.F {
 		// 1X2 for corners (team1/team2/draw in corners market).
@@ -179,14 +179,14 @@ func (p *OddsParser) parseCornerOdds(factors []FonbetFactor) map[string]float64 
 			addHandicap(odds, factor)
 		}
 	}
-	
+
 	return odds
 }
 
 // parseYellowCardOdds parses yellow card betting odds
 func (p *OddsParser) parseYellowCardOdds(factors []FonbetFactor) map[string]float64 {
 	odds := make(map[string]float64)
-	
+
 	for _, factor := range factors {
 		switch factor.F {
 		case 921:
@@ -203,14 +203,14 @@ func (p *OddsParser) parseYellowCardOdds(factors []FonbetFactor) map[string]floa
 			addHandicap(odds, factor)
 		}
 	}
-	
+
 	return odds
 }
 
 // parseFoulOdds parses foul betting odds
 func (p *OddsParser) parseFoulOdds(factors []FonbetFactor) map[string]float64 {
 	odds := make(map[string]float64)
-	
+
 	for _, factor := range factors {
 		switch factor.F {
 		case 921:
@@ -232,14 +232,14 @@ func (p *OddsParser) parseFoulOdds(factors []FonbetFactor) map[string]float64 {
 			addHandicap(odds, factor)
 		}
 	}
-	
+
 	return odds
 }
 
 // parseShotsOnTargetOdds parses shots on target betting odds
 func (p *OddsParser) parseShotsOnTargetOdds(factors []FonbetFactor) map[string]float64 {
 	odds := make(map[string]float64)
-	
+
 	for _, factor := range factors {
 		switch factor.F {
 		case 921:
@@ -256,14 +256,14 @@ func (p *OddsParser) parseShotsOnTargetOdds(factors []FonbetFactor) map[string]f
 			addHandicap(odds, factor)
 		}
 	}
-	
+
 	return odds
 }
 
 // parseOffsideOdds parses offside betting odds
 func (p *OddsParser) parseOffsideOdds(factors []FonbetFactor) map[string]float64 {
 	odds := make(map[string]float64)
-	
+
 	for _, factor := range factors {
 		switch factor.F {
 		case 921:
@@ -280,14 +280,14 @@ func (p *OddsParser) parseOffsideOdds(factors []FonbetFactor) map[string]float64
 			addHandicap(odds, factor)
 		}
 	}
-	
+
 	return odds
 }
 
 // parseThrowInOdds parses throw-in betting odds
 func (p *OddsParser) parseThrowInOdds(factors []FonbetFactor) map[string]float64 {
 	odds := make(map[string]float64)
-	
+
 	for _, factor := range factors {
 		switch factor.F {
 		case 921:
@@ -304,6 +304,6 @@ func (p *OddsParser) parseThrowInOdds(factors []FonbetFactor) map[string]float64
 			addHandicap(odds, factor)
 		}
 	}
-	
+
 	return odds
 }

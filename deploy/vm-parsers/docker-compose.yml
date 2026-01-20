@@ -6,7 +6,9 @@ services:
     container_name: vodeneevbet-parser
     restart: unless-stopped
     command: ["-config", "/app/configs/local.yaml"]
+    ports:
+      - "127.0.0.1:18080:8080"
     volumes:
       - ./configs:/app/configs:ro
-      # configs/local.yaml uses ../../keys/... (relative to /app), which resolves to /keys/...
-      - ./keys:/keys:ro
+      # configs/local.yaml uses ../keys/... (relative to /app/configs), which resolves to /app/keys/...
+      - ./keys:/app/keys:ro

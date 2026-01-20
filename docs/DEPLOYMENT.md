@@ -5,7 +5,7 @@
 ## Архитектура деплоя
 
 - **vm-parsers** (158.160.197.172): Запускает Parser Service
-- **vm-core-services** (158.160.200.253): Запускает Calculator и API Services
+- **vm-core-services** (158.160.200.253): Запускает Calculator Service
 
 ## Быстрый старт
 
@@ -18,9 +18,20 @@ make deploy-all
 ./scripts/deploy/deploy-all.sh
 ```
 
-**Windows (PowerShell):**
-```powershell
-.\scripts\deploy\deploy-all.ps1
+### Переменные окружения для ручного деплоя
+
+Скрипты `scripts/deploy/deploy-*.sh` ожидают, что вы укажете, откуда тянуть образы:
+
+```bash
+export IMAGE_OWNER="vodeneev"   # namespace в GHCR (обычно владелец репозитория)
+export IMAGE_TAG="main"         # или конкретный тег
+
+# если образы приватные:
+export GHCR_TOKEN="..."         # PAT с read:packages
+export GHCR_USERNAME="vodeneev" # опционально
+
+# если нужно синкнуть ./keys на VM (по умолчанию скрипт не трогает ключи):
+export COPY_KEYS=1
 ```
 
 ### Деплой отдельных сервисов
@@ -32,7 +43,7 @@ make deploy-parsers
 ./scripts/deploy/deploy-parsers.sh
 ```
 
-**Core Services (Calculator + API):**
+**Core Services (Calculator):**
 ```bash
 make deploy-core
 # или
@@ -41,12 +52,13 @@ make deploy-core
 
 ## Что делает скрипт деплоя
 
-1. **Проверка подключения** - Проверяет доступность VM через SSH
-2. **Создание директорий** - Создает необходимые директории на удаленной машине
-3. **Синхронизация файлов** - Копирует актуальный код на VM
-4. **Сборка** - Компилирует Go сервисы на удаленной машине
-5. **Установка systemd** - Настраивает автозапуск через systemd
-6. **Перезапуск** - Перезапускает сервисы с новой версией
+Актуальные скрипты деплоя используют **Docker Compose на VM** (без rsync кода и без сборки Go на сервере):
+
+1. **Проверка подключения** — SSH до VM
+2. **Подготовка директорий** — `/opt/vodeneevbet/{parsers,core}`
+3. **Загрузка `docker-compose.yml`** — из `deploy/vm-*/docker-compose.yml`
+4. **Синк `configs/`** — кладётся рядом с compose (ключи по умолчанию не трогаем)
+5. **Pull & up** — `docker compose pull && docker compose up -d`
 
 ## Управление сервисами
 
@@ -59,13 +71,10 @@ make status
 Или вручную:
 ```bash
 # Parser
-ssh vm-parsers "sudo systemctl status vodeneevbet-parser"
+ssh vm-parsers "sudo docker ps --filter name=vodeneevbet-parser"
 
 # Calculator
-ssh vm-core-services "sudo systemctl status vodeneevbet-calculator"
-
-# API
-ssh vm-core-services "sudo systemctl status vodeneevbet-api"
+ssh vm-core-services "sudo docker ps --filter name=vodeneevbet-calculator"
 ```
 
 ### Просмотр логов
@@ -74,17 +83,12 @@ ssh vm-core-services "sudo systemctl status vodeneevbet-api"
 # Parser logs
 make logs-parser
 # или
-ssh vm-parsers "sudo journalctl -u vodeneevbet-parser -f"
+ssh vm-parsers "sudo docker logs -f vodeneevbet-parser"
 
 # Calculator logs
 make logs-calculator
 # или
-ssh vm-core-services "sudo journalctl -u vodeneevbet-calculator -f"
-
-# API logs
-make logs-api
-# или
-ssh vm-core-services "sudo journalctl -u vodeneevbet-api -f"
+ssh vm-core-services "sudo docker logs -f vodeneevbet-calculator"
 ```
 
 ### Остановка/Запуск
@@ -97,75 +101,37 @@ make stop-all
 make start-all
 ```
 
-## Systemd сервисы
-
-Сервисы настроены для автоматического запуска при загрузке системы и автоматического перезапуска при сбоях.
-
-**Файлы конфигурации:**
-- `scripts/deploy/systemd/vodeneevbet-parser.service`
-- `scripts/deploy/systemd/vodeneevbet-calculator.service`
-- `scripts/deploy/systemd/vodeneevbet-api.service`
-
 ## Требования
 
 ### На удаленных машинах должно быть установлено:
 
-1. **Go** (версия 1.22+)
-   ```bash
-   # Проверка
-   ssh vm-parsers "go version"
-   ```
-
-2. **Systemd** (обычно уже установлен на Linux системах)
-
+1. **Docker**
+2. **Docker Compose** (плагин `docker compose` или `docker-compose`)
 3. **SSH доступ** с правами sudo для пользователя `vodeneevm`
 
 ### На локальной машине:
 
 1. **SSH клиент** с настроенным доступом к VM
-2. **rsync** (для Linux/Mac) или **scp** (для Windows)
-3. **Make** (опционально, для использования Makefile)
+2. **rsync** (для синка `configs/`)
+3. **Make** (опционально)
 
 ## Автоматизация деплоя через CI/CD
 
 ### GitHub Actions
 
-Автоматический деплой через GitHub Actions уже настроен! Файл `.github/workflows/deploy.yml` создан.
+Workflow `.github/workflows/deploy.yml`:
 
-**Настройка:**
-1. Создайте SSH ключ для деплоя
-2. Добавьте приватный ключ в GitHub Secrets как `SSH_PRIVATE_KEY`
-3. Добавьте адреса VM в GitHub Secrets:
-   - `VM_PARSERS_HOST` (например, `158.160.197.172`)
-   - `VM_CORE_HOST` (например, `158.160.200.253`)
-4. *(Опционально)* добавьте `VM_USER`, если пользователь на VM отличается от `vodeneevm`
-5. Если образы в GHCR приватные — добавьте `GHCR_TOKEN` (PAT с `read:packages`) и при необходимости `GHCR_USERNAME`
-3. При пуше в `main`/`master` автоматически запустится деплой
+- собирает образы `parser` и `calculator` в GHCR
+- по SSH деплоит на две VM через `docker compose`
 
-📖 **Подробная инструкция:** [docs/CI_CD_SETUP.md](CI_CD_SETUP.md)
+**Secrets (обязательные):**
+- `SSH_PRIVATE_KEY` — приватный ключ для SSH (без passphrase)
+- `VM_PARSERS_HOST` — IP/DNS vm-parsers
+- `VM_CORE_HOST` — IP/DNS vm-core-services
 
-### GitLab CI
-
-Автоматический деплой через GitLab CI уже настроен! Файл `.gitlab-ci.yml` создан.
-
-**Настройка:**
-1. Создайте SSH ключ для деплоя
-2. Добавьте приватный ключ в GitLab CI/CD Variables как `SSH_PRIVATE_KEY`
-3. При пуше в `main`/`master` автоматически запустится деплой
-
-📖 **Подробная инструкция:** [docs/CI_CD_SETUP.md](CI_CD_SETUP.md)
-
-### Git Hook для локального деплоя
-
-Для автоматического деплоя после каждого коммита локально:
-
-Создайте `.git/hooks/post-commit`:
-
-```bash
-#!/bin/bash
-# Автоматический деплой после коммита
-./scripts/deploy/deploy-all.sh
-```
+**Secrets (опциональные):**
+- `VM_USER` — пользователь на VM (если отличается)
+- `GHCR_TOKEN` + `GHCR_USERNAME` — если образы в GHCR приватные (PAT с `read:packages`)
 
 ## Troubleshooting
 
@@ -180,39 +146,36 @@ make start-all
 
 **Решение:**
 1. Убедитесь, что пользователь `vodeneevm` имеет права sudo
-2. Проверьте права на директорию: `ssh vm-parsers "ls -la /home/vodeneevm"`
+2. Проверьте права на директорию: `ssh vm-parsers "ls -la /opt/vodeneevbet"`
 
 ### Проблема: "go: command not found"
 
 **Решение:**
-1. Установите Go на удаленной машине
-2. Убедитесь, что Go добавлен в PATH
+Для compose-деплоя Go на VM не нужен. Убедитесь, что на VM установлены Docker и Docker Compose.
 
 ### Проблема: Сервис не запускается
 
 **Решение:**
-1. Проверьте логи: `sudo journalctl -u vodeneevbet-parser -n 50`
-2. Проверьте конфигурацию: `cat configs/local.yaml`
-3. Проверьте права на файлы: `ls -la /home/vodeneevm/vodeneevbet/internal/parser/parser`
+1. Проверьте логи: `ssh vm-parsers "sudo docker logs --tail=200 vodeneevbet-parser"`
+2. Проверьте конфигурацию: `ssh vm-parsers "cat /opt/vodeneevbet/parsers/configs/local.yaml"`
+3. Проверьте директорию: `ssh vm-parsers "ls -la /opt/vodeneevbet/parsers"`
 
 ## Структура файлов на VM
 
 После деплоя структура на VM выглядит так:
 
 ```
-/home/vodeneevm/vodeneevbet/
-├── internal/
-│   ├── parser/          # На vm-parsers
-│   ├── calculator/      # На vm-core-services
-│   ├── api/             # На vm-core-services
-│   └── pkg/             # Общие библиотеки
-├── configs/
-│   └── local.yaml
-├── keys/
-│   └── service-account-key.json
-├── logs/
-├── go.mod
-└── go.sum
+/opt/vodeneevbet/
+├── parsers/
+│   ├── docker-compose.yml
+│   ├── .env
+│   ├── configs/
+│   └── keys/   # обычно вручную (секреты)
+└── core/
+    ├── docker-compose.yml
+    ├── .env
+    ├── configs/
+    └── keys/   # обычно вручную (секреты)
 ```
 
 ## Безопасность

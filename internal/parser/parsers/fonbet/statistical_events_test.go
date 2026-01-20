@@ -17,7 +17,9 @@ func TestUnifiedEventParsing(t *testing.T) {
 				"sportId": 1,
 				"kind": 1,
 				"rootKind": 1,
-				"level": 0,
+				"level": 1,
+				"team1Id": 101,
+				"team2Id": 202,
 				"team1": "Team A",
 				"team2": "Team B"
 			},
@@ -28,7 +30,9 @@ func TestUnifiedEventParsing(t *testing.T) {
 				"sportId": 1,
 				"kind": 400100,
 				"rootKind": 400000,
-				"level": 1,
+				"level": 2,
+				"team1Id": 101,
+				"team2Id": 202,
 				"parentId": 1
 			},
 			{
@@ -38,7 +42,9 @@ func TestUnifiedEventParsing(t *testing.T) {
 				"sportId": 1,
 				"kind": 400200,
 				"rootKind": 400000,
-				"level": 1,
+				"level": 2,
+				"team1Id": 101,
+				"team2Id": 202,
 				"parentId": 1
 			},
 			{
@@ -48,7 +54,9 @@ func TestUnifiedEventParsing(t *testing.T) {
 				"sportId": 1,
 				"kind": 400300,
 				"rootKind": 400000,
-				"level": 1,
+				"level": 2,
+				"team1Id": 101,
+				"team2Id": 202,
 				"parentId": 1
 			},
 			{
@@ -58,7 +66,9 @@ func TestUnifiedEventParsing(t *testing.T) {
 				"sportId": 1,
 				"kind": 400400,
 				"rootKind": 400000,
-				"level": 1,
+				"level": 2,
+				"team1Id": 101,
+				"team2Id": 202,
 				"parentId": 1
 			},
 			{
@@ -68,7 +78,9 @@ func TestUnifiedEventParsing(t *testing.T) {
 				"sportId": 1,
 				"kind": 400500,
 				"rootKind": 400000,
-				"level": 1,
+				"level": 2,
+				"team1Id": 101,
+				"team2Id": 202,
 				"parentId": 1
 			},
 			{
@@ -78,7 +90,9 @@ func TestUnifiedEventParsing(t *testing.T) {
 				"sportId": 1,
 				"kind": 401000,
 				"rootKind": 400000,
-				"level": 1,
+				"level": 2,
+				"team1Id": 101,
+				"team2Id": 202,
 				"parentId": 1
 			}
 		]

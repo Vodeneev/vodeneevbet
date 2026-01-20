@@ -13,7 +13,9 @@ RUN go mod download
 
 COPY internal ./internal
 
-RUN go build -trimpath -ldflags="-s -w" -o /out/parser ./internal/parser
+COPY cmd ./cmd
+
+RUN go build -trimpath -ldflags="-s -w" -o /out/parser ./cmd/parser
 
 FROM gcr.io/distroless/static-debian12:nonroot
 

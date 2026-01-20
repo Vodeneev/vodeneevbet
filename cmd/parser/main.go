@@ -13,6 +13,7 @@ import (
 	"github.com/Vodeneev/vodeneevbet/internal/parser/parsers/fonbet"
 	"github.com/Vodeneev/vodeneevbet/internal/pkg/config"
 	"github.com/Vodeneev/vodeneevbet/internal/pkg/health"
+	"github.com/Vodeneev/vodeneevbet/internal/parser/parsers/pinnacle"
 )
 
 func main() {
@@ -42,6 +43,8 @@ func main() {
 	switch parserType {
 	case "fonbet":
 		p = fonbet.NewParserWrapper(cfg)
+	case "pinnacle":
+		p = pinnacle.NewParserWrapper(cfg)
 	default:
 		log.Fatalf("Unknown parser type: %s", parserType)
 	}

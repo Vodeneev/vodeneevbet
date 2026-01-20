@@ -696,6 +696,15 @@ func (y *YDBClient) GetMatchesWithLimitFast(ctx context.Context, limit int) ([]m
 				LIMIT $limit
 			)
 			AND e.event_type = $event_type
+			AND o.outcome_type IN (
+				"home_win",
+				"draw",
+				"away_win",
+				"total_over",
+				"total_under",
+				"handicap_home",
+				"handicap_away"
+			)
 			ORDER BY m.start_time DESC
 			LIMIT 1000;
 		`, table.NewQueryParameters(

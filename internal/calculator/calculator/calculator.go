@@ -157,20 +157,18 @@ func (c *ValueCalculator) recalculate(ctx context.Context) {
 
 	// We only need enough data to compute top-5 diffs.
 	// Keep this low because YDB joined reads can return lots of rows.
-	const matchLimit = 20
+	const matchLimit = 5
 
 	var (
 		matches []models.Match
 		err     error
 	)
 
-	// Prefer the safest path (smaller limit + existing code), to avoid large result-set truncation.
-	matches, err = c.ydb.GetMatchesWithLimit(readCtx, matchLimit)
-	if err != nil {
-		// Fallback to fast path if implemented (may be faster on some installations).
-		if fr, ok := c.ydb.(fastMatchesReader); ok {
-			matches, err = fr.GetMatchesWithLimitFast(readCtx, matchLimit)
-		}
+	// Prefer a single-query loader when available to avoid N+1 (matches -> events -> outcomes).
+	if fr, ok := c.ydb.(fastMatchesReader); ok {
+		matches, err = fr.GetMatchesWithLimitFast(readCtx, matchLimit)
+	} else {
+		matches, err = c.ydb.GetMatchesWithLimit(readCtx, matchLimit)
 	}
 	if err != nil {
 		log.Printf("calculator: failed to load matches: %v", err)

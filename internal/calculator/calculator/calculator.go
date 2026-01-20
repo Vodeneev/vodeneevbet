@@ -22,6 +22,10 @@ type ydbReader interface {
 	GetMatchesWithLimit(ctx context.Context, limit int) ([]models.Match, error)
 }
 
+type fastMatchesReader interface {
+	GetMatchesWithLimitFast(ctx context.Context, limit int) ([]models.Match, error)
+}
+
 // ValueCalculator reads odds from YDB and calculates top diffs between bookmakers.
 // It keeps a small in-memory cache and exposes it via HTTP handlers.
 type ValueCalculator struct {
@@ -139,19 +143,38 @@ func (c *ValueCalculator) recalculate(ctx context.Context) {
 		return
 	}
 
+	// Mark calculation as started so /diffs/status is informative even while we query YDB.
+	c.mu.Lock()
+	c.lastCalcAt = calcAt
+	c.lastCalcErr = "calculating"
+	c.mu.Unlock()
+
 	// Avoid long-hanging reads.
-	readCtx, cancel := context.WithTimeout(ctx, 25*time.Second)
+	// This call can be expensive if we load match->events->outcomes with N+1 queries,
+	// so keep a reasonably large timeout.
+	readCtx, cancel := context.WithTimeout(ctx, 2*time.Minute)
 	defer cancel()
 
-	matches, err := c.ydb.GetAllMatches(readCtx)
+	// We only need enough data to compute top-5 diffs.
+	// Keep this low because YDB joined reads can return lots of rows.
+	const matchLimit = 20
+
+	var (
+		matches []models.Match
+		err     error
+	)
+
+	// Prefer the safest path (smaller limit + existing code), to avoid large result-set truncation.
+	matches, err = c.ydb.GetMatchesWithLimit(readCtx, matchLimit)
 	if err != nil {
-		// Try a safer fallback.
-		matches, err = c.ydb.GetMatchesWithLimit(readCtx, 2000)
+		// Fallback to fast path if implemented (may be faster on some installations).
+		if fr, ok := c.ydb.(fastMatchesReader); ok {
+			matches, err = fr.GetMatchesWithLimitFast(readCtx, matchLimit)
+		}
 	}
 	if err != nil {
 		log.Printf("calculator: failed to load matches: %v", err)
 		c.mu.Lock()
-		c.lastCalcAt = calcAt
 		c.lastCalcErr = err.Error()
 		c.mu.Unlock()
 		return
@@ -161,7 +184,6 @@ func (c *ValueCalculator) recalculate(ctx context.Context) {
 
 	c.mu.Lock()
 	c.topDiffs = top
-	c.lastCalcAt = calcAt
 	c.lastCalcErr = ""
 	c.mu.Unlock()
 }

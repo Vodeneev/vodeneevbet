@@ -50,6 +50,30 @@ func (c *Client) GetRelatedStraightMarkets(matchupID int64) ([]Market, error) {
 	return out, nil
 }
 
+func (c *Client) GetSports() ([]Sport, error) {
+	var out []Sport
+	if err := c.getJSON("/0.1/sports", &out); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *Client) GetSportMatchups(sportID int64) ([]RelatedMatchup, error) {
+	var out []RelatedMatchup
+	if err := c.getJSON(fmt.Sprintf("/0.1/sports/%d/matchups", sportID), &out); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *Client) GetSportStraightMarkets(sportID int64) ([]Market, error) {
+	var out []Market
+	if err := c.getJSON(fmt.Sprintf("/0.1/sports/%d/markets/straight", sportID), &out); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *Client) getJSON(path string, out any) error {
 	if c.baseURL == "" {
 		c.baseURL = "https://guest.api.arcadia.pinnacle.com"

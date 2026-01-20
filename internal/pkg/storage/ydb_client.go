@@ -611,6 +611,215 @@ func (y *YDBClient) GetMatchesWithLimit(ctx context.Context, limit int) ([]model
 	return matches, err
 }
 
+// GetMatchesWithLimitFast retrieves recent matches with their events and outcomes in a single query.
+// This avoids N+1 queries (matches -> events -> outcomes) and is intended for read-heavy paths
+// like calculator diffs.
+func (y *YDBClient) GetMatchesWithLimitFast(ctx context.Context, limit int) ([]models.Match, error) {
+	log.Printf("YDB: Getting matches with limit %d (fast)", limit)
+	if limit <= 0 {
+		limit = 100
+	}
+
+	// We build matches/events/outcomes from a single joined result set.
+	type row struct {
+		matchID    string
+		name       string
+		homeTeam   string
+		awayTeam   string
+		startTime  time.Time
+		sport      string
+		tournament string
+		matchBk    string
+		matchCA    time.Time
+		matchUA    time.Time
+
+		eventID     string
+		eventType   string
+		marketName  string
+		eventBk     string
+		eventCA     time.Time
+		eventUA     time.Time
+
+		outcomeID   string
+		outcomeType string
+		parameter   string
+		odds        float64
+		outcomeBk   string
+		outcomeCA   time.Time
+		outcomeUA   time.Time
+	}
+
+	rows := make([]row, 0, 1024)
+	err := y.db.Table().Do(ctx, func(ctx context.Context, s table.Session) error {
+		var res result.Result
+		_, res, err := s.Execute(ctx, table.TxControl(
+			table.BeginTx(table.WithOnlineReadOnly()),
+			table.CommitTx(),
+		), `
+			DECLARE $limit AS Uint64;
+			DECLARE $event_type AS Utf8;
+
+			-- Get latest matches and join events/outcomes in one shot.
+			SELECT
+				m.match_id     AS match_id,
+				m.name         AS name,
+				m.home_team    AS home_team,
+				m.away_team    AS away_team,
+				m.start_time   AS start_time,
+				m.sport        AS sport,
+				m.tournament   AS tournament,
+				m.bookmaker    AS match_bookmaker,
+				m.created_at   AS match_created_at,
+				m.updated_at   AS match_updated_at,
+
+				e.event_id     AS event_id,
+				e.event_type   AS event_type,
+				e.market_name  AS market_name,
+				e.bookmaker    AS event_bookmaker,
+				e.created_at   AS event_created_at,
+				e.updated_at   AS event_updated_at,
+
+				o.outcome_id   AS outcome_id,
+				o.outcome_type AS outcome_type,
+				o.parameter    AS parameter,
+				o.odds         AS odds,
+				o.bookmaker    AS outcome_bookmaker,
+				o.created_at   AS outcome_created_at,
+				o.updated_at   AS outcome_updated_at
+			FROM matches AS m
+			JOIN events AS e ON e.match_id = m.match_id
+			JOIN outcomes AS o ON o.event_id = e.event_id
+			WHERE m.match_id IN (
+				SELECT match_id
+				FROM matches
+				ORDER BY start_time DESC
+				LIMIT $limit
+			)
+			AND e.event_type = $event_type
+			ORDER BY m.start_time DESC
+			LIMIT 1000;
+		`, table.NewQueryParameters(
+			table.ValueParam("$limit", types.Uint64Value(uint64(limit))),
+			table.ValueParam("$event_type", types.UTF8Value(string(models.StandardEventMainMatch))),
+		))
+		if err != nil {
+			return err
+		}
+		defer res.Close()
+
+		for res.NextResultSet(ctx) {
+			for res.NextRow() {
+				var r row
+				if err := res.ScanNamed(
+					named.Required("match_id", &r.matchID),
+					named.Required("name", &r.name),
+					named.Required("home_team", &r.homeTeam),
+					named.Required("away_team", &r.awayTeam),
+					named.Required("start_time", &r.startTime),
+					named.Required("sport", &r.sport),
+					named.Required("tournament", &r.tournament),
+					named.Required("match_bookmaker", &r.matchBk),
+					named.Required("match_created_at", &r.matchCA),
+					named.Required("match_updated_at", &r.matchUA),
+
+					named.Required("event_id", &r.eventID),
+					named.Required("event_type", &r.eventType),
+					named.Required("market_name", &r.marketName),
+					named.Required("event_bookmaker", &r.eventBk),
+					named.Required("event_created_at", &r.eventCA),
+					named.Required("event_updated_at", &r.eventUA),
+
+					named.Required("outcome_id", &r.outcomeID),
+					named.Required("outcome_type", &r.outcomeType),
+					named.Required("parameter", &r.parameter),
+					named.Required("odds", &r.odds),
+					named.Required("outcome_bookmaker", &r.outcomeBk),
+					named.Required("outcome_created_at", &r.outcomeCA),
+					named.Required("outcome_updated_at", &r.outcomeUA),
+				); err != nil {
+					return err
+				}
+				rows = append(rows, r)
+			}
+		}
+		return res.Err()
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	// Assemble into hierarchical models.
+	matchesByID := map[string]*models.Match{}
+	matchOrder := make([]string, 0, limit)
+	eventsByID := map[string]*models.Event{}
+
+	for i := range rows {
+		r := rows[i]
+
+		m, ok := matchesByID[r.matchID]
+		if !ok {
+			m = &models.Match{
+				ID:         r.matchID,
+				Name:       r.name,
+				HomeTeam:   r.homeTeam,
+				AwayTeam:   r.awayTeam,
+				StartTime:  r.startTime,
+				Sport:      r.sport,
+				Tournament: r.tournament,
+				Bookmaker:  r.matchBk,
+				Events:     []models.Event{},
+				CreatedAt:  r.matchCA,
+				UpdatedAt:  r.matchUA,
+			}
+			matchesByID[r.matchID] = m
+			matchOrder = append(matchOrder, r.matchID)
+		}
+
+		ev, ok := eventsByID[r.eventID]
+		if !ok {
+			ev = &models.Event{
+				ID:         r.eventID,
+				MatchID:    r.matchID,
+				EventType:  r.eventType,
+				MarketName: r.marketName,
+				Bookmaker:  r.eventBk,
+				Outcomes:   []models.Outcome{},
+				CreatedAt:  r.eventCA,
+				UpdatedAt:  r.eventUA,
+			}
+			eventsByID[r.eventID] = ev
+			m.Events = append(m.Events, *ev)
+		}
+
+		// Append outcome to the event instance in match slice: we need to find the correct event entry.
+		// Since we append events as values, locate by ID in slice (small slice, acceptable).
+		for j := range m.Events {
+			if m.Events[j].ID != r.eventID {
+				continue
+			}
+			m.Events[j].Outcomes = append(m.Events[j].Outcomes, models.Outcome{
+				ID:          r.outcomeID,
+				EventID:     r.eventID,
+				OutcomeType: r.outcomeType,
+				Parameter:   r.parameter,
+				Odds:        r.odds,
+				Bookmaker:   r.outcomeBk,
+				CreatedAt:   r.outcomeCA,
+				UpdatedAt:   r.outcomeUA,
+			})
+			break
+		}
+	}
+
+	out := make([]models.Match, 0, len(matchOrder))
+	for _, id := range matchOrder {
+		if m := matchesByID[id]; m != nil {
+			out = append(out, *m)
+		}
+	}
+	return out, nil
+}
+
 // CleanTable removes all data from a table
 func (y *YDBClient) CleanTable(ctx context.Context, tableName string) error {
 	log.Printf("YDB: Cleaning table %s", tableName)

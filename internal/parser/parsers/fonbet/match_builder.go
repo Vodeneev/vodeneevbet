@@ -51,16 +51,20 @@ func (b *MatchBuilder) BuildMatch(mainEvent interface{}, statisticalEvents []int
 	// Create match name
 	matchName := fmt.Sprintf("%s vs %s", fonbetEvent.HomeTeam, fonbetEvent.AwayTeam)
 	
+	// Canonical match ID so multiple bookmakers can write into the same match in YDB.
+	matchID := models.CanonicalMatchID("football", fonbetEvent.HomeTeam, fonbetEvent.AwayTeam, fonbetEvent.StartTime)
+
 	// Create match
 	match := &models.Match{
-		ID:         fonbetEvent.ID,
+		ID:         matchID,
 		Name:       matchName,
 		HomeTeam:   fonbetEvent.HomeTeam,
 		AwayTeam:   fonbetEvent.AwayTeam,
 		StartTime:  fonbetEvent.StartTime,
 		Sport:      "football",
 		Tournament: fonbetEvent.Tournament,
-		Bookmaker:  b.bookmaker,
+		// Match row is shared between bookmakers; store bookmaker on events/outcomes instead.
+		Bookmaker:  "",
 		Events:     []models.Event{},
 		CreatedAt:  now,
 		UpdatedAt:  now,
@@ -158,9 +162,16 @@ func (b *MatchBuilder) buildEventModel(fonbetEvent FonbetEvent, odds map[string]
 		return nil, nil
 	}
 	marketName := models.GetMarketName(eventType)
+
+	matchID := models.CanonicalMatchID("football", fonbetEvent.HomeTeam, fonbetEvent.AwayTeam, fonbetEvent.StartTime)
+	bookmakerKey := strings.ToLower(strings.TrimSpace(b.bookmaker))
+	if bookmakerKey == "" {
+		bookmakerKey = "unknown"
+	}
 	
 	event := &models.Event{
-		ID:         fmt.Sprintf("%s_%s", fonbetEvent.ID, eventType),
+		ID:         fmt.Sprintf("%s_%s_%s", matchID, bookmakerKey, eventType),
+		MatchID:    matchID,
 		EventType:  string(eventType),
 		MarketName: marketName,
 		Bookmaker:  b.bookmaker,
@@ -171,10 +182,13 @@ func (b *MatchBuilder) buildEventModel(fonbetEvent FonbetEvent, odds map[string]
 	
 	// Create outcomes
 	for outcomeType, oddsValue := range odds {
+		param := b.getParameterFromOutcome(outcomeType)
+		stdOutcome := string(b.getStandardOutcomeType(outcomeType))
 		outcome := &models.Outcome{
-			ID:          fmt.Sprintf("%s_%s_%s", event.ID, outcomeType, b.getParameterFromOutcome(outcomeType)),
-			OutcomeType: string(b.getStandardOutcomeType(outcomeType)),
-			Parameter:   b.getParameterFromOutcome(outcomeType),
+			ID:          fmt.Sprintf("%s_%s_%s_%s_%s", matchID, bookmakerKey, eventType, stdOutcome, param),
+			EventID:     event.ID,
+			OutcomeType: stdOutcome,
+			Parameter:   param,
 			Odds:        oddsValue,
 			Bookmaker:   b.bookmaker,
 			CreatedAt:   now,

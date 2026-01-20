@@ -2,6 +2,13 @@ package pinnacle
 
 // Minimal Pinnacle guest API models (Arcadia v0.1).
 
+type Sport struct {
+	ID           int64  `json:"id"`
+	Name         string `json:"name"`
+	MatchupCount int    `json:"matchupCount"`
+	IsHidden     bool   `json:"isHidden"`
+}
+
 type RelatedMatchup struct {
 	ID        int64  `json:"id"`
 	ParentID  *int64 `json:"parentId,omitempty"`

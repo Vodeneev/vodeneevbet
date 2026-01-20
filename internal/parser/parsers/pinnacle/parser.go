@@ -49,15 +49,24 @@ func (p *Parser) Start(ctx context.Context) error {
 	}
 
 	runOnce := func() {
-		for _, matchupID := range p.cfg.Parser.Pinnacle.MatchupIDs {
-			select {
-			case <-ctx.Done():
-				return
-			default:
+		// If matchup_ids are provided, run targeted mode.
+		if len(p.cfg.Parser.Pinnacle.MatchupIDs) > 0 {
+			for _, matchupID := range p.cfg.Parser.Pinnacle.MatchupIDs {
+				select {
+				case <-ctx.Done():
+					return
+				default:
+				}
+				if err := p.processMatchup(ctx, matchupID); err != nil {
+					fmt.Printf("Pinnacle: failed to process matchup %d: %v\n", matchupID, err)
+				}
 			}
-			if err := p.processMatchup(ctx, matchupID); err != nil {
-				fmt.Printf("Pinnacle: failed to process matchup %d: %v\n", matchupID, err)
-			}
+			return
+		}
+
+		// Otherwise, discover and process all matchups for relevant sports.
+		if err := p.processAll(ctx); err != nil {
+			fmt.Printf("Pinnacle: failed to process all matchups: %v\n", err)
 		}
 	}
 
@@ -78,6 +87,108 @@ func (p *Parser) Start(ctx context.Context) error {
 func (p *Parser) Stop() error { return nil }
 func (p *Parser) GetName() string {
 	return "Pinnacle"
+}
+
+func (p *Parser) processAll(ctx context.Context) error {
+	// Map project sports to Pinnacle sports.
+	// For now: football -> Soccer.
+	targetSportNames := []string{"Soccer"}
+	if len(p.cfg.ValueCalculator.Sports) > 0 {
+		targetSportNames = nil
+		for _, s := range p.cfg.ValueCalculator.Sports {
+			if strings.EqualFold(strings.TrimSpace(s), "football") {
+				targetSportNames = append(targetSportNames, "Soccer")
+			}
+		}
+		if len(targetSportNames) == 0 {
+			targetSportNames = []string{"Soccer"}
+		}
+	}
+
+	sports, err := p.client.GetSports()
+	if err != nil {
+		return err
+	}
+	nameToID := map[string]int64{}
+	for _, sp := range sports {
+		nameToID[sp.Name] = sp.ID
+	}
+
+	// Keep a modest window to avoid processing thousands of stale matchups.
+	now := time.Now().UTC()
+	maxStart := now.Add(48 * time.Hour)
+
+	for _, sportName := range targetSportNames {
+		sportID, ok := nameToID[sportName]
+		if !ok || sportID == 0 {
+			continue
+		}
+
+		matchups, err := p.client.GetSportMatchups(sportID)
+		if err != nil {
+			return err
+		}
+		markets, err := p.client.GetSportStraightMarkets(sportID)
+		if err != nil {
+			return err
+		}
+
+		// Filter markets upfront.
+		marketsByMatchup := map[int64][]Market{}
+		for _, m := range markets {
+			if m.IsAlternate || m.Status != "open" || m.Period != 0 {
+				continue
+			}
+			marketsByMatchup[m.MatchupID] = append(marketsByMatchup[m.MatchupID], m)
+		}
+
+		// Group matchups by main matchup (parentId or self).
+		group := map[int64][]RelatedMatchup{}
+		for _, mu := range matchups {
+			st, err := time.Parse(time.RFC3339, mu.StartTime)
+			if err != nil {
+				continue
+			}
+			st = st.UTC()
+			if st.Before(now.Add(-2*time.Hour)) || st.After(maxStart) {
+				continue
+			}
+			mainID := mu.ID
+			if mu.ParentID != nil && *mu.ParentID > 0 {
+				mainID = *mu.ParentID
+			}
+			group[mainID] = append(group[mainID], mu)
+		}
+
+		// Process each main matchup as a match.
+		for mainID, related := range group {
+			select {
+			case <-ctx.Done():
+				return nil
+			default:
+			}
+
+			// Collect markets for all related matchups.
+			var relMarkets []Market
+			for _, mu := range related {
+				relMarkets = append(relMarkets, marketsByMatchup[mu.ID]...)
+			}
+			if len(relMarkets) == 0 {
+				continue
+			}
+
+			m, err := buildMatchFromPinnacle(mainID, related, relMarkets)
+			if err != nil || m == nil {
+				continue
+			}
+
+			if p.storage != nil {
+				_ = p.storage.StoreMatch(ctx, m)
+			}
+		}
+	}
+
+	return nil
 }
 
 func (p *Parser) processMatchup(ctx context.Context, matchupID int64) error {
@@ -140,7 +251,8 @@ func buildMatchFromPinnacle(matchupID int64, related []RelatedMatchup, markets [
 		return nil, fmt.Errorf("parse startTime: %w", err)
 	}
 
-	matchID := "pinnacle_" + strconv.FormatInt(matchupID, 10)
+	matchID := models.CanonicalMatchID("football", home, away, startTime)
+	bookmakerKey := "pinnacle"
 	now := time.Now()
 
 	match := &models.Match{
@@ -151,7 +263,7 @@ func buildMatchFromPinnacle(matchupID int64, related []RelatedMatchup, markets [
 		StartTime:  startTime,
 		Sport:      "football",
 		Tournament: rm.League.Name,
-		Bookmaker:  "Pinnacle",
+		Bookmaker:  "",
 		Events:     []models.Event{},
 		CreatedAt:  now,
 		UpdatedAt:  now,
@@ -190,7 +302,7 @@ func buildMatchFromPinnacle(matchupID int64, related []RelatedMatchup, markets [
 			return ev
 		}
 		ev := &models.Event{
-			ID:         matchID + "_" + string(et),
+			ID:         matchID + "_" + bookmakerKey + "_" + string(et),
 			MatchID:    matchID,
 			EventType:  string(et),
 			MarketName: models.GetMarketName(et),

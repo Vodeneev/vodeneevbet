@@ -41,6 +41,7 @@ type ParserConfig struct {
 	Timeout   time.Duration     `yaml:"timeout"`
 	Headers   map[string]string `yaml:"headers"`
 	Fonbet    FonbetConfig      `yaml:"fonbet"`
+	Pinnacle  PinnacleConfig    `yaml:"pinnacle"`
 }
 
 type FonbetConfig struct {
@@ -48,6 +49,13 @@ type FonbetConfig struct {
 	Lang      string `yaml:"lang"`
 	Version   string `yaml:"version"`
 	TestLimit int    `yaml:"test_limit"`
+}
+
+type PinnacleConfig struct {
+	BaseURL    string  `yaml:"base_url"`
+	APIKey     string  `yaml:"api_key"`
+	DeviceUUID string  `yaml:"device_uuid"`
+	MatchupIDs []int64 `yaml:"matchup_ids"`
 }
 
 type ValueCalculatorConfig struct {

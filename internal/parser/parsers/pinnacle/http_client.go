@@ -2,6 +2,7 @@ package pinnacle
 
 import (
 	"compress/gzip"
+	"crypto/tls"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -26,11 +27,22 @@ func NewClient(baseURL, apiKey, deviceUUID string, timeout time.Duration) *Clien
 		deviceUUID = os.Getenv("PINNACLE_DEVICE_UUID")
 	}
 
+	insecureTLS := os.Getenv("PINNACLE_INSECURE_TLS") == "1"
+	transport := http.DefaultTransport.(*http.Transport).Clone()
+	if transport.TLSClientConfig == nil {
+		transport.TLSClientConfig = &tls.Config{}
+	}
+	if insecureTLS {
+		// Some networks intercept TLS and present self-signed / invalid certs.
+		// Allow opting out of verification for guest API scraping.
+		transport.TLSClientConfig.InsecureSkipVerify = true
+	}
+
 	return &Client{
 		baseURL:    baseURL,
 		apiKey:     apiKey,
 		deviceUUID: deviceUUID,
-		httpClient: &http.Client{Timeout: timeout},
+		httpClient: &http.Client{Timeout: timeout, Transport: transport},
 	}
 }
 

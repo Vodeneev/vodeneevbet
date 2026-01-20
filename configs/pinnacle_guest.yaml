@@ -1,0 +1,29 @@
+# Minimal config to run Pinnacle parser against guest API
+# without secrets and without YDB storage.
+
+ydb:
+  # Intentionally invalid to skip YDB connection.
+  endpoint: "invalid"
+  database: ""
+  service_account_key_file: ""
+  ttl:
+    enabled: false
+    expire_after: 0s
+    auto_setup: false
+
+postgres:
+  dsn: ""
+
+parser:
+  type: "pinnacle"
+  interval: 3600s
+  user_agent: "ValueBetBot/1.0 (https://github.com/Vodeneev/vodeneevbet)"
+  timeout: 30s
+  headers: {}
+
+  pinnacle:
+    base_url: "https://guest.api.arcadia.pinnacle.com"
+    matchup_ids: [1621112306]
+
+value_calculator: {}
+

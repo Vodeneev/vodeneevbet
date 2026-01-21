@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/Vodeneev/vodeneevbet/internal/pkg/config"
+	"github.com/Vodeneev/vodeneevbet/internal/pkg/health"
 	"github.com/Vodeneev/vodeneevbet/internal/pkg/interfaces"
 	"github.com/Vodeneev/vodeneevbet/internal/pkg/models"
 	"github.com/Vodeneev/vodeneevbet/internal/pkg/storage"
@@ -185,6 +186,11 @@ func (p *Parser) processAll(ctx context.Context) error {
 			if p.storage != nil {
 				_ = p.storage.StoreMatch(ctx, m)
 			}
+			
+			// Add match to in-memory store for fast API access
+			if m != nil {
+				health.AddMatch(m)
+			}
 		}
 	}
 
@@ -214,9 +220,20 @@ func (p *Parser) processMatchup(ctx context.Context, matchupID int64) error {
 
 	// Storage is optional.
 	if p.storage == nil {
+		// Still add to in-memory store even if YDB storage is not available
+		if m != nil {
+			health.AddMatch(m)
+		}
 		return nil
 	}
-	return p.storage.StoreMatch(ctx, m)
+	
+	// Store in YDB and add to in-memory store
+	err = p.storage.StoreMatch(ctx, m)
+	if err == nil && m != nil {
+		health.AddMatch(m)
+	}
+	
+	return err
 }
 
 func buildMatchFromPinnacle(matchupID int64, related []RelatedMatchup, markets []Market) (*models.Match, error) {

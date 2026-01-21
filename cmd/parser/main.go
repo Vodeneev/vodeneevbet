@@ -68,7 +68,8 @@ func run() error {
 
 	setupSignalHandler(ctx, cancel)
 
-	health.Run(ctx, cfg.healthAddr, "parser")
+	// Health server now uses in-memory store (no YDB client needed for /matches endpoint)
+	health.Run(ctx, cfg.healthAddr, "parser", nil)
 
 	log.Println("Starting parsers...")
 	return runParsers(ctx, ps)

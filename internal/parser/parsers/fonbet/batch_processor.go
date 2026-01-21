@@ -8,6 +8,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Vodeneev/vodeneevbet/internal/pkg/health"
 	"github.com/Vodeneev/vodeneevbet/internal/pkg/interfaces"
 	"github.com/Vodeneev/vodeneevbet/internal/pkg/models"
 	"github.com/Vodeneev/vodeneevbet/internal/pkg/performance"
@@ -433,6 +434,11 @@ func (p *BatchProcessor) worker(
 				}
 			}
 			storeTime = time.Since(storeStart)
+			
+			// Add match to in-memory store for fast API access
+			if err == nil && matchModel != nil {
+				health.AddMatch(matchModel)
+			}
 			
 			// Record match timing
 			tracker.RecordMatch(match.ID, eventsCount, outcomesCount, buildTime, storeTime, time.Since(startTime), err == nil)

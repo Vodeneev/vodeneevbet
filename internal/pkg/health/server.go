@@ -17,11 +17,8 @@ import (
 
 // Global parser registry for on-demand parsing
 var (
-	globalParsers     []interfaces.Parser
-	globalParsersMu   sync.RWMutex
-	lastParseTime     time.Time
-	lastParseTimeMu   sync.Mutex
-	minParseInterval  = 5 * time.Second // Minimum interval between parsing requests
+	globalParsers   []interfaces.Parser
+	globalParsersMu sync.RWMutex
 )
 
 // RegisterParsers registers parsers for on-demand parsing
@@ -31,31 +28,21 @@ func RegisterParsers(parsers []interfaces.Parser) {
 	globalParsers = parsers
 }
 
-// triggerParsingIfNeeded triggers parsing if enough time has passed since last parse
-func triggerParsingIfNeeded(ctx context.Context) {
+// triggerParsing triggers parsing for all parsers asynchronously and waits for completion
+func triggerParsing(ctx context.Context) error {
 	globalParsersMu.RLock()
 	parsers := globalParsers
 	globalParsersMu.RUnlock()
 	
 	if len(parsers) == 0 {
-		return
+		return nil
 	}
 	
-	// Check if enough time has passed since last parse
-	lastParseTimeMu.Lock()
-	timeSinceLastParse := time.Since(lastParseTime)
-	shouldParse := timeSinceLastParse >= minParseInterval
-	if shouldParse {
-		lastParseTime = time.Now()
-	}
-	lastParseTimeMu.Unlock()
-	
-	if !shouldParse {
-		return
-	}
-	
-	// Trigger parsing for all parsers in parallel
+	// Trigger parsing for all parsers in parallel (asynchronously to different bookmakers)
+	// Wait for all to complete before returning
 	var wg sync.WaitGroup
+	errCh := make(chan error, len(parsers))
+	
 	for _, p := range parsers {
 		p := p
 		wg.Add(1)
@@ -63,10 +50,22 @@ func triggerParsingIfNeeded(ctx context.Context) {
 			defer wg.Done()
 			if err := p.ParseOnce(ctx); err != nil {
 				log.Printf("On-demand parsing failed for %s: %v", p.GetName(), err)
+				errCh <- err
 			}
 		}()
 	}
+	
 	wg.Wait()
+	close(errCh)
+	
+	// Check if any parser failed
+	for err := range errCh {
+		if err != nil {
+			return err
+		}
+	}
+	
+	return nil
 }
 
 // InMemoryMatchStore stores matches in memory for fast API access
@@ -263,19 +262,22 @@ func Run(ctx context.Context, addr string, service string, storage interfaces.St
 	}()
 }
 
-// handleMatches handles /matches endpoint - returns all matches from in-memory store
-// This is much faster than reading from YDB as data is already in memory
-// Triggers on-demand parsing if enough time has passed since last parse
+// handleMatches handles /matches endpoint
+// Flow: request -> async parsing to bookmakers -> matching into common model -> response
 func handleMatches(w http.ResponseWriter, r *http.Request) {
 	startTime := time.Now()
 
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 
-	// Trigger on-demand parsing if needed (with minimum interval to avoid too frequent parsing)
-	triggerParsingIfNeeded(r.Context())
+	// Trigger asynchronous parsing to all bookmakers in parallel
+	// Wait for completion to get fresh data
+	if err := triggerParsing(r.Context()); err != nil {
+		log.Printf("Warning: some parsers failed: %v", err)
+		// Continue anyway - return what we have in memory
+	}
 
-	// Get all matches from in-memory store (very fast, no YDB query needed)
+	// Get all matches from in-memory store (now contains fresh data from parsing)
 	matches := GetMatches()
 
 	duration := time.Since(startTime)

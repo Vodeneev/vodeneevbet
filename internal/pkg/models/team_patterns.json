@@ -1,0 +1,16 @@
+{
+  "patterns": {
+    "bayern munich": "bayern",
+    "bayern münchen": "bayern",
+    "fc bayern munich": "bayern",
+    "fc bayern münchen": "bayern",
+    "fc bayern": "bayern",
+    "manchester united": "manchester united",
+    "man united": "manchester united",
+    "manchester utd": "manchester united",
+    "man utd": "manchester united",
+    "real madrid": "real",
+    "real madrid cf": "real",
+    "real madrid c.f.": "real"
+  }
+}

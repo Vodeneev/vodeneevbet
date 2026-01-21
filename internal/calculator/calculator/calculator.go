@@ -79,6 +79,9 @@ func (c *ValueCalculator) handleTopDiffs(w http.ResponseWriter, r *http.Request)
 		}
 	}
 
+	// Filter by match status: "live" (started), "upcoming" (not started), or empty (all)
+	statusFilter := r.URL.Query().Get("status")
+
 	c.mu.RLock()
 	diffs := c.topDiffs
 	c.mu.RUnlock()
@@ -86,6 +89,35 @@ func (c *ValueCalculator) handleTopDiffs(w http.ResponseWriter, r *http.Request)
 	if diffs == nil {
 		diffs = []DiffBet{}
 	}
+
+	// Filter by status if specified
+	// Use UTC for comparison to handle timezones correctly (StartTime is stored in UTC)
+	now := time.Now().UTC()
+	if statusFilter != "" {
+		filtered := make([]DiffBet, 0, len(diffs))
+		for _, diff := range diffs {
+			// Match is live if it has started (StartTime is in the past)
+			// StartTime is stored in UTC, so we compare with UTC time
+			// Use Before with equal check to handle edge cases
+			isLive := !diff.StartTime.IsZero() && (diff.StartTime.Before(now) || diff.StartTime.Equal(now))
+			switch statusFilter {
+			case "live":
+				if isLive {
+					filtered = append(filtered, diff)
+				}
+			case "upcoming":
+				// Upcoming means match hasn't started yet (StartTime is in the future)
+				if !isLive {
+					filtered = append(filtered, diff)
+				}
+			default:
+				// Unknown status filter, return all
+				filtered = append(filtered, diff)
+			}
+		}
+		diffs = filtered
+	}
+
 	if limit > len(diffs) {
 		limit = len(diffs)
 	}

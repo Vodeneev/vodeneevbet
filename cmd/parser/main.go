@@ -21,6 +21,10 @@ import (
 	_ "github.com/Vodeneev/vodeneevbet/internal/parser/parsers/all"
 )
 
+const (
+	defaultConfigPath = "configs/production.yaml"
+)
+
 type config struct {
 	configPath string
 	healthAddr string
@@ -72,7 +76,14 @@ func run() error {
 
 func parseFlags() config {
 	var cfg config
-	flag.StringVar(&cfg.configPath, "config", "configs/production.yaml", "Path to config file")
+	
+	// Get default config path from environment or use default
+	defaultConfig := os.Getenv("CONFIG_PATH")
+	if defaultConfig == "" {
+		defaultConfig = defaultConfigPath
+	}
+	
+	flag.StringVar(&cfg.configPath, "config", defaultConfig, "Path to config file (can be set via CONFIG_PATH env var)")
 	flag.StringVar(&cfg.healthAddr, "health-addr", ":8080", "Health server listen address (e.g. :8080)")
 	flag.DurationVar(&cfg.runFor, "run-for", 0, "Auto-stop after duration (e.g. 10s, 1m). 0 = run until SIGINT/SIGTERM")
 	flag.StringVar(&cfg.parser, "parser", "", "Override enabled_parsers: specify parser name (e.g. 'fonbet' or 'pinnacle'). Empty = use config")

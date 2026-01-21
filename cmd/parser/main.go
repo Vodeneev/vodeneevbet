@@ -16,6 +16,7 @@ import (
 	"github.com/Vodeneev/vodeneevbet/internal/parser/parsers"
 	pkgconfig "github.com/Vodeneev/vodeneevbet/internal/pkg/config"
 	"github.com/Vodeneev/vodeneevbet/internal/pkg/health"
+	"github.com/Vodeneev/vodeneevbet/internal/pkg/interfaces"
 
 	// Register all supported parsers via init().
 	_ "github.com/Vodeneev/vodeneevbet/internal/parser/parsers/all"
@@ -67,6 +68,14 @@ func run() error {
 	defer cancel()
 
 	setupSignalHandler(ctx, cancel)
+
+	// Register parsers for on-demand parsing via /matches endpoint
+	// Convert parsers.Parser to interfaces.Parser
+	interfaceParsers := make([]interfaces.Parser, len(ps))
+	for i, p := range ps {
+		interfaceParsers[i] = p
+	}
+	health.RegisterParsers(interfaceParsers)
 
 	// Health server now uses in-memory store (no YDB client needed for /matches endpoint)
 	health.Run(ctx, cfg.healthAddr, "parser", nil)

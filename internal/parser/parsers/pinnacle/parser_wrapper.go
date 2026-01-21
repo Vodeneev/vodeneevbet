@@ -28,4 +28,5 @@ func NewParserWrapper(cfg *config.Config) *ParserWrapper {
 func (p *ParserWrapper) Start(ctx context.Context) error { return p.parser.Start(ctx) }
 func (p *ParserWrapper) Stop() error                    { return p.parser.Stop() }
 func (p *ParserWrapper) GetName() string                { return p.name }
+func (p *ParserWrapper) ParseOnce(ctx context.Context) error { return p.parser.ParseOnce(ctx) }
 

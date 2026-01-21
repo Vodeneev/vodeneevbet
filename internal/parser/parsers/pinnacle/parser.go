@@ -43,46 +43,47 @@ func NewParser(cfg *config.Config) *Parser {
 	}
 }
 
-func (p *Parser) Start(ctx context.Context) error {
-	interval := p.cfg.Parser.Interval
-	if interval <= 0 {
-		interval = 30 * time.Second
-	}
-
-	runOnce := func() {
-		// If matchup_ids are provided, run targeted mode.
-		if len(p.cfg.Parser.Pinnacle.MatchupIDs) > 0 {
-			for _, matchupID := range p.cfg.Parser.Pinnacle.MatchupIDs {
-				select {
-				case <-ctx.Done():
-					return
-				default:
-				}
-				if err := p.processMatchup(ctx, matchupID); err != nil {
-					fmt.Printf("Pinnacle: failed to process matchup %d: %v\n", matchupID, err)
-				}
+// runOnce performs a single parsing run
+func (p *Parser) runOnce(ctx context.Context) error {
+	// If matchup_ids are provided, run targeted mode.
+	if len(p.cfg.Parser.Pinnacle.MatchupIDs) > 0 {
+		for _, matchupID := range p.cfg.Parser.Pinnacle.MatchupIDs {
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			default:
 			}
-			return
+			if err := p.processMatchup(ctx, matchupID); err != nil {
+				fmt.Printf("Pinnacle: failed to process matchup %d: %v\n", matchupID, err)
+			}
 		}
-
-		// Otherwise, discover and process all matchups for relevant sports.
-		if err := p.processAll(ctx); err != nil {
-			fmt.Printf("Pinnacle: failed to process all matchups: %v\n", err)
-		}
+		return nil
 	}
 
-	runOnce()
-	t := time.NewTicker(interval)
-	defer t.Stop()
-
-	for {
-		select {
-		case <-ctx.Done():
-			return nil
-		case <-t.C:
-			runOnce()
-		}
+	// Otherwise, discover and process all matchups for relevant sports.
+	if err := p.processAll(ctx); err != nil {
+		fmt.Printf("Pinnacle: failed to process all matchups: %v\n", err)
+		return err
 	}
+	return nil
+}
+
+func (p *Parser) Start(ctx context.Context) error {
+	fmt.Println("Starting Pinnacle parser (on-demand mode - parsing triggered by /matches requests)...")
+	
+	// Run once at startup to have initial data
+	if err := p.runOnce(ctx); err != nil {
+		return err
+	}
+	
+	// Just wait for context cancellation (no background parsing)
+	<-ctx.Done()
+	return nil
+}
+
+// ParseOnce triggers a single parsing run (on-demand parsing)
+func (p *Parser) ParseOnce(ctx context.Context) error {
+	return p.runOnce(ctx)
 }
 
 func (p *Parser) Stop() error { return nil }

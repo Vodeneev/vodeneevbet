@@ -3,7 +3,6 @@ package fonbet
 import (
 	"context"
 	"fmt"
-	"time"
 
 	"github.com/Vodeneev/vodeneevbet/internal/pkg/config"
 	"github.com/Vodeneev/vodeneevbet/internal/pkg/enums"
@@ -57,55 +56,52 @@ func NewParser(config *config.Config) *Parser {
 	}
 }
 
-func (p *Parser) Start(ctx context.Context) error {
-	fmt.Println("Starting Fonbet parser...")
-
-	interval := p.config.Parser.Interval
-	if interval <= 0 {
-		interval = 30 * time.Second
-	}
-
-	runOnce := func() {
-		for _, sportStr := range p.config.ValueCalculator.Sports {
-			select {
-			case <-ctx.Done():
-				return
-			default:
-			}
-
-			sport, valid := enums.ParseSport(sportStr)
-			if !valid {
-				fmt.Printf("Unsupported sport: %s\n", sportStr)
-				continue
-			}
-
-			if err := p.eventProcessor.ProcessSportEvents(sportStr); err != nil {
-				fmt.Printf("Failed to parse %s events: %v\n", sport, err)
-				continue
-			}
-			
-			// Print performance summary after each run
-			performance.GetTracker().PrintSummary()
-		}
-	}
-
-	// Run immediately, then on interval.
-	runOnce()
-
-	ticker := time.NewTicker(interval)
-	defer ticker.Stop()
-
-	for {
+// runOnce performs a single parsing run for all configured sports
+func (p *Parser) runOnce(ctx context.Context) error {
+	for _, sportStr := range p.config.ValueCalculator.Sports {
 		select {
 		case <-ctx.Done():
-			// Print final summary before shutdown
-			fmt.Println("\n📊 Final Performance Summary:")
-			performance.GetTracker().PrintSummary()
-			return nil
-		case <-ticker.C:
-			runOnce()
+			return ctx.Err()
+		default:
 		}
+
+		sport, valid := enums.ParseSport(sportStr)
+		if !valid {
+			fmt.Printf("Unsupported sport: %s\n", sportStr)
+			continue
+		}
+
+		if err := p.eventProcessor.ProcessSportEvents(sportStr); err != nil {
+			fmt.Printf("Failed to parse %s events: %v\n", sport, err)
+			continue
+		}
+		
+		// Print performance summary after each run
+		performance.GetTracker().PrintSummary()
 	}
+	return nil
+}
+
+func (p *Parser) Start(ctx context.Context) error {
+	fmt.Println("Starting Fonbet parser (on-demand mode - parsing triggered by /matches requests)...")
+	
+	// Run once at startup to have initial data
+	if err := p.runOnce(ctx); err != nil {
+		return err
+	}
+	
+	// Just wait for context cancellation (no background parsing)
+	<-ctx.Done()
+	
+	// Print final summary before shutdown
+	fmt.Println("\n📊 Final Performance Summary:")
+	performance.GetTracker().PrintSummary()
+	return nil
+}
+
+// ParseOnce triggers a single parsing run (on-demand parsing)
+func (p *Parser) ParseOnce(ctx context.Context) error {
+	return p.runOnce(ctx)
 }
 
 func (p *Parser) Stop() error {

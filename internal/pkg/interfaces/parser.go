@@ -4,7 +4,7 @@ import "context"
 
 // Parser interface for bookmaker data parsers
 type Parser interface {
-	// Start starts the parser
+	// Start starts the parser (may run in background or just wait for context)
 	Start(ctx context.Context) error
 	
 	// Stop stops the parser
@@ -12,6 +12,9 @@ type Parser interface {
 	
 	// GetName returns the parser name
 	GetName() string
+	
+	// ParseOnce triggers a single parsing run (on-demand parsing)
+	ParseOnce(ctx context.Context) error
 }
 
 // EventFetcher interface for fetching events from bookmaker APIs

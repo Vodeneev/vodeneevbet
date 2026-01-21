@@ -38,3 +38,7 @@ func (p *ParserWrapper) Stop() error {
 func (p *ParserWrapper) GetName() string {
 	return p.name
 }
+
+func (p *ParserWrapper) ParseOnce(ctx context.Context) error {
+	return p.parser.ParseOnce(ctx)
+}

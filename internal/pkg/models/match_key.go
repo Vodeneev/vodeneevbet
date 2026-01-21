@@ -9,22 +9,18 @@ import (
 //
 // IMPORTANT: this assumes team names are in the same language/format across sources.
 // For best results, keep both parsers in English (e.g. Fonbet lang=en, Pinnacle is English).
-func CanonicalMatchID(sport, homeTeam, awayTeam string, startTime time.Time) string {
-	sport = normalizeKeyPart(sport)
-	if sport == "" {
-		sport = "unknown"
-	}
+// Format: home|away|time (sport removed as we only work with football)
+func CanonicalMatchID(homeTeam, awayTeam string, startTime time.Time) string {
 	home := normalizeKeyPart(homeTeam)
 	away := normalizeKeyPart(awayTeam)
 
-	// Round to reduce small API differences.
-	t := startTime.UTC().Truncate(30 * time.Minute)
+	// Use exact time without rounding
 	ts := "unknown-time"
-	if !t.IsZero() {
-		ts = t.Format(time.RFC3339)
+	if !startTime.IsZero() {
+		ts = startTime.UTC().Format(time.RFC3339)
 	}
 
-	return sport + "|" + home + "|" + away + "|" + ts
+	return home + "|" + away + "|" + ts
 }
 
 func normalizeKeyPart(s string) string {

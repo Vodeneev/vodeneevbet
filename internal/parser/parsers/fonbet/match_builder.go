@@ -52,7 +52,7 @@ func (b *MatchBuilder) BuildMatch(mainEvent interface{}, statisticalEvents []int
 	matchName := fmt.Sprintf("%s vs %s", fonbetEvent.HomeTeam, fonbetEvent.AwayTeam)
 	
 	// Canonical match ID so multiple bookmakers can write into the same match in YDB.
-	matchID := models.CanonicalMatchID("football", fonbetEvent.HomeTeam, fonbetEvent.AwayTeam, fonbetEvent.StartTime)
+	matchID := models.CanonicalMatchID(fonbetEvent.HomeTeam, fonbetEvent.AwayTeam, fonbetEvent.StartTime)
 
 	// Create match
 	match := &models.Match{
@@ -163,7 +163,7 @@ func (b *MatchBuilder) buildEventModel(fonbetEvent FonbetEvent, odds map[string]
 	}
 	marketName := models.GetMarketName(eventType)
 
-	matchID := models.CanonicalMatchID("football", fonbetEvent.HomeTeam, fonbetEvent.AwayTeam, fonbetEvent.StartTime)
+	matchID := models.CanonicalMatchID(fonbetEvent.HomeTeam, fonbetEvent.AwayTeam, fonbetEvent.StartTime)
 	bookmakerKey := strings.ToLower(strings.TrimSpace(b.bookmaker))
 	if bookmakerKey == "" {
 		bookmakerKey = "unknown"

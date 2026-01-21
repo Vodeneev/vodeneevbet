@@ -251,7 +251,7 @@ func buildMatchFromPinnacle(matchupID int64, related []RelatedMatchup, markets [
 		return nil, fmt.Errorf("parse startTime: %w", err)
 	}
 
-	matchID := models.CanonicalMatchID("football", home, away, startTime)
+	matchID := models.CanonicalMatchID(home, away, startTime)
 	bookmakerKey := "pinnacle"
 	now := time.Now()
 

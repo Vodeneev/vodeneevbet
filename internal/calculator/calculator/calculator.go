@@ -6,7 +6,6 @@ import (
 	"log"
 	"math"
 	"net/http"
-	"reflect"
 	"sort"
 	"strconv"
 	"strings"
@@ -17,20 +16,15 @@ import (
 	"github.com/Vodeneev/vodeneevbet/internal/pkg/models"
 )
 
-type ydbReader interface {
-	GetAllMatches(ctx context.Context) ([]models.Match, error)
-	GetMatchesWithLimit(ctx context.Context, limit int) ([]models.Match, error)
-}
-
 type fastMatchesReader interface {
 	GetMatchesWithLimitFast(ctx context.Context, limit int) ([]models.Match, error)
 }
 
-// ValueCalculator reads odds from YDB and calculates top diffs between bookmakers.
+// ValueCalculator reads odds from HTTP endpoint and calculates top diffs between bookmakers.
 // It keeps a small in-memory cache and exposes it via HTTP handlers.
 type ValueCalculator struct {
-	ydb ydbReader
-	cfg *config.ValueCalculatorConfig
+	httpClient *HTTPMatchesClient
+	cfg        *config.ValueCalculatorConfig
 
 	mu          sync.RWMutex
 	topDiffs    []DiffBet
@@ -38,28 +32,16 @@ type ValueCalculator struct {
 	lastCalcErr string
 }
 
-func NewValueCalculator(ydb ydbReader, cfg *config.ValueCalculatorConfig) *ValueCalculator {
-	// If caller passes a typed-nil pointer (e.g. (*storage.YDBClient)(nil)),
-	// it becomes a non-nil interface and would panic on method calls.
-	if isNilReader(ydb) {
-		ydb = nil
+func NewValueCalculator(cfg *config.ValueCalculatorConfig) *ValueCalculator {
+	var httpClient *HTTPMatchesClient
+	if cfg != nil && cfg.ParserURL != "" {
+		httpClient = NewHTTPMatchesClient(cfg.ParserURL)
 	}
-	return &ValueCalculator{
-		ydb: ydb,
-		cfg: cfg,
-	}
-}
 
-func isNilReader(r ydbReader) bool {
-	if r == nil {
-		return true
+	return &ValueCalculator{
+		httpClient: httpClient,
+		cfg:        cfg,
 	}
-	v := reflect.ValueOf(r)
-	// Most likely a pointer receiver.
-	if v.Kind() == reflect.Ptr && v.IsNil() {
-		return true
-	}
-	return false
 }
 
 func (c *ValueCalculator) Start(ctx context.Context) error {
@@ -134,16 +116,16 @@ func (c *ValueCalculator) handleStatus(w http.ResponseWriter, r *http.Request) {
 func (c *ValueCalculator) recalculate(ctx context.Context) {
 	calcAt := time.Now()
 
-	if c.ydb == nil {
+	if c.httpClient == nil {
 		c.mu.Lock()
 		c.topDiffs = []DiffBet{}
 		c.lastCalcAt = calcAt
-		c.lastCalcErr = "ydb is not configured"
+		c.lastCalcErr = "parser URL is not configured"
 		c.mu.Unlock()
 		return
 	}
 
-	// Mark calculation as started so /diffs/status is informative even while we query YDB.
+	// Mark calculation as started so /diffs/status is informative even while we query.
 	c.mu.Lock()
 	c.lastCalcAt = calcAt
 	c.lastCalcErr = "calculating"
@@ -155,20 +137,16 @@ func (c *ValueCalculator) recalculate(ctx context.Context) {
 	readCtx, cancel := context.WithTimeout(ctx, 2*time.Minute)
 	defer cancel()
 
-	// We only need enough data to compute top-5 diffs.
-	// Keep this low because YDB joined reads can return lots of rows.
-	const matchLimit = 100
-
 	var (
 		matches []models.Match
 		err     error
 	)
 
-	// Prefer a single-query loader when available to avoid N+1 (matches -> events -> outcomes).
-	if fr, ok := c.ydb.(fastMatchesReader); ok {
-		matches, err = fr.GetMatchesWithLimitFast(readCtx, matchLimit)
+	// Always fetch all matches (limit parameter is ignored)
+	if fr, ok := c.httpClient.(fastMatchesReader); ok {
+		matches, err = fr.GetMatchesWithLimitFast(readCtx, 0)
 	} else {
-		matches, err = c.ydb.GetMatchesWithLimit(readCtx, matchLimit)
+		matches, err = c.httpClient.GetMatchesWithLimit(readCtx, 0)
 	}
 	if err != nil {
 		log.Printf("calculator: failed to load matches: %v", err)

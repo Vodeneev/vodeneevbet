@@ -13,7 +13,6 @@ import (
 
 	"github.com/Vodeneev/vodeneevbet/internal/calculator/calculator"
 	"github.com/Vodeneev/vodeneevbet/internal/pkg/config"
-	"github.com/Vodeneev/vodeneevbet/internal/pkg/storage"
 )
 
 const (
@@ -45,17 +44,12 @@ func main() {
 
 	fmt.Println("Config loaded successfully")
 
-	ydbClient, err := storage.NewYDBClient(&cfg.YDB)
-	if err != nil {
-		log.Printf("Failed to connect to YDB: %v", err)
-		log.Printf("calculator: starting without YDB (endpoints will return empty data)")
-		ydbClient = nil
+	if cfg.ValueCalculator.ParserURL == "" {
+		log.Fatalf("calculator: parser_url is required in config")
 	}
-	if ydbClient != nil {
-		defer ydbClient.Close()
-	}
+	log.Printf("calculator: using parser URL %s", cfg.ValueCalculator.ParserURL)
 
-	valueCalculator := calculator.NewValueCalculator(ydbClient, &cfg.ValueCalculator)
+	valueCalculator := calculator.NewValueCalculator(&cfg.ValueCalculator)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()

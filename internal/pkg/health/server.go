@@ -7,7 +7,6 @@ import (
 	"log"
 	"net/http"
 	"sort"
-	"strconv"
 	"sync"
 	"time"
 
@@ -110,8 +109,8 @@ func AddMatch(match *models.Match) {
 	}
 }
 
-// GetMatches returns matches from in-memory store
-func GetMatches(limit int) []models.Match {
+// GetMatches returns all matches from in-memory store
+func GetMatches() []models.Match {
 	if globalMatchStore == nil {
 		return []models.Match{}
 	}
@@ -133,11 +132,6 @@ func GetMatches(limit int) []models.Match {
 	sort.Slice(matches, func(i, j int) bool {
 		return matches[i].UpdatedAt.After(matches[j].UpdatedAt)
 	})
-
-	// Apply limit
-	if limit > 0 && limit < len(matches) {
-		matches = matches[:limit]
-	}
 
 	return matches
 }
@@ -192,7 +186,7 @@ func Run(ctx context.Context, addr string, service string, storage interfaces.St
 	}()
 }
 
-// handleMatches handles /matches endpoint - returns matches from in-memory store
+// handleMatches handles /matches endpoint - returns all matches from in-memory store
 // This is much faster than reading from YDB as data is already in memory
 func handleMatches(w http.ResponseWriter, r *http.Request) {
 	startTime := time.Now()
@@ -200,18 +194,8 @@ func handleMatches(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 
-	// Parse limit parameter (default: no limit, 0 = all matches)
-	limit := 0
-	if limitStr := r.URL.Query().Get("limit"); limitStr != "" {
-		if parsedLimit, err := strconv.Atoi(limitStr); err == nil {
-			if parsedLimit > 0 {
-				limit = parsedLimit
-			}
-		}
-	}
-
-	// Get matches from in-memory store (very fast, no YDB query needed)
-	matches := GetMatches(limit)
+	// Get all matches from in-memory store (very fast, no YDB query needed)
+	matches := GetMatches()
 
 	duration := time.Since(startTime)
 	matchCount := len(matches)
@@ -228,7 +212,6 @@ func handleMatches(w http.ResponseWriter, r *http.Request) {
 		"meta": map[string]interface{}{
 			"count":    matchCount,
 			"duration": duration.String(),
-			"limit":    limit,
 			"source":   "memory", // Data comes from in-memory store, not YDB
 		},
 	}); err != nil {

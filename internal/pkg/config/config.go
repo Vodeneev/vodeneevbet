@@ -69,6 +69,7 @@ type ValueCalculatorConfig struct {
 	Sports              []string `yaml:"sports"`
 	Markets             []string `yaml:"markets"`
 	ReferenceBookmakers []string `yaml:"reference_bookmakers"`
+	ParserURL           string   `yaml:"parser_url"` // URL to parser's /matches endpoint
 }
 
 func Load(configPath string) (*Config, error) {

@@ -145,13 +145,43 @@ func (p *Parser) processAll(ctx context.Context) error {
 
 		// Group matchups by main matchup (parentId or self).
 		group := map[int64][]RelatedMatchup{}
+		filteredByTime := 0
 		for _, mu := range matchups {
 			st, err := time.Parse(time.RFC3339, mu.StartTime)
 			if err != nil {
 				continue
 			}
 			st = st.UTC()
+			
+			// Log all matchups for debugging (especially looking for Bayern vs Union Saint-Gilloise)
+			homeTeam, awayTeam := "", ""
+			for _, p := range mu.Participants {
+				if p.Alignment == "home" {
+					homeTeam = p.Name
+				} else if p.Alignment == "away" {
+					awayTeam = p.Name
+				}
+			}
+			matchName := fmt.Sprintf("%s vs %s", homeTeam, awayTeam)
+			if strings.Contains(strings.ToLower(matchName), "bayern") || 
+			   strings.Contains(strings.ToLower(matchName), "бавария") ||
+			   strings.Contains(strings.ToLower(matchName), "union") ||
+			   strings.Contains(strings.ToLower(matchName), "saint-gilloise") ||
+			   strings.Contains(strings.ToLower(matchName), "gilloise") {
+				fmt.Printf("Pinnacle DEBUG: Found potential match: %s (ID=%d, StartTime=%s, League=%s)\n", 
+					matchName, mu.ID, mu.StartTime, mu.League.Name)
+			}
+			
 			if st.Before(now.Add(-2*time.Hour)) || st.After(maxStart) {
+				if strings.Contains(strings.ToLower(matchName), "bayern") || 
+				   strings.Contains(strings.ToLower(matchName), "бавария") ||
+				   strings.Contains(strings.ToLower(matchName), "union") ||
+				   strings.Contains(strings.ToLower(matchName), "saint-gilloise") {
+					fmt.Printf("Pinnacle DEBUG: Match %s filtered by time (start=%s, now=%s, window=[%s, %s])\n",
+						matchName, st.Format(time.RFC3339), now.Format(time.RFC3339),
+						now.Add(-2*time.Hour).Format(time.RFC3339), maxStart.Format(time.RFC3339))
+				}
+				filteredByTime++
 				continue
 			}
 			mainID := mu.ID
@@ -159,6 +189,9 @@ func (p *Parser) processAll(ctx context.Context) error {
 				mainID = *mu.ParentID
 			}
 			group[mainID] = append(group[mainID], mu)
+		}
+		if filteredByTime > 0 {
+			fmt.Printf("Pinnacle: filtered %d matchups by time window\n", filteredByTime)
 		}
 
 		fmt.Printf("Pinnacle: processing %d main matchups for sport %s\n", len(group), sportName)
@@ -177,6 +210,24 @@ func (p *Parser) processAll(ctx context.Context) error {
 				relMarkets = append(relMarkets, marketsByMatchup[mu.ID]...)
 			}
 			if len(relMarkets) == 0 {
+				// Log if this might be the Bayern match
+				for _, mu := range related {
+					homeTeam, awayTeam := "", ""
+					for _, p := range mu.Participants {
+						if p.Alignment == "home" {
+							homeTeam = p.Name
+						} else if p.Alignment == "away" {
+							awayTeam = p.Name
+						}
+					}
+					matchName := fmt.Sprintf("%s vs %s", homeTeam, awayTeam)
+					if strings.Contains(strings.ToLower(matchName), "bayern") || 
+					   strings.Contains(strings.ToLower(matchName), "бавария") ||
+					   strings.Contains(strings.ToLower(matchName), "union") ||
+					   strings.Contains(strings.ToLower(matchName), "saint-gilloise") {
+						fmt.Printf("Pinnacle DEBUG: Match %s (ID=%d) skipped - no markets available\n", matchName, mainID)
+					}
+				}
 				fmt.Printf("Pinnacle: skipping matchup %d (no markets)\n", mainID)
 				continue
 			}
@@ -299,6 +350,37 @@ func buildMatchFromPinnacle(matchupID int64, related []RelatedMatchup, markets [
 	matchupEventType := map[int64]models.StandardEventType{
 		matchupID: models.StandardEventMainMatch,
 	}
+	
+	// Debug: log all related matchups for Bayern match
+	homeTeam, awayTeam := "", ""
+	for _, p := range rm.Participants {
+		if p.Alignment == "home" {
+			homeTeam = p.Name
+		} else if p.Alignment == "away" {
+			awayTeam = p.Name
+		}
+	}
+	isBayernMatch := strings.Contains(strings.ToLower(homeTeam), "bayern") || 
+	                 strings.Contains(strings.ToLower(awayTeam), "union")
+	
+	if isBayernMatch {
+		fmt.Printf("Pinnacle DEBUG: Processing match %s vs %s (mainID=%d), found %d related matchups\n",
+			homeTeam, awayTeam, matchupID, len(related))
+		for _, r := range related {
+			parentIDStr := "nil"
+			if r.ParentID != nil {
+				parentIDStr = strconv.FormatInt(*r.ParentID, 10)
+			}
+			et, ok := inferStandardEventType(r)
+			etStr := "UNKNOWN"
+			if ok {
+				etStr = string(et)
+			}
+			fmt.Printf("Pinnacle DEBUG:   Related matchup ID=%d, ParentID=%s, Units=%q, League=%q => EventType=%s\n",
+				r.ID, parentIDStr, r.Units, r.League.Name, etStr)
+		}
+	}
+	
 	foundByParent := false
 	for _, r := range related {
 		if r.ParentID == nil || *r.ParentID != matchupID {
@@ -307,6 +389,10 @@ func buildMatchFromPinnacle(matchupID int64, related []RelatedMatchup, markets [
 		if et, ok := inferStandardEventType(r); ok {
 			matchupEventType[r.ID] = et
 			foundByParent = true
+			if isBayernMatch {
+				fmt.Printf("Pinnacle DEBUG:   Mapped related matchup ID=%d (ParentID=%d) => %s\n",
+					r.ID, matchupID, string(et))
+			}
 		}
 	}
 	// Fallback: some guest API responses may not include parentId; in that case
@@ -318,7 +404,18 @@ func buildMatchFromPinnacle(matchupID int64, related []RelatedMatchup, markets [
 			}
 			if et, ok := inferStandardEventType(r); ok {
 				matchupEventType[r.ID] = et
+				if isBayernMatch {
+					fmt.Printf("Pinnacle DEBUG:   Mapped related matchup ID=%d (fallback, no ParentID) => %s\n",
+						r.ID, string(et))
+				}
 			}
+		}
+	}
+	
+	if isBayernMatch {
+		fmt.Printf("Pinnacle DEBUG:   Total mapped event types: %d\n", len(matchupEventType))
+		for muID, et := range matchupEventType {
+			fmt.Printf("Pinnacle DEBUG:     MatchupID=%d => %s\n", muID, string(et))
 		}
 	}
 
@@ -342,12 +439,36 @@ func buildMatchFromPinnacle(matchupID int64, related []RelatedMatchup, markets [
 	}
 
 	// Period 0 only for now.
+	marketsByMatchupID := make(map[int64][]Market)
+	for _, mkt := range markets {
+		if mkt.Period != 0 || mkt.Status != "open" {
+			continue
+		}
+		marketsByMatchupID[mkt.MatchupID] = append(marketsByMatchupID[mkt.MatchupID], mkt)
+	}
+	
+	if isBayernMatch {
+		fmt.Printf("Pinnacle DEBUG:   Found markets for %d matchup IDs\n", len(marketsByMatchupID))
+		for muID, mkts := range marketsByMatchupID {
+			et, ok := matchupEventType[muID]
+			etStr := "UNMAPPED"
+			if ok {
+				etStr = string(et)
+			}
+			fmt.Printf("Pinnacle DEBUG:     MatchupID=%d => %d markets, EventType=%s\n", muID, len(mkts), etStr)
+		}
+	}
+	
 	for _, mkt := range markets {
 		if mkt.Period != 0 || mkt.Status != "open" {
 			continue
 		}
 		et, ok := matchupEventType[mkt.MatchupID]
 		if !ok {
+			if isBayernMatch {
+				fmt.Printf("Pinnacle DEBUG:   Skipping market for unmapped MatchupID=%d (Type=%s)\n",
+					mkt.MatchupID, mkt.Type)
+			}
 			continue
 		}
 		ev := getOrCreate(et)

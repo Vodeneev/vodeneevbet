@@ -25,11 +25,11 @@ echo "📊 Exporting current data..."
 ./export_data.sh
 
 echo "📊 Starting parser..."
-go run ./cmd/parser -config configs/local.yaml > logs/parser.log 2>&1 &
+go run ./cmd/parser -config configs/production.yaml > logs/parser.log 2>&1 &
 PARSER_PID=$!
 
 echo "🧮 Starting calculator..."
-go run ./cmd/calculator -config configs/local.yaml > logs/calculator.log 2>&1 &
+go run ./cmd/calculator -config configs/production.yaml > logs/calculator.log 2>&1 &
 CALCULATOR_PID=$!
 
 echo ""

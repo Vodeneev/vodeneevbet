@@ -161,7 +161,7 @@ jobs:
           echo \"--- docker compose ps\"; (sudo docker compose ps || sudo docker-compose ps) 2>/dev/null || true
           echo \"--- parser logs (tail)\"; sudo docker logs --tail=200 vodeneevbet-parser 2>/dev/null || true
           echo \"--- configs listing\"; ls -la \"${REMOTE_DIR}/configs\" || true
-          echo \"--- config head\"; sed -n \"1,120p\" \"${REMOTE_DIR}/configs/local.yaml\" 2>/dev/null || true
+          echo \"--- config head\"; sed -n \"1,120p\" \"${REMOTE_DIR}/configs/production.yaml\" 2>/dev/null || true
           '"
 
   deploy_core:
@@ -262,5 +262,5 @@ jobs:
           echo \"--- docker compose ps\"; (sudo docker compose ps || sudo docker-compose ps) 2>/dev/null || true
           echo \"--- calculator logs (tail)\"; sudo docker logs --tail=200 vodeneevbet-calculator 2>/dev/null || true
           echo \"--- configs listing\"; ls -la \"${REMOTE_DIR}/configs\" || true
-          echo \"--- config head\"; sed -n \"1,120p\" \"${REMOTE_DIR}/configs/local.yaml\" 2>/dev/null || true
+          echo \"--- config head\"; sed -n \"1,120p\" \"${REMOTE_DIR}/configs/production.yaml\" 2>/dev/null || true
           '"

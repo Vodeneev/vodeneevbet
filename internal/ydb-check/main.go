@@ -14,7 +14,7 @@ func main() {
 	fmt.Println("==================")
 
 	// Load config
-	cfg, err := config.Load("configs/local.yaml")
+	cfg, err := config.Load("configs/production.yaml")
 	if err != nil {
 		log.Fatalf("Failed to load config: %v", err)
 	}
@@ -95,4 +95,3 @@ func showSampleData(ctx context.Context, client *storage.YDBClient, tableName st
 
 	return nil
 }
-

@@ -5,12 +5,12 @@ services:
     image: ghcr.io/${IMAGE_OWNER}/vodeneevbet-calculator:${IMAGE_TAG}
     container_name: vodeneevbet-calculator
     restart: unless-stopped
-    command: ["-config", "/app/configs/local.yaml"]
+    command: ["-config", "/app/configs/production.yaml"]
     ports:
       - "127.0.0.1:18080:8080"
     volumes:
       - ./configs:/app/configs:ro
-      # configs/local.yaml uses ../keys/... (relative to /app/configs), which resolves to /app/keys/...
+      # configs/production.yaml uses ../keys/... (relative to /app/configs), which resolves to /app/keys/...
       - ./keys:/app/keys:ro
 
   nginx:

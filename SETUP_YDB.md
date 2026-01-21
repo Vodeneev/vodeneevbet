@@ -42,7 +42,7 @@
 После настройки запустите тест:
 
 ```bash
-go run ./cmd/tools/ydb-smoke -config configs/local.yaml
+go run ./cmd/tools/ydb-smoke -config configs/production.yaml
 ```
 
 Если все настроено правильно, вы увидите:
@@ -55,13 +55,13 @@ go run ./cmd/tools/ydb-smoke -config configs/local.yaml
 
 - Проверить, что данные реально пишутся/читаются:
   ```bash
-  go run ./cmd/tools/ydb-check -config configs/local.yaml
+  go run ./cmd/tools/ydb-check -config configs/production.yaml
   ```
 - Очистить таблицы (осторожно, удаляет данные):
   ```bash
-  go run ./cmd/tools/ydb-clean -config configs/local.yaml
+  go run ./cmd/tools/ydb-clean -config configs/production.yaml
   ```
 - Управление TTL (статус/настройка/отключение):
   ```bash
-  go run ./cmd/tools/ttl-manager -config configs/local.yaml -action=status
+  go run ./cmd/tools/ttl-manager -config configs/production.yaml -action=status
   ```

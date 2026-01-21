@@ -13,7 +13,7 @@ import (
 
 func main() {
 	var (
-		configPath  = flag.String("config", "configs/local.yaml", "Path to config file")
+		configPath  = flag.String("config", "configs/production.yaml", "Path to config file")
 		action      = flag.String("action", "status", "Action: status, setup, disable")
 		expireAfter = flag.Duration("expire-after", 4*time.Hour, "TTL expire after duration")
 	)

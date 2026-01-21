@@ -157,7 +157,7 @@ Workflow `.github/workflows/deploy.yml`:
 
 **Решение:**
 1. Проверьте логи: `ssh vm-parsers "sudo docker logs --tail=200 vodeneevbet-parser"`
-2. Проверьте конфигурацию: `ssh vm-parsers "cat /opt/vodeneevbet/parsers/configs/local.yaml"`
+2. Проверьте конфигурацию: `ssh vm-parsers "cat /opt/vodeneevbet/parsers/configs/production.yaml"`
 3. Проверьте директорию: `ssh vm-parsers "ls -la /opt/vodeneevbet/parsers"`
 
 ## Структура файлов на VM

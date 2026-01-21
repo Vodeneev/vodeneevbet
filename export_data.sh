@@ -21,7 +21,7 @@ echo "✅ Previous exports cleaned"
 mkdir -p exports
 
 # Run export utility
-go run ./cmd/tools/export -config configs/local.yaml
+go run ./cmd/tools/export -config configs/production.yaml
 
 echo ""
 echo "📁 Exported files:"

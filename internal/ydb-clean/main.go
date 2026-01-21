@@ -15,7 +15,7 @@ func main() {
 	fmt.Println("==================")
 
 	// Load config
-	cfg, err := config.Load("configs/local.yaml")
+	cfg, err := config.Load("configs/production.yaml")
 	if err != nil {
 		log.Fatalf("Failed to load config: %v", err)
 	}
@@ -55,4 +55,3 @@ func main() {
 	fmt.Println("🎉 All tables cleaned successfully!")
 	fmt.Println("YDB is now empty and ready for fresh data.")
 }
-

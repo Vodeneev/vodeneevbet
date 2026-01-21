@@ -1,0 +1,67 @@
+# Main production configuration
+# Manage active parsers via enabled_parsers
+# For individual containers use --parser flag (fonbet/pinnacle)
+
+# YDB cloud configuration
+ydb:
+  endpoint: "grpcs://ydb.serverless.yandexcloud.net:2135"
+  database: "/ru-central1/b1gttv06r5rq0hc4filn/etn1sqa39tgha69fe2mt"
+  # Path to Service Account key file
+  # IMPORTANT: path is resolved relative to config file directory (configs/)
+  service_account_key_file: "../keys/service-account-key.json"
+  
+  # TTL settings for automatic cleanup of stale data
+  ttl:
+    enabled: true                    # Enable TTL
+    expire_after: 4h                 # Delete odds 4 hours after match
+    auto_setup: true                 # Automatically setup TTL on startup
+
+# PostgreSQL for value bet history
+postgres:
+  dsn: "host=localhost user=arb_user password=arb_password dbname=arb_db port=5432 sslmode=disable"
+
+parser:
+  # Production parser management
+  # Empty array [] = run all registered parsers
+  enabled_parsers: ["fonbet", "pinnacle"]
+  
+  interval: 30s  # Parsing interval
+  user_agent: "ValueBetBot/1.0 (https://github.com/Vodeneev/vodeneevbet)"
+  timeout: 120s
+  headers:
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8"
+    "Accept-Language": "ru-RU,ru;q=0.9,en;q=0.8"
+    "Accept-Encoding": "gzip, deflate, br"
+    "Connection": "keep-alive"
+    "Upgrade-Insecure-Requests": "1"
+  
+  # Fonbet API settings
+  fonbet:
+    base_url: "https://line55w.bk6bba-resources.com/events/list"
+    lang: "ru"
+    version: "60312723953"
+    test_limit: 50  # Event limit for testing (0 = no limit)
+
+  # Pinnacle guest API (do not commit real keys)
+  pinnacle:
+    base_url: "https://guest.api.arcadia.pinnacle.com"
+    api_key: ""        # can be set via ENV PINNACLE_API_KEY
+    device_uuid: ""    # can be set via ENV PINNACLE_DEVICE_UUID
+    matchup_ids: []    # example: [1621112306, 1621112308]
+
+value_calculator:
+  # Value Bet settings
+  reference_method: "average_top5"  # "pinnacle" or "average_top5"
+  min_value_percent: 15.0           # Minimum difference in percent
+  max_risk_percent: 5.0            # Maximum risk
+  min_stake: 1000                  # Minimum stake
+  max_stake: 50000                 # Maximum stake
+  check_interval: 5m               # Check interval
+  test_interval: 30s               # Test interval
+  
+  # Filters
+  sports: ["football"]             # Football only
+  markets: ["1x2", "total", "handicap"]  # Main markets
+  
+  # Top-5 bookmakers for reference (excluding common APIs)
+  reference_bookmakers: ["pinnacle", "betfair", "sbobet", "bet365", "williamhill"]

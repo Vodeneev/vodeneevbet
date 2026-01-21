@@ -16,7 +16,7 @@ func main() {
 	fmt.Println("🧪 Testing YDB Connection...")
 
 	var configPath string
-	flag.StringVar(&configPath, "config", "configs/local.yaml", "Path to config file")
+	flag.StringVar(&configPath, "config", "configs/production.yaml", "Path to config file")
 	flag.Parse()
 
 	cfg, err := config.Load(configPath)

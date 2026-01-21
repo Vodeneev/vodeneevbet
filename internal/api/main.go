@@ -80,7 +80,7 @@ func (s *APIServer) handleMatches(w http.ResponseWriter, r *http.Request) {
 
 func main() {
 	var configPath string
-	flag.StringVar(&configPath, "config", "../../configs/local.yaml", "Path to config file")
+	flag.StringVar(&configPath, "config", "../../configs/production.yaml", "Path to config file")
 	flag.Parse()
 
 	// Load config

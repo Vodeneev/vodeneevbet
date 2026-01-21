@@ -5,12 +5,12 @@ services:
     image: ghcr.io/${IMAGE_OWNER}/vodeneevbet-parser:${IMAGE_TAG}
     container_name: vodeneevbet-parser-fonbet
     restart: unless-stopped
-    command: ["-config", "/app/configs/parser_fonbet.yaml"]
+    command: ["-config", "/app/configs/parser_fonbet.yaml", "-parser", "fonbet"]
     ports:
       - "127.0.0.1:18080:8080"
     volumes:
       - ./configs:/app/configs:ro
-      # configs/local.yaml uses ../keys/... (relative to /app/configs), which resolves to /app/keys/...
+      # configs/production.yaml uses ../keys/... (relative to /app/configs), which resolves to /app/keys/...
       - ./keys:/app/keys:ro
 
   parser_pinnacle:
@@ -21,7 +21,7 @@ services:
     network_mode: host
     environment:
       - PINNACLE_INSECURE_TLS=1
-    command: ["-config", "/app/configs/parser_pinnacle.yaml", "-health-addr", "127.0.0.1:18081"]
+    command: ["-config", "/app/configs/parser_pinnacle.yaml", "-parser", "pinnacle", "-health-addr", "127.0.0.1:18081"]
     volumes:
       - ./configs:/app/configs:ro
       - ./keys:/app/keys:ro

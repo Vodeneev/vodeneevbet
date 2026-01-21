@@ -18,7 +18,7 @@ func main() {
 	fmt.Println("📊 Starting data export from YDB...")
 
 	var configPath string
-	flag.StringVar(&configPath, "config", "configs/local.yaml", "Path to config file")
+	flag.StringVar(&configPath, "config", "configs/production.yaml", "Path to config file")
 	flag.Parse()
 
 	cfg, err := config.Load(configPath)

@@ -28,12 +28,14 @@
 - **Хранилище**: YDB (Yandex Database) для быстрого доступа
 - **Реализованные парсеры**:
   - ✅ **Fonbet** - Полностью рабочий парсер с реальным API
+  - ✅ **Pinnacle** - Guest API для получения коэффициентов
 - **Особенности**: 
   - Модульная архитектура компонентов (EventFetcher, OddsParser, MatchBuilder, EventProcessor)
   - Обработка gzip сжатия ответов
   - Асинхронный парсинг с интервалами
   - Обработка ошибок и retry логика
-  - Поддержка множественных букмекеров
+  - **Config-driven выбор парсеров** - запуск нужных парсеров через конфиг
+  - Поддержка параллельного запуска множественных парсеров
   - Валидация и санитизация данных
 
 #### 2. **Value Calculator Service** (`internal/calculator/`)
@@ -126,16 +128,16 @@ docker ps
 ### 4. Запуск парсера
 ```bash
 # Запуск Fonbet парсера
-go run ./cmd/parser -config configs/local.yaml
+go run ./cmd/parser -config configs/production.yaml
 
 # Или сборка и запуск
 go build -o ./bin/parser ./cmd/parser
-./bin/parser -config configs/local.yaml
+./bin/parser -config configs/production.yaml
 ```
 
 ### 5. Запуск калькулятора
 ```bash
-go run ./cmd/calculator -config configs/local.yaml
+go run ./cmd/calculator -config configs/production.yaml
 ```
 
 ### 5. Тестирование Fonbet парсера
@@ -150,7 +152,7 @@ go run ./cmd/calculator -config configs/local.yaml
 ### 6. Экспорт данных
 ```bash
 # Экспорт данных из YDB в JSON и CSV
-go run ./cmd/tools/export -config configs/local.yaml
+go run ./cmd/tools/export -config configs/production.yaml
 
 # Результат:
 # - exports/export_YYYY-MM-DD_HH-MM-SS.json
@@ -160,7 +162,7 @@ go run ./cmd/tools/export -config configs/local.yaml
 
 ## ⚙️ Конфигурация
 
-### Основные параметры (`configs/local.yaml`)
+### Основные параметры (`configs/production.yaml`)
 ```yaml
 # YDB конфигурация
 ydb:
@@ -174,10 +176,63 @@ postgres:
 
 # Настройки парсера
 parser:
+  # Список активных парсеров (пустой массив = все зарегистрированные)
+  enabled_parsers: ["fonbet", "pinnacle"]
+  
   interval: 30s
   user_agent: "Mozilla/5.0..."
   timeout: 30s
+  
+  # Специфичные настройки для каждого парсера
+  fonbet:
+    base_url: "https://line55w.bk6bba-resources.com/events/list"
+    lang: "ru"
+    test_limit: 0  # 0 = без лимита
+  
+  pinnacle:
+    base_url: "https://guest.api.arcadia.pinnacle.com"
+    api_key: ""        # или через ENV: PINNACLE_API_KEY
+    device_uuid: ""    # или через ENV: PINNACLE_DEVICE_UUID
+```
 
+### Управление парсерами через конфиг
+
+Параметр `enabled_parsers` позволяет гибко управлять тем, какие парсеры будут запущены:
+
+#### Запустить все доступные парсеры
+```yaml
+parser:
+  enabled_parsers: []  # пустой массив = запустить все
+```
+
+#### Запустить только Fonbet
+```yaml
+parser:
+  enabled_parsers: ["fonbet"]
+```
+Используется в `configs/parser_fonbet.yaml`
+
+#### Запустить только Pinnacle
+```yaml
+parser:
+  enabled_parsers: ["pinnacle"]
+```
+Используется в `configs/parser_pinnacle.yaml`
+
+#### Запустить несколько парсеров параллельно
+```yaml
+parser:
+  enabled_parsers: ["fonbet", "pinnacle"]
+```
+Используется в `configs/production.yaml`
+
+**Преимущества:**
+- ✅ Одна кодовая база, разные конфигурации для разных окружений
+- ✅ Безопасность на этапе компиляции (нельзя указать несуществующий парсер)
+- ✅ Простое масштабирование (один сервис = один парсер, или все вместе)
+- ✅ Удобное тестирование (разные конфиги для dev/staging/prod)
+
+```yaml
 # Настройки Value Calculator
 value_calculator:
   reference_method: "average_top5"  # "pinnacle" или "average_top5"

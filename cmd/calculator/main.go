@@ -21,7 +21,7 @@ func main() {
 
 	var configPath string
 	var healthAddr string
-	flag.StringVar(&configPath, "config", "configs/local.yaml", "Path to config file")
+	flag.StringVar(&configPath, "config", "configs/production.yaml", "Path to config file")
 	flag.StringVar(&healthAddr, "health-addr", ":8080", "Health server listen address (e.g. :8080)")
 	flag.Parse()
 

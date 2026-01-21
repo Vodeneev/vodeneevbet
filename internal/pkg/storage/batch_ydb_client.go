@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"math"
+	"strings"
 	"time"
 
 	"github.com/Vodeneev/vodeneevbet/internal/pkg/models"
@@ -19,6 +20,9 @@ const (
 	outcomesBatchSize = 100 // Insert outcomes in batches of 100
 	maxRetries       = 3    // Maximum retry attempts
 	baseRetryDelay   = 100 * time.Millisecond
+	
+	// Rate limiting to avoid YDB ResourceExhausted
+	ydbOperationDelay = 10 * time.Millisecond // Delay between YDB operations to avoid throttling
 )
 
 // BatchYDBClient provides batch YDB operations for better performance
@@ -315,6 +319,11 @@ func (y *BatchYDBClient) insertOutcomesBatched(
 ) error {
 	// Process outcomes sequentially but with retry logic for better reliability
 	for i := 0; i < len(outcomes); i++ {
+		// Add small delay to avoid YDB ResourceExhausted
+		if i > 0 {
+			time.Sleep(ydbOperationDelay)
+		}
+		
 		_, err := tx.Execute(ctx, `
 			DECLARE $outcome_id AS Utf8;
 			DECLARE $event_id AS Utf8;
@@ -396,9 +405,22 @@ func (y *BatchYDBClient) retryExecute(
 		
 		lastErr = err
 		
+		// Check if it's ResourceExhausted - need longer delay
+		isResourceExhausted := false
+		if err != nil {
+			errStr := err.Error()
+			if strings.Contains(errStr, "ResourceExhausted") || strings.Contains(errStr, "code = 8") {
+				isResourceExhausted = true
+			}
+		}
+		
 		// Don't retry on last attempt
 		if attempt < maxRetries-1 {
 			delay := time.Duration(float64(baseRetryDelay) * math.Pow(2, float64(attempt)))
+			// For ResourceExhausted, use longer delay
+			if isResourceExhausted {
+				delay = time.Duration(float64(baseRetryDelay) * math.Pow(3, float64(attempt))) // 100ms, 300ms, 900ms
+			}
 			log.Printf("⚠️  YDB %s failed (attempt %d/%d), retrying in %v: %v", 
 				operationName, attempt+1, maxRetries, delay, err)
 			time.Sleep(delay)

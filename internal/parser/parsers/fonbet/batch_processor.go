@@ -428,34 +428,12 @@ func (p *BatchProcessor) worker(
 		startTime := time.Now()
 		buildStart := time.Now()
 		
-		// For live matches (already started), fetch fresh factors to get updated odds
-		factorGroups := match.FactorGroups
-		matchStartTime := time.Unix(match.MainEvent.StartTime, 0)
-		now := time.Now()
-		if !matchStartTime.IsZero() && matchStartTime.Before(now) {
-			// Match has started - fetch fresh factors for better odds updates
-			freshFactors := p.fetchFreshFactorsForLiveMatch(match.MainEvent, match.StatisticalEvents)
-			if len(freshFactors) > 0 {
-				// Merge: use fresh factors if available, fallback to main response factors
-				factorMap := make(map[int64]FonbetFactorGroup)
-				for _, fg := range match.FactorGroups {
-					factorMap[fg.EventID] = fg
-				}
-				for _, fg := range freshFactors {
-					factorMap[fg.EventID] = fg // Overwrite with fresh data
-				}
-				factorGroups = make([]FonbetFactorGroup, 0, len(factorMap))
-				for _, fg := range factorMap {
-					factorGroups = append(factorGroups, fg)
-				}
-			}
-		}
-		
 		// Process the match
+		// Note: CustomFactors from main API response should already contain updated odds for live matches
 		matchModel, err := p.buildMatchWithEventsAndFactors(
 			match.MainEvent, 
 			match.StatisticalEvents, 
-			factorGroups,
+			match.FactorGroups,
 		)
 		
 		buildTime := time.Since(buildStart)
@@ -661,52 +639,6 @@ func (p *BatchProcessor) ProcessEvent(event interface{}) error {
 
 func (p *BatchProcessor) ProcessEvents(events []interface{}) error {
 	return fmt.Errorf("ProcessEvents not supported in batch processor")
-}
-
-// fetchFreshFactorsForLiveMatch fetches fresh factors for live matches to get updated odds
-func (p *BatchProcessor) fetchFreshFactorsForLiveMatch(
-	mainEvent FonbetAPIEvent,
-	statisticalEvents []FonbetAPIEvent,
-) []FonbetFactorGroup {
-	factorGroups := make([]FonbetFactorGroup, 0)
-	
-	// Fetch factors for main event
-	if mainEvent.ID > 0 {
-		if factorData, err := p.eventFetcher.FetchEventFactors(mainEvent.ID); err == nil {
-			var eventResponse FonbetAPIResponse
-			if err := json.Unmarshal(factorData, &eventResponse); err == nil {
-				for _, fg := range eventResponse.CustomFactors {
-					if fg.EventID == mainEvent.ID {
-						factorGroups = append(factorGroups, fg)
-						break
-					}
-				}
-			}
-		}
-	}
-	
-	// Fetch factors for statistical events (limit to avoid too many requests)
-	maxStatEvents := 3 // Limit to avoid too many HTTP requests
-	for i, se := range statisticalEvents {
-		if i >= maxStatEvents {
-			break
-		}
-		if se.ID > 0 {
-			if factorData, err := p.eventFetcher.FetchEventFactors(se.ID); err == nil {
-				var eventResponse FonbetAPIResponse
-				if err := json.Unmarshal(factorData, &eventResponse); err == nil {
-					for _, fg := range eventResponse.CustomFactors {
-						if fg.EventID == se.ID {
-							factorGroups = append(factorGroups, fg)
-							break
-						}
-					}
-				}
-			}
-		}
-	}
-	
-	return factorGroups
 }
 
 

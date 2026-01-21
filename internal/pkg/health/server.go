@@ -83,7 +83,7 @@ func AddMatch(match *models.Match) {
 		}
 
 		if addedCount > 0 {
-			log.Printf("✅ Merged %d events from %v into match %s (now has %d events total)", 
+			log.Printf("✅ Merged %d events from %v into match %s (now has %d events total)",
 				addedCount, bookmakerList, match.ID, len(existing.Events))
 		}
 
@@ -105,7 +105,7 @@ func AddMatch(match *models.Match) {
 		copy(eventsCopy, match.Events)
 		matchCopy.Events = eventsCopy
 		globalMatchStore.matches[match.ID] = &matchCopy
-		log.Printf("✅ Added new match %s from %v with %d events", 
+		log.Printf("✅ Added new match %s from %v with %d events",
 			match.ID, bookmakerList, len(match.Events))
 	}
 }

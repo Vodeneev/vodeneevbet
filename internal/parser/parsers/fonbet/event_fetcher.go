@@ -20,11 +20,20 @@ type EventFetcher struct {
 	baseURL string
 }
 
-// NewEventFetcher creates a new event fetcher
+// NewEventFetcher creates a new event fetcher with connection pooling
 func NewEventFetcher(config *config.Config) interfaces.EventFetcher {
+	// Create HTTP client with connection pooling for better performance
+	transport := &http.Transport{
+		MaxIdleConns:        100,              // Максимум idle соединений
+		MaxIdleConnsPerHost: 10,               // Максимум idle соединений на хост
+		IdleConnTimeout:     90 * time.Second, // Таймаут для idle соединений
+		DisableKeepAlives:   false,            // Включить keep-alive для переиспользования соединений
+	}
+	
 	return &EventFetcher{
 		client: &http.Client{
-			Timeout: config.Parser.Timeout,
+			Timeout:   config.Parser.Timeout,
+			Transport: transport,
 		},
 		config:  config,
 		baseURL: config.Parser.Fonbet.BaseURL,

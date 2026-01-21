@@ -43,14 +43,14 @@ func NewBatchProcessor(
 		eventFetcher: eventFetcher,
 		oddsParser:   oddsParser,
 		matchBuilder: matchBuilder,
-		batchSize:    50,  // Начальный размер батча
-		workers:      3,   // 3 параллельных воркера (уменьшено для YDB Serverless)
+		batchSize:    100, // Увеличен начальный размер батча для лучшей производительности
+		workers:      5,   // Увеличено количество воркеров (bulk операции более эффективны)
 		testLimit:    testLimit,
 		// Динамические параметры
 		avgBatchTime:   0,
-		targetBatchTime: 2 * time.Second, // Целевое время батча: 2 секунды
-		minBatchSize:   10,  // Минимальный размер батча
-		maxBatchSize:   200, // Максимальный размер батча
+		targetBatchTime: 3 * time.Second, // Увеличено целевое время батча (bulk операции быстрее)
+		minBatchSize:   20,  // Увеличено минимальный размер батча
+		maxBatchSize:   300, // Увеличено максимальный размер батча
 	}
 }
 

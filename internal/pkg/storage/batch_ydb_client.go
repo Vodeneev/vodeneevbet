@@ -16,14 +16,14 @@ import (
 
 const (
 	// Batch sizes for optimal performance
-	eventsBatchSize  = 50   // Insert events in batches of 50
-	outcomesBatchSize = 100 // Insert outcomes in batches of 100
+	eventsBatchSize  = 100  // Insert events in batches of 100 (increased for better throughput)
+	outcomesBatchSize = 200 // Insert outcomes in batches of 200 (increased for better throughput)
 	maxRetries       = 3    // Maximum retry attempts
 	baseRetryDelay   = 100 * time.Millisecond
 	
 	// Rate limiting to avoid YDB ResourceExhausted
-	// YDB Serverless has strict rate limits, so we need longer delays
-	ydbOperationDelay = 50 * time.Millisecond  // Delay between YDB operations to avoid throttling
+	// YDB Serverless has strict rate limits, but we optimize by using bulk operations
+	// No delay needed inside transaction - bulk operations are more efficient
 	ydbResourceExhaustedDelay = 500 * time.Millisecond // Longer delay after ResourceExhausted
 )
 
@@ -40,6 +40,7 @@ func NewBatchYDBClient(ydbClient *YDBClient) *BatchYDBClient {
 }
 
 // StoreMatchBatch stores a complete match with all events and outcomes in a single transaction
+// Includes retry logic for ResourceExhausted errors
 func (y *BatchYDBClient) StoreMatchBatch(ctx context.Context, match *models.Match) error {
 	startTime := time.Now()
 	tracker := performance.GetTracker()
@@ -47,59 +48,79 @@ func (y *BatchYDBClient) StoreMatchBatch(ctx context.Context, match *models.Matc
 	log.Printf("🚀 YDB Batch: Storing match %s (%s vs %s) with %d events", 
 		match.ID, match.HomeTeam, match.AwayTeam, len(match.Events))
 	
-	// Execute all operations in a single transaction
-	err := y.db.Table().Do(ctx,
-		func(ctx context.Context, s table.Session) error {
-			// Start transaction
-			txStart := time.Now()
-			tx, err := s.BeginTransaction(ctx, table.TxSettings(table.WithSerializableReadWrite()))
-			if err != nil {
-				tracker.RecordYDBOperation("begin_tx", match.ID, "", time.Since(txStart), false, err)
-				return fmt.Errorf("failed to begin transaction: %w", err)
-			}
-			tracker.RecordYDBOperation("begin_tx", match.ID, "", time.Since(txStart), true, nil)
-			
-			// 1. Store match metadata
-			matchStart := time.Now()
-			if err := y.storeMatchMetadataInTx(ctx, tx, match); err != nil {
-				tracker.RecordYDBOperation("match", match.ID, "", time.Since(matchStart), false, err)
-				tx.Rollback(ctx)
-				return fmt.Errorf("failed to store match metadata: %w", err)
-			}
-			tracker.RecordYDBOperation("match", match.ID, "", time.Since(matchStart), true, nil)
-			
-			// 2. Store all events and outcomes in batch
-			eventsStart := time.Now()
-			if err := y.storeEventsBatchInTx(ctx, tx, match.ID, match.Events); err != nil {
-				tracker.RecordYDBOperation("events_batch", match.ID, "", time.Since(eventsStart), false, err)
-				tx.Rollback(ctx)
-				return fmt.Errorf("failed to store events batch: %w", err)
-			}
-			tracker.RecordYDBOperation("events_batch", match.ID, "", time.Since(eventsStart), true, nil)
-			
-			// Commit transaction
-			commitStart := time.Now()
-			_, err = tx.CommitTx(ctx)
-			if err != nil {
-				tracker.RecordYDBOperation("commit_tx", match.ID, "", time.Since(commitStart), false, err)
-				return fmt.Errorf("failed to commit transaction: %w", err)
-			}
-			tracker.RecordYDBOperation("commit_tx", match.ID, "", time.Since(commitStart), true, nil)
-			
+	var lastErr error
+	// Retry transaction on ResourceExhausted
+	for attempt := 0; attempt < maxRetries; attempt++ {
+		err := y.db.Table().Do(ctx,
+			func(ctx context.Context, s table.Session) error {
+				// Start transaction
+				txStart := time.Now()
+				tx, err := s.BeginTransaction(ctx, table.TxSettings(table.WithSerializableReadWrite()))
+				if err != nil {
+					tracker.RecordYDBOperation("begin_tx", match.ID, "", time.Since(txStart), false, err)
+					return fmt.Errorf("failed to begin transaction: %w", err)
+				}
+				tracker.RecordYDBOperation("begin_tx", match.ID, "", time.Since(txStart), true, nil)
+				
+				// 1. Store match metadata
+				matchStart := time.Now()
+				if err := y.storeMatchMetadataInTx(ctx, tx, match); err != nil {
+					tracker.RecordYDBOperation("match", match.ID, "", time.Since(matchStart), false, err)
+					tx.Rollback(ctx)
+					return fmt.Errorf("failed to store match metadata: %w", err)
+				}
+				tracker.RecordYDBOperation("match", match.ID, "", time.Since(matchStart), true, nil)
+				
+				// 2. Store all events and outcomes in batch
+				eventsStart := time.Now()
+				if err := y.storeEventsBatchInTx(ctx, tx, match.ID, match.Events); err != nil {
+					tracker.RecordYDBOperation("events_batch", match.ID, "", time.Since(eventsStart), false, err)
+					tx.Rollback(ctx)
+					return fmt.Errorf("failed to store events batch: %w", err)
+				}
+				tracker.RecordYDBOperation("events_batch", match.ID, "", time.Since(eventsStart), true, nil)
+				
+				// Commit transaction
+				commitStart := time.Now()
+				_, err = tx.CommitTx(ctx)
+				if err != nil {
+					tracker.RecordYDBOperation("commit_tx", match.ID, "", time.Since(commitStart), false, err)
+					return fmt.Errorf("failed to commit transaction: %w", err)
+				}
+				tracker.RecordYDBOperation("commit_tx", match.ID, "", time.Since(commitStart), true, nil)
+				
+				return nil
+			})
+		
+		if err == nil {
+			duration := time.Since(startTime)
+			log.Printf("✅ YDB Batch: Successfully stored match %s with %d events in %v", 
+				match.ID, len(match.Events), duration)
 			return nil
-		})
-	
-	duration := time.Since(startTime)
-	
-	if err != nil {
-		log.Printf("❌ YDB Batch: Failed to store match %s: %v (took %v)", match.ID, err, duration)
-		return err
+		}
+		
+		lastErr = err
+		errStr := err.Error()
+		isResourceExhausted := strings.Contains(errStr, "ResourceExhausted") || 
+			strings.Contains(errStr, "code = 8") ||
+			strings.Contains(errStr, "RESOURCE_EXHAUSTED")
+		
+		// Retry only on ResourceExhausted
+		if isResourceExhausted && attempt < maxRetries-1 {
+			delay := time.Duration(float64(ydbResourceExhaustedDelay) * math.Pow(2, float64(attempt+1)))
+			log.Printf("⚠️  YDB ResourceExhausted for match %s (attempt %d/%d), retrying in %v", 
+				match.ID, attempt+1, maxRetries, delay)
+			time.Sleep(delay)
+			continue
+		}
+		
+		// For other errors or last attempt, break
+		break
 	}
 	
-	log.Printf("✅ YDB Batch: Successfully stored match %s with %d events in %v", 
-		match.ID, len(match.Events), duration)
-	
-	return nil
+	duration := time.Since(startTime)
+	log.Printf("❌ YDB Batch: Failed to store match %s: %v (took %v)", match.ID, lastErr, duration)
+	return fmt.Errorf("failed to store match after %d attempts: %w", maxRetries, lastErr)
 }
 
 // storeMatchMetadataInTx stores match metadata within transaction
@@ -240,8 +261,8 @@ func (y *BatchYDBClient) storeOutcomesBatchInTx(ctx context.Context, tx table.Tr
 	return nil
 }
 
-// insertEventsBatched inserts events in optimized batches
-// Groups operations to reduce overhead, but executes them sequentially within transaction
+// insertEventsBatched inserts events using bulk operations for better performance
+// Uses YDB's List<Struct<...>> with AS_TABLE for efficient bulk insert
 func (y *BatchYDBClient) insertEventsBatched(
 	ctx context.Context,
 	tx table.Transaction,
@@ -249,8 +270,81 @@ func (y *BatchYDBClient) insertEventsBatched(
 	matchID string,
 	eventIDs, matchIDs, eventTypes, marketNames, bookmakers, createdAts, updatedAts []types.Value,
 ) error {
-	// Process events in batches - execute each event but group them for better performance
-	// YDB doesn't support true bulk VALUES, so we execute sequentially but in optimized batches
+	if len(events) == 0 {
+		return nil
+	}
+	
+	// Process in batches to avoid query size limits
+	for batchStart := 0; batchStart < len(events); batchStart += eventsBatchSize {
+		batchEnd := batchStart + eventsBatchSize
+		if batchEnd > len(events) {
+			batchEnd = len(events)
+		}
+		
+		// Build struct list for bulk insert using AS_TABLE pattern
+		rows := make([]types.Value, 0, batchEnd-batchStart)
+		for i := batchStart; i < batchEnd; i++ {
+			row := types.StructValue(
+				types.StructFieldValue("event_id", eventIDs[i]),
+				types.StructFieldValue("match_id", matchIDs[i]),
+				types.StructFieldValue("event_type", eventTypes[i]),
+				types.StructFieldValue("market_name", marketNames[i]),
+				types.StructFieldValue("bookmaker", bookmakers[i]),
+				types.StructFieldValue("created_at", createdAts[i]),
+				types.StructFieldValue("updated_at", updatedAts[i]),
+			)
+			rows = append(rows, row)
+		}
+		
+		rowsList := types.ListValue(rows...)
+		
+		// Use bulk INSERT with AS_TABLE for better performance
+		_, err := tx.Execute(ctx, `
+			DECLARE $rows AS List<Struct<
+				event_id: Utf8,
+				match_id: Utf8,
+				event_type: Utf8,
+				market_name: Utf8,
+				bookmaker: Utf8,
+				created_at: Timestamp,
+				updated_at: Timestamp
+			>>;
+			
+			UPSERT INTO events (
+				event_id, match_id, event_type, market_name, bookmaker, created_at, updated_at
+			)
+			SELECT
+				r.event_id AS event_id,
+				r.match_id AS match_id,
+				r.event_type AS event_type,
+				r.market_name AS market_name,
+				r.bookmaker AS bookmaker,
+				r.created_at AS created_at,
+				r.updated_at AS updated_at
+			FROM AS_TABLE($rows) AS r;
+		`, table.NewQueryParameters(
+			table.ValueParam("$rows", rowsList),
+		))
+		
+		if err != nil {
+			// Fallback to sequential inserts if bulk fails
+			log.Printf("⚠️  Bulk insert failed, falling back to sequential: %v", err)
+			return y.insertEventsSequential(ctx, tx, events[batchStart:batchEnd], eventIDs[batchStart:batchEnd], 
+				matchIDs[batchStart:batchEnd], eventTypes[batchStart:batchEnd], marketNames[batchStart:batchEnd],
+				bookmakers[batchStart:batchEnd], createdAts[batchStart:batchEnd], updatedAts[batchStart:batchEnd])
+		}
+	}
+	
+	return nil
+}
+
+// insertEventsSequential inserts events one by one (fallback method)
+func (y *BatchYDBClient) insertEventsSequential(
+	ctx context.Context,
+	tx table.Transaction,
+	events []models.Event,
+	eventIDs, matchIDs, eventTypes, marketNames, bookmakers, createdAts, updatedAts []types.Value,
+) error {
 	for i := 0; i < len(events); i++ {
 		_, err := tx.Execute(ctx, `
 			DECLARE $event_id AS Utf8;
@@ -277,55 +371,104 @@ func (y *BatchYDBClient) insertEventsBatched(
 		))
 		
 		if err != nil {
-			// Retry with exponential backoff
-			retryErr := y.retryExecute(ctx, tx, `
-				DECLARE $event_id AS Utf8;
-				DECLARE $match_id AS Utf8;
-				DECLARE $event_type AS Utf8;
-				DECLARE $market_name AS Utf8;
-				DECLARE $bookmaker AS Utf8;
-				DECLARE $created_at AS Timestamp;
-				DECLARE $updated_at AS Timestamp;
-				
-				UPSERT INTO events (
-					event_id, match_id, event_type, market_name, bookmaker, created_at, updated_at
-				) VALUES (
-					$event_id, $match_id, $event_type, $market_name, $bookmaker, $created_at, $updated_at
-				);
-			`, table.NewQueryParameters(
-				table.ValueParam("$event_id", eventIDs[i]),
-				table.ValueParam("$match_id", matchIDs[i]),
-				table.ValueParam("$event_type", eventTypes[i]),
-				table.ValueParam("$market_name", marketNames[i]),
-				table.ValueParam("$bookmaker", bookmakers[i]),
-				table.ValueParam("$created_at", createdAts[i]),
-				table.ValueParam("$updated_at", updatedAts[i]),
-			), fmt.Sprintf("event %d", i))
-			
-			if retryErr != nil {
-				return fmt.Errorf("failed to insert event %d after retry: %w", i, retryErr)
-			}
+			return fmt.Errorf("failed to insert event %d: %w", i, err)
 		}
 	}
-	
 	return nil
 }
 
-// insertOutcomesBatched inserts outcomes in optimized batches
-// Groups operations to reduce overhead, but executes them sequentially within transaction
+// insertOutcomesBatched inserts outcomes using bulk operations for better performance
+// Uses YDB's List<Struct<...>> with AS_TABLE for efficient bulk insert
 func (y *BatchYDBClient) insertOutcomesBatched(
 	ctx context.Context,
 	tx table.Transaction,
 	outcomes []OutcomeBatchData,
 	outcomeIDs, eventIDs, names, odds, bookmakers, createdAts, updatedAts []types.Value,
 ) error {
-	// Process outcomes sequentially but with retry logic for better reliability
-	for i := 0; i < len(outcomes); i++ {
-		// Add delay to avoid YDB ResourceExhausted (YDB Serverless has strict limits)
-		if i > 0 {
-			time.Sleep(ydbOperationDelay)
+	if len(outcomes) == 0 {
+		return nil
+	}
+	
+	// Process in batches to avoid query size limits
+	for batchStart := 0; batchStart < len(outcomes); batchStart += outcomesBatchSize {
+		batchEnd := batchStart + outcomesBatchSize
+		if batchEnd > len(outcomes) {
+			batchEnd = len(outcomes)
 		}
 		
+		// Build struct list for bulk insert using AS_TABLE pattern
+		rows := make([]types.Value, 0, batchEnd-batchStart)
+		for i := batchStart; i < batchEnd; i++ {
+			row := types.StructValue(
+				types.StructFieldValue("outcome_id", outcomeIDs[i]),
+				types.StructFieldValue("event_id", eventIDs[i]),
+				types.StructFieldValue("outcome_type", names[i]),
+				types.StructFieldValue("parameter", types.UTF8Value(outcomes[i].Parameter)),
+				types.StructFieldValue("odds", odds[i]),
+				types.StructFieldValue("bookmaker", bookmakers[i]),
+				types.StructFieldValue("created_at", createdAts[i]),
+				types.StructFieldValue("updated_at", updatedAts[i]),
+			)
+			rows = append(rows, row)
+		}
+		
+		rowsList := types.ListValue(rows...)
+		
+		// Use bulk INSERT with AS_TABLE for better performance
+		_, err := tx.Execute(ctx, `
+			DECLARE $rows AS List<Struct<
+				outcome_id: Utf8,
+				event_id: Utf8,
+				outcome_type: Utf8,
+				parameter: Utf8,
+				odds: Double,
+				bookmaker: Utf8,
+				created_at: Timestamp,
+				updated_at: Timestamp
+			>>;
+			
+			UPSERT INTO outcomes (
+				outcome_id, event_id, outcome_type, parameter, odds, bookmaker, created_at, updated_at
+			)
+			SELECT
+				r.outcome_id AS outcome_id,
+				r.event_id AS event_id,
+				r.outcome_type AS outcome_type,
+				r.parameter AS parameter,
+				r.odds AS odds,
+				r.bookmaker AS bookmaker,
+				r.created_at AS created_at,
+				r.updated_at AS updated_at
+			FROM AS_TABLE($rows) AS r;
+		`, table.NewQueryParameters(
+			table.ValueParam("$rows", rowsList),
+		))
+		
+		if err != nil {
+			// Fallback to sequential inserts if bulk fails
+			log.Printf("⚠️  Bulk insert failed, falling back to sequential: %v", err)
+			parameters := make([]types.Value, batchEnd-batchStart)
+			for i := batchStart; i < batchEnd; i++ {
+				parameters[i-batchStart] = types.UTF8Value(outcomes[i].Parameter)
+			}
+			return y.insertOutcomesSequential(ctx, tx, outcomes[batchStart:batchEnd], 
+				outcomeIDs[batchStart:batchEnd], eventIDs[batchStart:batchEnd], names[batchStart:batchEnd],
+				parameters, odds[batchStart:batchEnd], bookmakers[batchStart:batchEnd],
+				createdAts[batchStart:batchEnd], updatedAts[batchStart:batchEnd])
+		}
+	}
+	
+	return nil
+}
+
+// insertOutcomesSequential inserts outcomes one by one (fallback method)
+func (y *BatchYDBClient) insertOutcomesSequential(
+	ctx context.Context,
+	tx table.Transaction,
+	outcomes []OutcomeBatchData,
+	outcomeIDs, eventIDs, names, parameters, odds, bookmakers, createdAts, updatedAts []types.Value,
+) error {
+	for i := 0; i < len(outcomes); i++ {
 		_, err := tx.Execute(ctx, `
 			DECLARE $outcome_id AS Utf8;
 			DECLARE $event_id AS Utf8;
@@ -345,7 +488,7 @@ func (y *BatchYDBClient) insertOutcomesBatched(
 			table.ValueParam("$outcome_id", outcomeIDs[i]),
 			table.ValueParam("$event_id", eventIDs[i]),
 			table.ValueParam("$outcome_type", names[i]),
-			table.ValueParam("$parameter", types.UTF8Value(outcomes[i].Parameter)),
+			table.ValueParam("$parameter", parameters[i]),
 			table.ValueParam("$odds", odds[i]),
 			table.ValueParam("$bookmaker", bookmakers[i]),
 			table.ValueParam("$created_at", createdAts[i]),
@@ -353,43 +496,14 @@ func (y *BatchYDBClient) insertOutcomesBatched(
 		))
 		
 		if err != nil {
-			// Retry with exponential backoff
-			retryErr := y.retryExecute(ctx, tx, `
-				DECLARE $outcome_id AS Utf8;
-				DECLARE $event_id AS Utf8;
-				DECLARE $outcome_type AS Utf8;
-				DECLARE $parameter AS Utf8;
-				DECLARE $odds AS Double;
-				DECLARE $bookmaker AS Utf8;
-				DECLARE $created_at AS Timestamp;
-				DECLARE $updated_at AS Timestamp;
-				
-				UPSERT INTO outcomes (
-					outcome_id, event_id, outcome_type, parameter, odds, bookmaker, created_at, updated_at
-				) VALUES (
-					$outcome_id, $event_id, $outcome_type, $parameter, $odds, $bookmaker, $created_at, $updated_at
-				);
-			`, table.NewQueryParameters(
-				table.ValueParam("$outcome_id", outcomeIDs[i]),
-				table.ValueParam("$event_id", eventIDs[i]),
-				table.ValueParam("$outcome_type", names[i]),
-				table.ValueParam("$parameter", types.UTF8Value(outcomes[i].Parameter)),
-				table.ValueParam("$odds", odds[i]),
-				table.ValueParam("$bookmaker", bookmakers[i]),
-				table.ValueParam("$created_at", createdAts[i]),
-				table.ValueParam("$updated_at", updatedAts[i]),
-			), fmt.Sprintf("outcome %d", i))
-			
-			if retryErr != nil {
-				return fmt.Errorf("failed to insert outcome %d after retry: %w", i, retryErr)
-			}
+			return fmt.Errorf("failed to insert outcome %d: %w", i, err)
 		}
 	}
-	
 	return nil
 }
 
 // retryExecute executes a query with exponential backoff retry logic
+// Optimized for ResourceExhausted errors with adaptive delays
 func (y *BatchYDBClient) retryExecute(
 	ctx context.Context,
 	tx table.Transaction,
@@ -409,20 +523,25 @@ func (y *BatchYDBClient) retryExecute(
 		
 		// Check if it's ResourceExhausted - need longer delay
 		isResourceExhausted := false
-		if err != nil {
-			errStr := err.Error()
-			if strings.Contains(errStr, "ResourceExhausted") || strings.Contains(errStr, "code = 8") {
-				isResourceExhausted = true
-			}
+		errStr := err.Error()
+		if strings.Contains(errStr, "ResourceExhausted") || 
+		   strings.Contains(errStr, "code = 8") ||
+		   strings.Contains(errStr, "RESOURCE_EXHAUSTED") {
+			isResourceExhausted = true
 		}
 		
 		// Don't retry on last attempt
 		if attempt < maxRetries-1 {
-			delay := time.Duration(float64(baseRetryDelay) * math.Pow(2, float64(attempt)))
-			// For ResourceExhausted, use much longer delay to let YDB recover
+			var delay time.Duration
 			if isResourceExhausted {
-				delay = time.Duration(float64(ydbResourceExhaustedDelay) * math.Pow(2, float64(attempt))) // 500ms, 1s, 2s
+				// Для ResourceExhausted используем более длинные задержки с экспоненциальным ростом
+				// 1s, 2s, 4s для лучшего восстановления YDB
+				delay = time.Duration(float64(ydbResourceExhaustedDelay) * math.Pow(2, float64(attempt+1)))
+			} else {
+				// Для других ошибок используем стандартную экспоненциальную задержку
+				delay = time.Duration(float64(baseRetryDelay) * math.Pow(2, float64(attempt)))
 			}
+			
 			log.Printf("⚠️  YDB %s failed (attempt %d/%d), retrying in %v: %v", 
 				operationName, attempt+1, maxRetries, delay, err)
 			time.Sleep(delay)

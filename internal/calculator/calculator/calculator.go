@@ -9,7 +9,6 @@ import (
 	"sort"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/Vodeneev/vodeneevbet/internal/pkg/config"
@@ -17,15 +16,10 @@ import (
 )
 
 // ValueCalculator reads odds from HTTP endpoint and calculates top diffs between bookmakers.
-// It keeps a small in-memory cache and exposes it via HTTP handlers.
+// Data is fetched on-demand from parser on each request.
 type ValueCalculator struct {
 	httpClient *HTTPMatchesClient
 	cfg        *config.ValueCalculatorConfig
-
-	mu          sync.RWMutex
-	topDiffs    []DiffBet
-	lastCalcAt  time.Time
-	lastCalcErr string
 }
 
 func NewValueCalculator(cfg *config.ValueCalculatorConfig) *ValueCalculator {
@@ -41,25 +35,10 @@ func NewValueCalculator(cfg *config.ValueCalculatorConfig) *ValueCalculator {
 }
 
 func (c *ValueCalculator) Start(ctx context.Context) error {
-	interval := parseInterval(c.cfg)
-	if interval <= 0 {
-		interval = 30 * time.Second
-	}
-
-	// Initial calculation.
-	c.recalculate(ctx)
-
-	t := time.NewTicker(interval)
-	defer t.Stop()
-
-	for {
-		select {
-		case <-ctx.Done():
-			return nil
-		case <-t.C:
-			c.recalculate(ctx)
-		}
-	}
+	// No background processing needed - data is fetched on-demand in handleTopDiffs
+	// Just wait for context cancellation
+	<-ctx.Done()
+	return nil
 }
 
 // RegisterHTTP registers calculator endpoints onto mux.
@@ -84,34 +63,28 @@ func (c *ValueCalculator) handleTopDiffs(w http.ResponseWriter, r *http.Request)
 
 	// Fetch fresh data from parser on each request
 	var diffs []DiffBet
-	if c.httpClient != nil {
-		// Create context with timeout for the request
-		ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
-		defer cancel()
-
-		matches, err := c.httpClient.GetMatches(ctx)
-		if err != nil {
-			log.Printf("calculator: failed to load matches in handleTopDiffs: %v", err)
-			// Fallback to cached data if available
-			c.mu.RLock()
-			diffs = c.topDiffs
-			c.mu.RUnlock()
-			if diffs == nil {
-				diffs = []DiffBet{}
-			}
-		} else {
-			// Calculate diffs from fresh data
-			diffs = computeTopDiffs(matches, 100)
-		}
-	} else {
-		// Fallback to cached data if httpClient is not configured
-		c.mu.RLock()
-		diffs = c.topDiffs
-		c.mu.RUnlock()
-		if diffs == nil {
-			diffs = []DiffBet{}
-		}
+	if c.httpClient == nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusServiceUnavailable)
+		_ = json.NewEncoder(w).Encode(map[string]string{"error": "parser URL is not configured"})
+		return
 	}
+
+	// Create context with timeout for the request
+	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
+	defer cancel()
+
+	matches, err := c.httpClient.GetMatches(ctx)
+	if err != nil {
+		log.Printf("calculator: failed to load matches in handleTopDiffs: %v", err)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadGateway)
+		_ = json.NewEncoder(w).Encode(map[string]string{"error": "failed to fetch matches from parser", "details": err.Error()})
+		return
+	}
+
+	// Calculate diffs from fresh data
+	diffs = computeTopDiffs(matches, 100)
 
 	// Filter by status if specified
 	// Use UTC for comparison to handle timezones correctly (StartTime is stored in UTC)
@@ -159,84 +132,20 @@ func (c *ValueCalculator) handleTopDiffs(w http.ResponseWriter, r *http.Request)
 }
 
 func (c *ValueCalculator) handleStatus(w http.ResponseWriter, r *http.Request) {
-	c.mu.RLock()
-	lastAt := c.lastCalcAt
-	lastErr := c.lastCalcErr
-	count := len(c.topDiffs)
-	c.mu.RUnlock()
+	// Status endpoint - data is fetched on-demand, no caching
+	status := map[string]any{
+		"status":           "ok",
+		"parser_configured": c.httpClient != nil,
+		"mode":             "on-demand",
+	}
+	if c.httpClient == nil {
+		status["error"] = "parser URL is not configured"
+	}
 
 	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(map[string]any{
-		"last_calculated_at": lastAt,
-		"last_error":         lastErr,
-		"cached_items":       count,
-	})
+	_ = json.NewEncoder(w).Encode(status)
 }
 
-func (c *ValueCalculator) recalculate(ctx context.Context) {
-	calcAt := time.Now()
-
-	if c.httpClient == nil {
-		c.mu.Lock()
-		c.topDiffs = []DiffBet{}
-		c.lastCalcAt = calcAt
-		c.lastCalcErr = "parser URL is not configured"
-		c.mu.Unlock()
-		return
-	}
-
-	// Mark calculation as started so /diffs/status is informative even while we query.
-	c.mu.Lock()
-	c.lastCalcAt = calcAt
-	c.lastCalcErr = "calculating"
-	c.mu.Unlock()
-
-	// Avoid long-hanging reads.
-	// This call can be expensive if we load match->events->outcomes with N+1 queries,
-	// so keep a reasonably large timeout.
-	readCtx, cancel := context.WithTimeout(ctx, 2*time.Minute)
-	defer cancel()
-
-	var (
-		matches []models.Match
-		err     error
-	)
-
-	// Always fetch all matches
-	matches, err = c.httpClient.GetMatches(readCtx)
-	if err != nil {
-		log.Printf("calculator: failed to load matches: %v", err)
-		c.mu.Lock()
-		c.lastCalcErr = err.Error()
-		c.mu.Unlock()
-		return
-	}
-
-	top := computeTopDiffs(matches, 100)
-
-	c.mu.Lock()
-	c.topDiffs = top
-	c.lastCalcErr = ""
-	c.mu.Unlock()
-}
-
-func parseInterval(cfg *config.ValueCalculatorConfig) time.Duration {
-	// Prefer check_interval, fallback to test_interval, then default.
-	if cfg == nil {
-		return 0
-	}
-	if cfg.CheckInterval != "" {
-		if d, err := time.ParseDuration(strings.TrimSpace(cfg.CheckInterval)); err == nil {
-			return d
-		}
-	}
-	if cfg.TestInterval != "" {
-		if d, err := time.ParseDuration(strings.TrimSpace(cfg.TestInterval)); err == nil {
-			return d
-		}
-	}
-	return 0
-}
 
 func computeTopDiffs(matches []models.Match, keepTop int) []DiffBet {
 	if keepTop <= 0 {

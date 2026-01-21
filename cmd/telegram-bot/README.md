@@ -15,6 +15,8 @@ Telegram bot wrapper for the `/diffs/top` endpoint with different parameters.
 2. Get your bot token
 3. Set environment variables or use command-line flags
 
+**Important:** The bot is a long-running process. Once started, it will run continuously until stopped. For production, use systemd service or Docker with restart policy.
+
 ## Usage
 
 ### Command Line
@@ -62,21 +64,61 @@ upcoming 3
 go build -o telegram-bot ./cmd/telegram-bot
 ```
 
-## Docker
+## Running as a Service
 
-Example Dockerfile:
+### Option 1: Systemd Service (Linux)
 
-```dockerfile
-FROM golang:1.22-alpine AS builder
-WORKDIR /app
-COPY . .
-RUN go build -o telegram-bot ./cmd/telegram-bot
+1. Copy the service file:
+```bash
+sudo cp deploy/vm-core/telegram-bot.service /etc/systemd/system/
+```
 
-FROM alpine:latest
-RUN apk --no-cache add ca-certificates
-WORKDIR /root/
-COPY --from=builder /app/telegram-bot .
-CMD ["./telegram-bot"]
+2. Create override file for token:
+```bash
+sudo mkdir -p /etc/systemd/system/telegram-bot.service.d
+sudo tee /etc/systemd/system/telegram-bot.service.d/override.conf <<EOF
+[Service]
+Environment="TELEGRAM_BOT_TOKEN=YOUR_BOT_TOKEN"
+EOF
+```
+
+3. Reload and start:
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable telegram-bot
+sudo systemctl start telegram-bot
+```
+
+4. Check status:
+```bash
+sudo systemctl status telegram-bot
+```
+
+### Option 2: Docker
+
+Build and run:
+```bash
+docker build -t telegram-bot -f cmd/telegram-bot/Dockerfile .
+docker run -d \
+  --name telegram-bot \
+  --restart unless-stopped \
+  -e TELEGRAM_BOT_TOKEN="YOUR_BOT_TOKEN" \
+  -e CALCULATOR_URL="http://158.160.200.253" \
+  telegram-bot
+```
+
+### Option 3: Docker Compose
+
+Add to your docker-compose.yml:
+```yaml
+telegram-bot:
+  build:
+    context: .
+    dockerfile: cmd/telegram-bot/Dockerfile
+  restart: unless-stopped
+  environment:
+    - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
+    - CALCULATOR_URL=http://158.160.200.253
 ```
 
 ## Security

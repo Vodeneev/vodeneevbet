@@ -1,0 +1,18 @@
+[Unit]
+Description=Telegram Bot for Value Bet Calculator
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/vodeneevbet/telegram-bot
+ExecStart=/opt/vodeneevbet/telegram-bot/telegram-bot \
+  -calculator-url "http://158.160.200.253"
+Restart=always
+RestartSec=10
+
+# Environment variables (set these in /etc/systemd/system/telegram-bot.service.d/override.conf)
+Environment="TELEGRAM_BOT_TOKEN=8490783277:AAG52Lhz-BwPck0rYNaGqY1pNQymLzANPOU"
+
+[Install]
+WantedBy=multi-user.target

@@ -38,6 +38,9 @@ ssh "${VM_USER}@${VM_HOST}" "sudo mkdir -p '${REMOTE_DIR}' '${REMOTE_DIR}/config
 echo "📦 Uploading docker-compose.yml..."
 scp "deploy/vm-parsers/docker-compose.yml" "${VM_USER}@${VM_HOST}:${REMOTE_DIR}/docker-compose.yml"
 
+echo "📦 Uploading nginx.conf..."
+scp "deploy/vm-parsers/nginx.conf" "${VM_USER}@${VM_HOST}:${REMOTE_DIR}/nginx.conf"
+
 echo "📦 Syncing configs..."
 rsync -avz --delete "./configs/" "${VM_USER}@${VM_HOST}:${REMOTE_DIR}/configs/"
 
@@ -71,7 +74,10 @@ else
   echo \"Docker Compose is not installed (need docker compose plugin or docker-compose)\" >&2
   exit 1
 fi
+# Check that parser container is running (new unified container name)
 test \"\$(sudo docker ps -q -f name=vodeneevbet-parser -f status=running | wc -l)\" -ge 1
+# Also check nginx
+test \"\$(sudo docker ps -q -f name=vodeneevbet-parsers-nginx -f status=running | wc -l)\" -ge 1
 '"
 
 echo "✅ Parser deployed successfully!"

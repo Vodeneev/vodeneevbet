@@ -28,7 +28,7 @@ var globalMatchStore *InMemoryMatchStore
 func init() {
 	globalMatchStore = &InMemoryMatchStore{
 		matches: make(map[string]*models.Match),
-		maxSize: 10000, // Keep last 10000 matches
+		maxSize: 50000, // Keep last 50000 matches (increased for better coverage)
 	}
 }
 
@@ -200,11 +200,11 @@ func handleMatches(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 
-	// Parse limit parameter (default: 100, max: 1000)
-	limit := 100
+	// Parse limit parameter (default: no limit, 0 = all matches)
+	limit := 0
 	if limitStr := r.URL.Query().Get("limit"); limitStr != "" {
 		if parsedLimit, err := strconv.Atoi(limitStr); err == nil {
-			if parsedLimit > 0 && parsedLimit <= 1000 {
+			if parsedLimit > 0 {
 				limit = parsedLimit
 			}
 		}

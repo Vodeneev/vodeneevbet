@@ -46,20 +46,8 @@ type matchesResponse struct {
 	} `json:"meta"`
 }
 
-// GetAllMatches fetches all matches from the parser's /matches endpoint
-func (c *HTTPMatchesClient) GetAllMatches(ctx context.Context) ([]models.Match, error) {
-	return c.fetchMatches(ctx)
-}
-
-// GetMatchesWithLimit fetches all matches (limit parameter is ignored)
-func (c *HTTPMatchesClient) GetMatchesWithLimit(ctx context.Context, limit int) ([]models.Match, error) {
-	_ = limit // limit is ignored, always fetch all matches
-	return c.fetchMatches(ctx)
-}
-
-// GetMatchesWithLimitFast is an alias for GetMatchesWithLimit (for compatibility with fastMatchesReader interface)
-func (c *HTTPMatchesClient) GetMatchesWithLimitFast(ctx context.Context, limit int) ([]models.Match, error) {
-	_ = limit // limit is ignored, always fetch all matches
+// GetMatches fetches all matches from the parser's /matches endpoint
+func (c *HTTPMatchesClient) GetMatches(ctx context.Context) ([]models.Match, error) {
 	return c.fetchMatches(ctx)
 }
 

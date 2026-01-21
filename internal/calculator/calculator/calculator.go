@@ -138,8 +138,8 @@ func (c *ValueCalculator) recalculate(ctx context.Context) {
 		err     error
 	)
 
-	// Always fetch all matches (limit parameter is ignored)
-	matches, err = c.httpClient.GetMatchesWithLimitFast(readCtx, 0)
+	// Always fetch all matches
+	matches, err = c.httpClient.GetMatches(readCtx)
 	if err != nil {
 		log.Printf("calculator: failed to load matches: %v", err)
 		c.mu.Lock()

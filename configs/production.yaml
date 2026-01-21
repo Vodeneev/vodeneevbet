@@ -25,7 +25,7 @@ parser:
   # Empty array [] = run all registered parsers
   enabled_parsers: ["fonbet", "pinnacle"]
   
-  interval: 30s  # Parsing interval
+  interval: 15s  # Parsing interval (reduced for faster live match updates)
   user_agent: "ValueBetBot/1.0 (https://github.com/Vodeneev/vodeneevbet)"
   timeout: 120s
   headers:

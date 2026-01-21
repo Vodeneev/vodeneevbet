@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/Vodeneev/vodeneevbet/internal/pkg/models"
+	"github.com/Vodeneev/vodeneevbet/internal/pkg/performance"
 	"github.com/ydb-platform/ydb-go-sdk/v3/table"
 	"github.com/ydb-platform/ydb-go-sdk/v3/table/types"
 )
@@ -26,6 +27,8 @@ func NewBatchYDBClient(ydbClient *YDBClient) *BatchYDBClient {
 // StoreMatchBatch stores a complete match with all events and outcomes in a single transaction
 func (y *BatchYDBClient) StoreMatchBatch(ctx context.Context, match *models.Match) error {
 	startTime := time.Now()
+	tracker := performance.GetTracker()
+	
 	log.Printf("🚀 YDB Batch: Storing match %s (%s vs %s) with %d events", 
 		match.ID, match.HomeTeam, match.AwayTeam, len(match.Events))
 	
@@ -33,37 +36,51 @@ func (y *BatchYDBClient) StoreMatchBatch(ctx context.Context, match *models.Matc
 	err := y.db.Table().Do(ctx,
 		func(ctx context.Context, s table.Session) error {
 			// Start transaction
+			txStart := time.Now()
 			tx, err := s.BeginTransaction(ctx, table.TxSettings(table.WithSerializableReadWrite()))
 			if err != nil {
+				tracker.RecordYDBOperation("begin_tx", match.ID, "", time.Since(txStart), false, err)
 				return fmt.Errorf("failed to begin transaction: %w", err)
 			}
+			tracker.RecordYDBOperation("begin_tx", match.ID, "", time.Since(txStart), true, nil)
 			
 			// 1. Store match metadata
+			matchStart := time.Now()
 			if err := y.storeMatchMetadataInTx(ctx, tx, match); err != nil {
+				tracker.RecordYDBOperation("match", match.ID, "", time.Since(matchStart), false, err)
 				tx.Rollback(ctx)
 				return fmt.Errorf("failed to store match metadata: %w", err)
 			}
+			tracker.RecordYDBOperation("match", match.ID, "", time.Since(matchStart), true, nil)
 			
 			// 2. Store all events and outcomes in batch
+			eventsStart := time.Now()
 			if err := y.storeEventsBatchInTx(ctx, tx, match.ID, match.Events); err != nil {
+				tracker.RecordYDBOperation("events_batch", match.ID, "", time.Since(eventsStart), false, err)
 				tx.Rollback(ctx)
 				return fmt.Errorf("failed to store events batch: %w", err)
 			}
+			tracker.RecordYDBOperation("events_batch", match.ID, "", time.Since(eventsStart), true, nil)
 			
 			// Commit transaction
+			commitStart := time.Now()
 			_, err = tx.CommitTx(ctx)
 			if err != nil {
+				tracker.RecordYDBOperation("commit_tx", match.ID, "", time.Since(commitStart), false, err)
 				return fmt.Errorf("failed to commit transaction: %w", err)
 			}
+			tracker.RecordYDBOperation("commit_tx", match.ID, "", time.Since(commitStart), true, nil)
 			
 			return nil
 		})
 	
+	duration := time.Since(startTime)
+	
 	if err != nil {
+		log.Printf("❌ YDB Batch: Failed to store match %s: %v (took %v)", match.ID, err, duration)
 		return err
 	}
 	
-	duration := time.Since(startTime)
 	log.Printf("✅ YDB Batch: Successfully stored match %s with %d events in %v", 
 		match.ID, len(match.Events), duration)
 	

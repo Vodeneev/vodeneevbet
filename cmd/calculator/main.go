@@ -25,13 +25,13 @@ func main() {
 
 	var configPath string
 	var healthAddr string
-	
+
 	// Get default config path from environment or use default
 	defaultConfig := os.Getenv("CONFIG_PATH")
 	if defaultConfig == "" {
 		defaultConfig = defaultConfigPath
 	}
-	
+
 	flag.StringVar(&configPath, "config", defaultConfig, "Path to config file (can be set via CONFIG_PATH env var)")
 	flag.StringVar(&healthAddr, "health-addr", ":8080", "Health server listen address (e.g. :8080)")
 	flag.Parse()

@@ -8,6 +8,7 @@ import (
 	"github.com/Vodeneev/vodeneevbet/internal/pkg/config"
 	"github.com/Vodeneev/vodeneevbet/internal/pkg/enums"
 	"github.com/Vodeneev/vodeneevbet/internal/pkg/interfaces"
+	"github.com/Vodeneev/vodeneevbet/internal/pkg/performance"
 	"github.com/Vodeneev/vodeneevbet/internal/pkg/storage"
 )
 
@@ -82,6 +83,9 @@ func (p *Parser) Start(ctx context.Context) error {
 				fmt.Printf("Failed to parse %s events: %v\n", sport, err)
 				continue
 			}
+			
+			// Print performance summary after each run
+			performance.GetTracker().PrintSummary()
 		}
 	}
 
@@ -94,6 +98,9 @@ func (p *Parser) Start(ctx context.Context) error {
 	for {
 		select {
 		case <-ctx.Done():
+			// Print final summary before shutdown
+			fmt.Println("\n📊 Final Performance Summary:")
+			performance.GetTracker().PrintSummary()
 			return nil
 		case <-ticker.C:
 			runOnce()

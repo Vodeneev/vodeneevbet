@@ -10,6 +10,7 @@ import (
 
 	"github.com/Vodeneev/vodeneevbet/internal/pkg/interfaces"
 	"github.com/Vodeneev/vodeneevbet/internal/pkg/models"
+	"github.com/Vodeneev/vodeneevbet/internal/pkg/performance"
 	"github.com/Vodeneev/vodeneevbet/internal/pkg/storage"
 )
 
@@ -100,6 +101,8 @@ func (p *BatchProcessor) normalizeMainEventTeams(event *FonbetAPIEvent) {
 // ProcessSportEvents processes events for a specific sport using batch operations
 func (p *BatchProcessor) ProcessSportEvents(sport string) error {
 	startTime := time.Now()
+	tracker := performance.GetTracker()
+	
 	fmt.Printf("🚀 Starting batch processing for sport: %s\n", sport)
 	
 	// Fetch events for the sport (single HTTP request)
@@ -143,22 +146,38 @@ func (p *BatchProcessor) ProcessSportEvents(sport string) error {
 
 	// Process matches in batches with parallel workers
 	processStart := time.Now()
-	processedCount := p.processMatchesInBatches(eventsByMatch, factorsByEventID)
+	processedCount, totalEvents, totalOutcomes, ydbWriteTime := p.processMatchesInBatches(eventsByMatch, factorsByEventID)
 	processDuration := time.Since(processStart)
 	
 	totalDuration := time.Since(startTime)
+	
+	// Record metrics
+	tracker.RecordRun(
+		fetchDuration,
+		parseDuration,
+		groupDuration,
+		processDuration,
+		ydbWriteTime,
+		totalDuration,
+		processedCount,
+		totalEvents,
+		totalOutcomes,
+	)
+	
 	fmt.Printf("✅ Successfully processed %d matches for sport: %s\n", processedCount, sport)
-	fmt.Printf("⏱️  Total timing: fetch=%v, parse=%v, group=%v, process=%v, total=%v\n", 
-		fetchDuration, parseDuration, groupDuration, processDuration, totalDuration)
+	fmt.Printf("⏱️  Total timing: fetch=%v, parse=%v, group=%v, process=%v, ydb_write=%v, total=%v\n", 
+		fetchDuration, parseDuration, groupDuration, processDuration, ydbWriteTime, totalDuration)
+	fmt.Printf("📈 Stats: %d events, %d outcomes processed\n", totalEvents, totalOutcomes)
 	
 	return nil
 }
 
 // processMatchesInBatches processes matches in batches with parallel workers
+// Returns: processedCount, totalEvents, totalOutcomes, ydbWriteTime
 func (p *BatchProcessor) processMatchesInBatches(
 	eventsByMatch map[string][]FonbetAPIEvent, 
 	factorsByEventID map[int64]FonbetFactorGroup,
-) int {
+) (int, int, int, time.Duration) {
 	// Convert to slice for batch processing with filtering
 	matches := make([]MatchData, 0, len(eventsByMatch))
 	filteredCount := 0
@@ -219,6 +238,10 @@ func (p *BatchProcessor) processMatchesInBatches(
 	
 	// Process in batches with dynamic sizing
 	processedCount := 0
+	totalEvents := 0
+	totalOutcomes := 0
+	var totalYDBWriteTime time.Duration
+	
 	for i := 0; i < len(matches); i += p.batchSize {
 		end := i + p.batchSize
 		if end > len(matches) {
@@ -229,18 +252,21 @@ func (p *BatchProcessor) processMatchesInBatches(
 		batchStart := time.Now()
 		
 		// Process batch with parallel workers
-		count := p.processBatch(batch)
+		count, events, outcomes, ydbTime := p.processBatch(batch)
 		processedCount += count
+		totalEvents += events
+		totalOutcomes += outcomes
+		totalYDBWriteTime += ydbTime
 		
 		batchDuration := time.Since(batchStart)
-		fmt.Printf("⏱️  Batch %d-%d: %d matches in %v (batch_size=%d)\n", 
-			i+1, end, count, batchDuration, p.batchSize)
+		fmt.Printf("⏱️  Batch %d-%d: %d matches, %d events, %d outcomes in %v (ydb_write=%v, batch_size=%d)\n", 
+			i+1, end, count, events, outcomes, batchDuration, ydbTime, p.batchSize)
 		
 		// Динамически корректируем размер батча
 		p.adjustBatchSize(batchDuration)
 	}
 	
-	return processedCount
+	return processedCount, totalEvents, totalOutcomes, totalYDBWriteTime
 }
 
 // isValidMatch проверяет, является ли матч валидным для обработки
@@ -286,7 +312,8 @@ func (p *BatchProcessor) isValidMatch(event FonbetAPIEvent) bool {
 }
 
 // processBatch processes a batch of matches with parallel workers
-func (p *BatchProcessor) processBatch(matches []MatchData) int {
+// Returns: successCount, totalEvents, totalOutcomes, totalYDBWriteTime
+func (p *BatchProcessor) processBatch(matches []MatchData) (int, int, int, time.Duration) {
 	// Create channels for parallel processing
 	matchesChan := make(chan MatchData, len(matches))
 	resultsChan := make(chan ProcessResult, len(matches))
@@ -312,15 +339,22 @@ func (p *BatchProcessor) processBatch(matches []MatchData) int {
 	
 	// Collect results
 	successCount := 0
+	totalEvents := 0
+	totalOutcomes := 0
+	var totalYDBWriteTime time.Duration
+	
 	for result := range resultsChan {
 		if result.Success {
 			successCount++
+			totalEvents += result.EventsCount
+			totalOutcomes += result.OutcomesCount
+			totalYDBWriteTime += result.YDBWriteTime
 		} else {
 			fmt.Printf("❌ Failed to process match %s: %v\n", result.MatchID, result.Error)
 		}
 	}
 	
-	return successCount
+	return successCount, totalEvents, totalOutcomes, totalYDBWriteTime
 }
 
 // adjustBatchSize dynamically adjusts batch size based on performance
@@ -366,28 +400,59 @@ func (p *BatchProcessor) worker(
 	wg *sync.WaitGroup,
 ) {
 	defer wg.Done()
+	tracker := performance.GetTracker()
 	
 	for match := range matchesChan {
 		startTime := time.Now()
+		buildStart := time.Now()
 		
 		// Process the match
-		err := p.processMatchWithEventsAndFactors(
+		matchModel, err := p.buildMatchWithEventsAndFactors(
 			match.MainEvent, 
 			match.StatisticalEvents, 
 			match.FactorGroups,
 		)
 		
+		buildTime := time.Since(buildStart)
+		var storeTime time.Duration
+		var eventsCount, outcomesCount int
+		
+		if err == nil && matchModel != nil {
+			eventsCount = len(matchModel.Events)
+			for _, event := range matchModel.Events {
+				outcomesCount += len(event.Outcomes)
+			}
+			
+			// Store the match
+			storeStart := time.Now()
+			if p.storage != nil {
+				if batchStorage, ok := p.storage.(*storage.BatchYDBClient); ok {
+					err = batchStorage.StoreMatchBatch(context.Background(), matchModel)
+				} else {
+					err = p.storage.StoreMatch(context.Background(), matchModel)
+				}
+			}
+			storeTime = time.Since(storeStart)
+			
+			// Record match timing
+			tracker.RecordMatch(match.ID, eventsCount, outcomesCount, buildTime, storeTime, time.Since(startTime), err == nil)
+		}
+		
 		duration := time.Since(startTime)
 		
 		resultsChan <- ProcessResult{
-			MatchID: match.ID,
-			Success: err == nil,
-			Error:   err,
-			Duration: duration,
+			MatchID:       match.ID,
+			Success:       err == nil,
+			Error:         err,
+			Duration:      duration,
+			EventsCount:   eventsCount,
+			OutcomesCount: outcomesCount,
+			YDBWriteTime:  storeTime,
 		}
 		
 		if duration > 1*time.Second {
-			fmt.Printf("⏱️  Worker: Match %s took %v\n", match.ID, duration)
+			fmt.Printf("⏱️  Worker: Match %s took %v (build=%v, store=%v, events=%d, outcomes=%d)\n", 
+				match.ID, duration, buildTime, storeTime, eventsCount, outcomesCount)
 		}
 	}
 }
@@ -402,10 +467,13 @@ type MatchData struct {
 
 // ProcessResult represents the result of processing a match
 type ProcessResult struct {
-	MatchID  string
-	Success  bool
-	Error    error
-	Duration time.Duration
+	MatchID      string
+	Success      bool
+	Error        error
+	Duration     time.Duration
+	EventsCount  int
+	OutcomesCount int
+	YDBWriteTime time.Duration
 }
 
 func (p *BatchProcessor) getAllowedSportIDs(sports []FonbetSport, sportAlias string) map[int64]struct{} {
@@ -476,12 +544,13 @@ func (p *BatchProcessor) groupEventsByMatchFromAPI(events []FonbetAPIEvent, allo
 	return groups
 }
 
-// processMatchWithEventsAndFactors processes a main match with all its statistical events and factors
-func (p *BatchProcessor) processMatchWithEventsAndFactors(
+// buildMatchWithEventsAndFactors builds a match model from events and factors
+// Returns the match model or error
+func (p *BatchProcessor) buildMatchWithEventsAndFactors(
 	mainEvent FonbetAPIEvent, 
 	statisticalEvents []FonbetAPIEvent, 
 	factorGroups []FonbetFactorGroup,
-) error {
+) (*models.Match, error) {
 	// Convert main event to FonbetEvent
 	mainFonbetEvent := FonbetEvent{
 		ID:         fmt.Sprintf("%d", mainEvent.ID),
@@ -526,31 +595,14 @@ func (p *BatchProcessor) processMatchWithEventsAndFactors(
 	matchBuilder := NewMatchBuilder("Fonbet")
 	match, err := matchBuilder.BuildMatch(mainFonbetEvent, statEvents, factorsInterface)
 	if err != nil {
-		return fmt.Errorf("failed to build match: %w", err)
+		return nil, fmt.Errorf("failed to build match: %w", err)
 	}
 
 	if matchModel, ok := (*match).(*models.Match); ok {
-		// Storage is optional: if YDB client failed to initialize, we still want
-		// the parser to keep running (e.g. for debugging / dry-run parsing).
-		if p.storage == nil {
-			return nil
-		}
-		// Use batch storage for better performance
-		if batchStorage, ok := p.storage.(*storage.BatchYDBClient); ok {
-			if err := batchStorage.StoreMatchBatch(context.Background(), matchModel); err != nil {
-				return fmt.Errorf("failed to store match batch: %w", err)
-			}
-		} else {
-			// Fallback to regular storage
-			if err := p.storage.StoreMatch(context.Background(), matchModel); err != nil {
-				return fmt.Errorf("failed to store match: %w", err)
-			}
-		}
-
-		return nil
+		return matchModel, nil
 	}
 
-	return fmt.Errorf("failed to convert match")
+	return nil, fmt.Errorf("failed to convert match")
 }
 
 func (p *BatchProcessor) ProcessEvent(event interface{}) error {

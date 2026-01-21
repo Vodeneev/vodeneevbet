@@ -28,44 +28,26 @@ func RegisterParsers(parsers []interfaces.Parser) {
 	globalParsers = parsers
 }
 
-// triggerParsing triggers parsing for all parsers asynchronously and waits for completion
-func triggerParsing(ctx context.Context) error {
+// triggerParsingAsync triggers parsing for all parsers asynchronously (non-blocking)
+func triggerParsingAsync(ctx context.Context) {
 	globalParsersMu.RLock()
 	parsers := globalParsers
 	globalParsersMu.RUnlock()
 	
 	if len(parsers) == 0 {
-		return nil
+		return
 	}
 	
 	// Trigger parsing for all parsers in parallel (asynchronously to different bookmakers)
-	// Wait for all to complete before returning
-	var wg sync.WaitGroup
-	errCh := make(chan error, len(parsers))
-	
+	// Don't wait - return immediately, parsing happens in background
 	for _, p := range parsers {
 		p := p
-		wg.Add(1)
 		go func() {
-			defer wg.Done()
 			if err := p.ParseOnce(ctx); err != nil {
 				log.Printf("On-demand parsing failed for %s: %v", p.GetName(), err)
-				errCh <- err
 			}
 		}()
 	}
-	
-	wg.Wait()
-	close(errCh)
-	
-	// Check if any parser failed
-	for err := range errCh {
-		if err != nil {
-			return err
-		}
-	}
-	
-	return nil
 }
 
 // InMemoryMatchStore stores matches in memory for fast API access
@@ -263,21 +245,20 @@ func Run(ctx context.Context, addr string, service string, storage interfaces.St
 }
 
 // handleMatches handles /matches endpoint
-// Flow: request -> async parsing to bookmakers -> matching into common model -> response
+// Flow: request -> async parsing to bookmakers (non-blocking) -> return cached data immediately
+// Fresh data will be available on next request
 func handleMatches(w http.ResponseWriter, r *http.Request) {
 	startTime := time.Now()
 
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 
-	// Trigger asynchronous parsing to all bookmakers in parallel
-	// Wait for completion to get fresh data
-	if err := triggerParsing(r.Context()); err != nil {
-		log.Printf("Warning: some parsers failed: %v", err)
-		// Continue anyway - return what we have in memory
-	}
+	// Trigger asynchronous parsing to all bookmakers in parallel (non-blocking)
+	// Don't wait - return cached data immediately, fresh data will be available on next request
+	triggerParsingAsync(r.Context())
 
-	// Get all matches from in-memory store (now contains fresh data from parsing)
+	// Get all matches from in-memory store (returns current cached data)
+	// Fresh data from async parsing will be available on next request
 	matches := GetMatches()
 
 	duration := time.Since(startTime)

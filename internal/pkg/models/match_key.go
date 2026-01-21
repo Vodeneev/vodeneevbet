@@ -45,10 +45,10 @@ func normalizeKeyPart(s string) string {
 	s = strings.ReplaceAll(s, "\\", " ")
 	s = strings.ReplaceAll(s, "|", " ")
 	s = strings.Join(strings.Fields(s), " ")
-	
+
 	// Normalize team name using intelligent extraction of key words
 	s = normalizeTeamName(s)
-	
+
 	return s
 }
 
@@ -59,7 +59,7 @@ func normalizeTeamName(name string) string {
 	if normalized != name {
 		return normalized
 	}
-	
+
 	// Common suffixes to remove (club designations, etc.)
 	commonSuffixes := map[string]bool{
 		"fc": true, "cf": true, "c.f.": true, "c f": true,
@@ -73,7 +73,7 @@ func normalizeTeamName(name string) string {
 		"if": true, "i.f.": true,
 		"og": true, "o.g.": true,
 	}
-	
+
 	// Common generic words that don't help identify teams
 	genericWords := map[string]bool{
 		"united": true, "city": true, "town": true,
@@ -81,13 +81,13 @@ func normalizeTeamName(name string) string {
 		"athletic": true, "athletico": true, "atletico": true,
 		"sporting": true, "sports": true,
 	}
-	
+
 	// Split into words
 	words := strings.Fields(name)
 	if len(words) == 0 {
 		return name
 	}
-	
+
 	// Remove only suffixes first, then check for known combinations
 	// This preserves generic words that might be part of team names
 	wordsWithoutSuffixes := make([]string, 0, len(words))
@@ -101,7 +101,7 @@ func normalizeTeamName(name string) string {
 			wordsWithoutSuffixes = append(wordsWithoutSuffixes, word)
 		}
 	}
-	
+
 	// Check if name without suffixes matches a known combination
 	if len(wordsWithoutSuffixes) > 0 {
 		nameWithoutSuffixes := strings.ToLower(strings.Join(wordsWithoutSuffixes, " "))
@@ -111,7 +111,7 @@ func normalizeTeamName(name string) string {
 			return knownName
 		}
 	}
-	
+
 	// Now filter out generic words for teams not in known combinations
 	filteredWords := make([]string, 0, len(wordsWithoutSuffixes))
 	for _, word := range wordsWithoutSuffixes {
@@ -120,29 +120,29 @@ func normalizeTeamName(name string) string {
 			filteredWords = append(filteredWords, word)
 		}
 	}
-	
+
 	// If we removed everything, keep original
 	if len(filteredWords) == 0 {
 		return name
 	}
-	
+
 	// Extract key identifier
 	// For multi-word names, take first 2 words to ensure uniqueness
 	// Examples: "Union Saint-Gilloise" -> "union saint-gilloise", "Union Berlin" -> "union berlin"
 	// But for known teams like "Bayern Munich", we use special handling (already done above)
-	
+
 	// Common prefixes that should be skipped (take next word instead)
 	commonPrefixes := map[string]bool{
 		"fc": true, "cf": true, "ac": true, "as": true, "sc": true,
 		"real": true, "atletico": true, "athletic": true,
 	}
-	
+
 	// If first word is a common prefix, skip it
 	startIdx := 0
 	if len(filteredWords) > 0 && commonPrefixes[strings.ToLower(filteredWords[0])] {
 		startIdx = 1
 	}
-	
+
 	// Take first 2 words (or all if less than 2) for uniqueness
 	// This ensures "Union Saint-Gilloise" != "Union Berlin"
 	var keyWords []string
@@ -153,27 +153,27 @@ func normalizeTeamName(name string) string {
 		}
 		keyWords = filteredWords[startIdx:endIdx]
 	}
-	
+
 	if len(keyWords) == 0 {
 		return name
 	}
-	
+
 	// Join words and apply known word-level normalizations
 	normalized = strings.Join(keyWords, " ")
 	normalized = applyKnownWordVariations(strings.ToLower(normalized))
-	
+
 	return normalized
 }
 
 // isKnownPattern checks if a name matches a known team name pattern
 func isKnownPattern(name string) bool {
 	fullNamePatterns := getFullNamePatterns()
-	
+
 	// Check for exact match
 	if _, ok := fullNamePatterns[name]; ok {
 		return true
 	}
-	
+
 	// Check if name starts with any pattern
 	for pattern := range fullNamePatterns {
 		if strings.HasPrefix(name, pattern+" ") || name == pattern {
@@ -186,7 +186,7 @@ func isKnownPattern(name string) bool {
 			}
 		}
 	}
-	
+
 	return false
 }
 
@@ -213,12 +213,12 @@ func getFullNamePatterns() map[string]string {
 // applyKnownFullNameVariations handles complete team name patterns
 func applyKnownFullNameVariations(name string) string {
 	fullNamePatterns := getFullNamePatterns()
-	
+
 	// Check for exact matches
 	if normalized, ok := fullNamePatterns[name]; ok {
 		return normalized
 	}
-	
+
 	// Check if name starts with any pattern (handles cases like "Bayern Munich FC")
 	for pattern, normalized := range fullNamePatterns {
 		if strings.HasPrefix(name, pattern+" ") || name == pattern {
@@ -232,7 +232,7 @@ func applyKnownFullNameVariations(name string) string {
 			}
 		}
 	}
-	
+
 	return name
 }
 
@@ -243,10 +243,10 @@ func applyKnownWordVariations(word string) string {
 		"man": "manchester",
 		"utd": "manchester",
 	}
-	
+
 	if normalized, ok := wordVariations[word]; ok {
 		return normalized
 	}
-	
+
 	return word
 }

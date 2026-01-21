@@ -152,7 +152,7 @@ func (p *Parser) processAll(ctx context.Context) error {
 				continue
 			}
 			st = st.UTC()
-			
+
 			// Log all matchups for debugging (especially looking for Bayern vs Union Saint-Gilloise)
 			homeTeam, awayTeam := "", ""
 			for _, p := range mu.Participants {
@@ -163,20 +163,20 @@ func (p *Parser) processAll(ctx context.Context) error {
 				}
 			}
 			matchName := fmt.Sprintf("%s vs %s", homeTeam, awayTeam)
-			if strings.Contains(strings.ToLower(matchName), "bayern") || 
-			   strings.Contains(strings.ToLower(matchName), "бавария") ||
-			   strings.Contains(strings.ToLower(matchName), "union") ||
-			   strings.Contains(strings.ToLower(matchName), "saint-gilloise") ||
-			   strings.Contains(strings.ToLower(matchName), "gilloise") {
-				fmt.Printf("Pinnacle DEBUG: Found potential match: %s (ID=%d, StartTime=%s, League=%s)\n", 
+			if strings.Contains(strings.ToLower(matchName), "bayern") ||
+				strings.Contains(strings.ToLower(matchName), "бавария") ||
+				strings.Contains(strings.ToLower(matchName), "union") ||
+				strings.Contains(strings.ToLower(matchName), "saint-gilloise") ||
+				strings.Contains(strings.ToLower(matchName), "gilloise") {
+				fmt.Printf("Pinnacle DEBUG: Found potential match: %s (ID=%d, StartTime=%s, League=%s)\n",
 					matchName, mu.ID, mu.StartTime, mu.League.Name)
 			}
-			
+
 			if st.Before(now.Add(-2*time.Hour)) || st.After(maxStart) {
-				if strings.Contains(strings.ToLower(matchName), "bayern") || 
-				   strings.Contains(strings.ToLower(matchName), "бавария") ||
-				   strings.Contains(strings.ToLower(matchName), "union") ||
-				   strings.Contains(strings.ToLower(matchName), "saint-gilloise") {
+				if strings.Contains(strings.ToLower(matchName), "bayern") ||
+					strings.Contains(strings.ToLower(matchName), "бавария") ||
+					strings.Contains(strings.ToLower(matchName), "union") ||
+					strings.Contains(strings.ToLower(matchName), "saint-gilloise") {
 					fmt.Printf("Pinnacle DEBUG: Match %s filtered by time (start=%s, now=%s, window=[%s, %s])\n",
 						matchName, st.Format(time.RFC3339), now.Format(time.RFC3339),
 						now.Add(-2*time.Hour).Format(time.RFC3339), maxStart.Format(time.RFC3339))
@@ -221,10 +221,10 @@ func (p *Parser) processAll(ctx context.Context) error {
 						}
 					}
 					matchName := fmt.Sprintf("%s vs %s", homeTeam, awayTeam)
-					if strings.Contains(strings.ToLower(matchName), "bayern") || 
-					   strings.Contains(strings.ToLower(matchName), "бавария") ||
-					   strings.Contains(strings.ToLower(matchName), "union") ||
-					   strings.Contains(strings.ToLower(matchName), "saint-gilloise") {
+					if strings.Contains(strings.ToLower(matchName), "bayern") ||
+						strings.Contains(strings.ToLower(matchName), "бавария") ||
+						strings.Contains(strings.ToLower(matchName), "union") ||
+						strings.Contains(strings.ToLower(matchName), "saint-gilloise") {
 						fmt.Printf("Pinnacle DEBUG: Match %s (ID=%d) skipped - no markets available\n", matchName, mainID)
 					}
 				}
@@ -245,7 +245,7 @@ func (p *Parser) processAll(ctx context.Context) error {
 			if p.storage != nil {
 				_ = p.storage.StoreMatch(ctx, m)
 			}
-			
+
 			// Add match to in-memory store for fast API access
 			if m != nil {
 				health.AddMatch(m)
@@ -286,13 +286,13 @@ func (p *Parser) processMatchup(ctx context.Context, matchupID int64) error {
 		}
 		return nil
 	}
-	
+
 	// Store in YDB and add to in-memory store
 	err = p.storage.StoreMatch(ctx, m)
 	if err == nil && m != nil {
 		health.AddMatch(m)
 	}
-	
+
 	return err
 }
 
@@ -350,7 +350,7 @@ func buildMatchFromPinnacle(matchupID int64, related []RelatedMatchup, markets [
 	matchupEventType := map[int64]models.StandardEventType{
 		matchupID: models.StandardEventMainMatch,
 	}
-	
+
 	// Debug: log all related matchups for Bayern match
 	homeTeam, awayTeam := "", ""
 	for _, p := range rm.Participants {
@@ -360,9 +360,9 @@ func buildMatchFromPinnacle(matchupID int64, related []RelatedMatchup, markets [
 			awayTeam = p.Name
 		}
 	}
-	isBayernMatch := strings.Contains(strings.ToLower(homeTeam), "bayern") || 
-	                 strings.Contains(strings.ToLower(awayTeam), "union")
-	
+	isBayernMatch := strings.Contains(strings.ToLower(homeTeam), "bayern") ||
+		strings.Contains(strings.ToLower(awayTeam), "union")
+
 	if isBayernMatch {
 		fmt.Printf("Pinnacle DEBUG: Processing match %s vs %s (mainID=%d), found %d related matchups\n",
 			homeTeam, awayTeam, matchupID, len(related))
@@ -380,7 +380,7 @@ func buildMatchFromPinnacle(matchupID int64, related []RelatedMatchup, markets [
 				r.ID, parentIDStr, r.Units, r.League.Name, etStr)
 		}
 	}
-	
+
 	foundByParent := false
 	for _, r := range related {
 		if r.ParentID == nil || *r.ParentID != matchupID {
@@ -411,7 +411,7 @@ func buildMatchFromPinnacle(matchupID int64, related []RelatedMatchup, markets [
 			}
 		}
 	}
-	
+
 	if isBayernMatch {
 		fmt.Printf("Pinnacle DEBUG:   Total mapped event types: %d\n", len(matchupEventType))
 		for muID, et := range matchupEventType {
@@ -446,7 +446,7 @@ func buildMatchFromPinnacle(matchupID int64, related []RelatedMatchup, markets [
 		}
 		marketsByMatchupID[mkt.MatchupID] = append(marketsByMatchupID[mkt.MatchupID], mkt)
 	}
-	
+
 	if isBayernMatch {
 		fmt.Printf("Pinnacle DEBUG:   Found markets for %d matchup IDs\n", len(marketsByMatchupID))
 		for muID, mkts := range marketsByMatchupID {
@@ -458,7 +458,7 @@ func buildMatchFromPinnacle(matchupID int64, related []RelatedMatchup, markets [
 			fmt.Printf("Pinnacle DEBUG:     MatchupID=%d => %d markets, EventType=%s\n", muID, len(mkts), etStr)
 		}
 	}
-	
+
 	for _, mkt := range markets {
 		if mkt.Period != 0 || mkt.Status != "open" {
 			continue
@@ -671,4 +671,3 @@ func newOutcome(eventID, outcomeType, param string, odds float64) models.Outcome
 		UpdatedAt:   now,
 	}
 }
-

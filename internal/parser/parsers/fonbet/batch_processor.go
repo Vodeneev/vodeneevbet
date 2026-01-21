@@ -214,19 +214,6 @@ func (p *BatchProcessor) processMatchesInBatches(
 		
 		// Применяем фильтры к матчу
 		if !p.isValidMatch(mainEvent) {
-			// Debug: log if this might be the Bayern match
-			matchName := fmt.Sprintf("%s vs %s", mainEvent.Team1, mainEvent.Team2)
-			if strings.Contains(strings.ToLower(matchName), "bayern") || 
-			   strings.Contains(strings.ToLower(matchName), "бавария") ||
-			   strings.Contains(strings.ToLower(matchName), "union") ||
-			   strings.Contains(strings.ToLower(matchName), "saint-gilloise") ||
-			   strings.Contains(strings.ToLower(mainEvent.Name), "bayern") ||
-			   strings.Contains(strings.ToLower(mainEvent.Name), "бавария") ||
-			   strings.Contains(strings.ToLower(mainEvent.Name), "union") ||
-			   strings.Contains(strings.ToLower(mainEvent.Name), "saint-gilloise") {
-				fmt.Printf("Fonbet DEBUG: Match %s (ID=%d) filtered by isValidMatch (Team1=%q, Team2=%q, Name=%q)\n",
-					matchName, mainEvent.ID, mainEvent.Team1, mainEvent.Team2, mainEvent.Name)
-			}
 			filteredCount++
 			continue
 		}

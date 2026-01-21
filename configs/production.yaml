@@ -61,7 +61,7 @@ value_calculator:
   
   # Data source: use parser's /matches endpoint instead of YDB
   # If not set, calculator will use YDB as fallback
-  parser_url: "http://localhost:8080"  # URL to parser service (e.g. "http://parser:8080" in Docker)
+  parser_url: "http://158.160.197.172/parser"  # URL to parser service (e.g. "http://parser:8080" in Docker)
   
   # Filters
   sports: ["football"]             # Football only

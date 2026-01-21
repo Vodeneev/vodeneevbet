@@ -3,12 +3,19 @@ package pinnacle
 import (
 	"context"
 
+	"github.com/Vodeneev/vodeneevbet/internal/parser/parsers"
 	"github.com/Vodeneev/vodeneevbet/internal/pkg/config"
 )
 
 type ParserWrapper struct {
 	parser *Parser
 	name   string
+}
+
+func init() {
+	parsers.Register("pinnacle", func(cfg *config.Config) parsers.Parser {
+		return NewParserWrapper(cfg)
+	})
 }
 
 func NewParserWrapper(cfg *config.Config) *ParserWrapper {

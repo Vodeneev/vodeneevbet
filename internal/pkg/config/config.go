@@ -36,6 +36,7 @@ type PostgresConfig struct {
 
 type ParserConfig struct {
 	Type      string            `yaml:"type"`
+	EnabledParsers []string     `yaml:"enabled_parsers"`
 	Interval  time.Duration     `yaml:"interval"`
 	UserAgent string            `yaml:"user_agent"`
 	Timeout   time.Duration     `yaml:"timeout"`

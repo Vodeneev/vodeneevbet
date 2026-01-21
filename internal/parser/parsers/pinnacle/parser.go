@@ -12,7 +12,6 @@ import (
 	"github.com/Vodeneev/vodeneevbet/internal/pkg/health"
 	"github.com/Vodeneev/vodeneevbet/internal/pkg/interfaces"
 	"github.com/Vodeneev/vodeneevbet/internal/pkg/models"
-	"github.com/Vodeneev/vodeneevbet/internal/pkg/storage"
 )
 
 type Parser struct {
@@ -22,12 +21,9 @@ type Parser struct {
 }
 
 func NewParser(cfg *config.Config) *Parser {
-	// Create YDB client (optional).
-	base, err := storage.NewYDBClient(&cfg.YDB)
-	var st interfaces.Storage
-	if err == nil {
-		st = storage.NewBatchYDBClient(base)
-	}
+	// YDB is not used - data is served directly from in-memory store
+	// This makes parsing much faster (no slow YDB writes)
+	fmt.Println("Parser running in memory-only mode (no YDB storage)")
 
 	baseURL := cfg.Parser.Pinnacle.BaseURL
 	if baseURL == "" {
@@ -39,7 +35,7 @@ func NewParser(cfg *config.Config) *Parser {
 	return &Parser{
 		cfg:     cfg,
 		client:  client,
-		storage: st,
+		storage: nil, // No YDB storage
 	}
 }
 
@@ -243,11 +239,8 @@ func (p *Parser) processAll(ctx context.Context) error {
 
 			fmt.Printf("Pinnacle: built match %s (%s vs %s), events=%d\n", m.ID, m.HomeTeam, m.AwayTeam, len(m.Events))
 
-			if p.storage != nil {
-				_ = p.storage.StoreMatch(ctx, m)
-			}
-
-			// Add match to in-memory store for fast API access
+			// Add match to in-memory store for fast API access (primary storage)
+			// YDB is not used - data is served directly from memory
 			if m != nil {
 				health.AddMatch(m)
 				fmt.Printf("Pinnacle: added match %s to in-memory store with %d events\n", m.ID, len(m.Events))
@@ -279,22 +272,13 @@ func (p *Parser) processMatchup(ctx context.Context, matchupID int64) error {
 
 	fmt.Printf("Pinnacle: built match %s (%s vs %s), events=%d\n", m.ID, m.HomeTeam, m.AwayTeam, len(m.Events))
 
-	// Storage is optional.
-	if p.storage == nil {
-		// Still add to in-memory store even if YDB storage is not available
-		if m != nil {
-			health.AddMatch(m)
-		}
-		return nil
-	}
-
-	// Store in YDB and add to in-memory store
-	err = p.storage.StoreMatch(ctx, m)
-	if err == nil && m != nil {
+	// Add match to in-memory store for fast API access (primary storage)
+	// YDB is not used - data is served directly from memory
+	if m != nil {
 		health.AddMatch(m)
 	}
 
-	return err
+	return nil
 }
 
 func buildMatchFromPinnacle(matchupID int64, related []RelatedMatchup, markets []Market) (*models.Match, error) {

@@ -8,7 +8,6 @@ import (
 	"github.com/Vodeneev/vodeneevbet/internal/pkg/enums"
 	"github.com/Vodeneev/vodeneevbet/internal/pkg/interfaces"
 	"github.com/Vodeneev/vodeneevbet/internal/pkg/performance"
-	"github.com/Vodeneev/vodeneevbet/internal/pkg/storage"
 )
 
 // Parser is the main parser that coordinates all components
@@ -22,36 +21,22 @@ type Parser struct {
 }
 
 func NewParser(config *config.Config) *Parser {
-	// Create YDB client
-	fmt.Println("Creating YDB client...")
-	fmt.Printf("YDB config: endpoint=%s, database=%s, key_file=%s\n", 
-		config.YDB.Endpoint, config.YDB.Database, config.YDB.ServiceAccountKeyFile)
-	
-	baseYDBClient, err := storage.NewYDBClient(&config.YDB)
-	var ydbClient interfaces.Storage
-	if err != nil {
-		fmt.Printf("❌ Failed to create YDB client: %v\n", err)
-		fmt.Println("⚠️  Parser will run without YDB storage")
-		ydbClient = nil
-	} else {
-		fmt.Println("✅ YDB client created successfully")
-		// Wrap with batch client for better performance
-		ydbClient = storage.NewBatchYDBClient(baseYDBClient)
-		fmt.Println("✅ YDB batch client created successfully")
-	}
+	// YDB is not used - data is served directly from in-memory store
+	// This makes parsing much faster (no slow YDB writes)
+	fmt.Println("Parser running in memory-only mode (no YDB storage)")
 	
 	// Create components
 	eventFetcher := NewEventFetcher(config)
 	oddsParser := NewOddsParser()
 	matchBuilder := NewMatchBuilder("Fonbet")
-	eventProcessor := NewBatchProcessor(ydbClient, eventFetcher, oddsParser, matchBuilder, config.Parser.Fonbet.TestLimit)
+	eventProcessor := NewBatchProcessor(nil, eventFetcher, oddsParser, matchBuilder, config.Parser.Fonbet.TestLimit)
 	
 	return &Parser{
 		eventFetcher:   eventFetcher,
 		oddsParser:     oddsParser,
 		matchBuilder:   matchBuilder,
 		eventProcessor: eventProcessor,
-		storage:        ydbClient,
+		storage:        nil, // No YDB storage
 		config:         config,
 	}
 }

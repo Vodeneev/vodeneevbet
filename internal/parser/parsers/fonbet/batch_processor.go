@@ -1,7 +1,6 @@
 package fonbet
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"strings"
@@ -12,7 +11,6 @@ import (
 	"github.com/Vodeneev/vodeneevbet/internal/pkg/interfaces"
 	"github.com/Vodeneev/vodeneevbet/internal/pkg/models"
 	"github.com/Vodeneev/vodeneevbet/internal/pkg/performance"
-	"github.com/Vodeneev/vodeneevbet/internal/pkg/storage"
 )
 
 // BatchProcessor handles processing events with batch operations and parallel processing
@@ -446,21 +444,14 @@ func (p *BatchProcessor) worker(
 				outcomesCount += len(event.Outcomes)
 			}
 			
-			// Store the match
-			storeStart := time.Now()
-			if p.storage != nil {
-				if batchStorage, ok := p.storage.(*storage.BatchYDBClient); ok {
-					err = batchStorage.StoreMatchBatch(context.Background(), matchModel)
-				} else {
-					err = p.storage.StoreMatch(context.Background(), matchModel)
-				}
-			}
-			storeTime = time.Since(storeStart)
-			
-			// Add match to in-memory store for fast API access
-			if err == nil && matchModel != nil {
+			// Add match to in-memory store for fast API access (primary storage)
+			// YDB is not used - data is served directly from memory
+			if matchModel != nil {
 				health.AddMatch(matchModel)
 			}
+			
+			// No YDB storage - data is served from memory only
+			storeTime := time.Duration(0)
 			
 			// Record match timing
 			tracker.RecordMatch(match.ID, eventsCount, outcomesCount, buildTime, storeTime, time.Since(startTime), err == nil)

@@ -110,6 +110,8 @@ func main() {
 					continue
 				}
 
+				log.Printf("Received message from user %d: %s", update.Message.From.ID, update.Message.Text)
+
 				// Check if user is allowed (if restrictions are set)
 				if len(config.AllowedUserIDs) > 0 {
 					allowed := false
@@ -300,7 +302,12 @@ func fetchAndSendDiffs(bot *tgbotapi.BotAPI, chatID int64, config BotConfig, lim
 	// Telegram has a message length limit of 4096 characters
 	// Split into multiple messages if needed
 	var builder strings.Builder
-	header := fmt.Sprintf("📊 *Top %d Value Bet Differences", len(diffs))
+	// Use limit instead of len(diffs) for header, but show actual count
+	actualCount := len(diffs)
+	if actualCount > limit {
+		actualCount = limit
+	}
+	header := fmt.Sprintf("📊 *Top %d Value Bet Differences", actualCount)
 	if status == "live" {
 		header += " (Live)"
 	} else if status == "upcoming" {
@@ -349,10 +356,6 @@ func fetchAndSendDiffs(bot *tgbotapi.BotAPI, chatID int64, config BotConfig, lim
 		msg.ParseMode = tgbotapi.ModeMarkdown
 		bot.Send(msg)
 	}
-
-	msg := tgbotapi.NewMessage(chatID, builder.String())
-	msg.ParseMode = tgbotapi.ModeMarkdown
-	bot.Send(msg)
 }
 
 func formatTime(t time.Time) string {

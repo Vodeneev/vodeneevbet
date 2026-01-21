@@ -69,6 +69,7 @@ bin/
 /api
 /export
 /calculator
+/telegram-bot
 /main
 internal/parser/parser
 internal/api/api

@@ -5,6 +5,7 @@ go 1.22.5
 toolchain go1.24.7
 
 require (
+	github.com/go-telegram-bot-api/telegram-bot-api/v5 v5.5.1
 	github.com/ydb-platform/ydb-go-sdk/v3 v3.116.2
 	github.com/ydb-platform/ydb-go-yc v0.12.1
 	github.com/ydb-platform/ydb-go-yc-metadata v0.6.1

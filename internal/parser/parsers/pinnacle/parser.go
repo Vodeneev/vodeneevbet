@@ -161,6 +161,8 @@ func (p *Parser) processAll(ctx context.Context) error {
 			group[mainID] = append(group[mainID], mu)
 		}
 
+		fmt.Printf("Pinnacle: processing %d main matchups for sport %s\n", len(group), sportName)
+
 		// Process each main matchup as a match.
 		for mainID, related := range group {
 			select {
@@ -175,13 +177,19 @@ func (p *Parser) processAll(ctx context.Context) error {
 				relMarkets = append(relMarkets, marketsByMatchup[mu.ID]...)
 			}
 			if len(relMarkets) == 0 {
+				fmt.Printf("Pinnacle: skipping matchup %d (no markets)\n", mainID)
 				continue
 			}
 
 			m, err := buildMatchFromPinnacle(mainID, related, relMarkets)
 			if err != nil || m == nil {
+				if err != nil {
+					fmt.Printf("Pinnacle: failed to build match for matchup %d: %v\n", mainID, err)
+				}
 				continue
 			}
+
+			fmt.Printf("Pinnacle: built match %s (%s vs %s), events=%d\n", m.ID, m.HomeTeam, m.AwayTeam, len(m.Events))
 
 			if p.storage != nil {
 				_ = p.storage.StoreMatch(ctx, m)
@@ -190,6 +198,7 @@ func (p *Parser) processAll(ctx context.Context) error {
 			// Add match to in-memory store for fast API access
 			if m != nil {
 				health.AddMatch(m)
+				fmt.Printf("Pinnacle: added match %s to in-memory store with %d events\n", m.ID, len(m.Events))
 			}
 		}
 	}

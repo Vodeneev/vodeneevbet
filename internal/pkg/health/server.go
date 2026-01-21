@@ -20,7 +20,7 @@ import (
 type InMemoryMatchStore struct {
 	mu      sync.RWMutex
 	matches map[string]*models.Match // key: match_id
-	maxSize int                       // maximum number of matches to keep
+	maxSize int                      // maximum number of matches to keep
 }
 
 var globalMatchStore *InMemoryMatchStore
@@ -39,7 +39,7 @@ func AddMatch(match *models.Match) {
 	}
 	globalMatchStore.mu.Lock()
 	defer globalMatchStore.mu.Unlock()
-	
+
 	// If we exceed max size, remove oldest matches (simple FIFO)
 	if len(globalMatchStore.matches) >= globalMatchStore.maxSize {
 		// Remove first 10% of matches (simple cleanup)
@@ -52,7 +52,19 @@ func AddMatch(match *models.Match) {
 			removed++
 		}
 	}
-	
+
+	// Detect bookmaker from events
+	bookmakers := make(map[string]bool)
+	for _, ev := range match.Events {
+		if ev.Bookmaker != "" {
+			bookmakers[ev.Bookmaker] = true
+		}
+	}
+	bookmakerList := make([]string, 0, len(bookmakers))
+	for bk := range bookmakers {
+		bookmakerList = append(bookmakerList, bk)
+	}
+
 	// Add or update match (UPSERT logic - merge events from different bookmakers)
 	if existing, ok := globalMatchStore.matches[match.ID]; ok {
 		// Merge events: add new events from this bookmaker
@@ -60,14 +72,21 @@ func AddMatch(match *models.Match) {
 		for i := range existing.Events {
 			existingEvents[existing.Events[i].ID] = &existing.Events[i]
 		}
-		
+
+		addedCount := 0
 		// Add new events
 		for _, newEvent := range match.Events {
 			if _, exists := existingEvents[newEvent.ID]; !exists {
 				existing.Events = append(existing.Events, newEvent)
+				addedCount++
 			}
 		}
-		
+
+		if addedCount > 0 {
+			log.Printf("✅ Merged %d events from %v into match %s (now has %d events total)", 
+				addedCount, bookmakerList, match.ID, len(existing.Events))
+		}
+
 		// Update metadata
 		existing.UpdatedAt = match.UpdatedAt
 		if match.Name != "" {
@@ -86,6 +105,8 @@ func AddMatch(match *models.Match) {
 		copy(eventsCopy, match.Events)
 		matchCopy.Events = eventsCopy
 		globalMatchStore.matches[match.ID] = &matchCopy
+		log.Printf("✅ Added new match %s from %v with %d events", 
+			match.ID, bookmakerList, len(match.Events))
 	}
 }
 
@@ -94,10 +115,10 @@ func GetMatches(limit int) []models.Match {
 	if globalMatchStore == nil {
 		return []models.Match{}
 	}
-	
+
 	globalMatchStore.mu.RLock()
 	defer globalMatchStore.mu.RUnlock()
-	
+
 	matches := make([]models.Match, 0, len(globalMatchStore.matches))
 	for _, match := range globalMatchStore.matches {
 		// Create copy to avoid race conditions
@@ -107,17 +128,17 @@ func GetMatches(limit int) []models.Match {
 		matchCopy.Events = eventsCopy
 		matches = append(matches, matchCopy)
 	}
-	
+
 	// Sort by updated_at descending (most recent first)
 	sort.Slice(matches, func(i, j int) bool {
 		return matches[i].UpdatedAt.After(matches[j].UpdatedAt)
 	})
-	
+
 	// Apply limit
 	if limit > 0 && limit < len(matches) {
 		matches = matches[:limit]
 	}
-	
+
 	return matches
 }
 
@@ -137,14 +158,14 @@ func Run(ctx context.Context, addr string, service string, storage interfaces.St
 	mux.HandleFunc("/metrics", func(w http.ResponseWriter, r *http.Request) {
 		tracker := performance.GetTracker()
 		metrics := tracker.GetMetrics()
-		
+
 		w.Header().Set("Content-Type", "application/json; charset=utf-8")
 		if err := json.NewEncoder(w).Encode(metrics); err != nil {
 			http.Error(w, fmt.Sprintf("failed to encode metrics: %v", err), http.StatusInternalServerError)
 			return
 		}
 	})
-	
+
 	// Add /matches endpoint - reads from in-memory store (faster than YDB)
 	mux.HandleFunc("/matches", func(w http.ResponseWriter, r *http.Request) {
 		handleMatches(w, r)
@@ -175,10 +196,10 @@ func Run(ctx context.Context, addr string, service string, storage interfaces.St
 // This is much faster than reading from YDB as data is already in memory
 func handleMatches(w http.ResponseWriter, r *http.Request) {
 	startTime := time.Now()
-	
+
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	w.Header().Set("Access-Control-Allow-Origin", "*")
-	
+
 	// Parse limit parameter (default: 100, max: 1000)
 	limit := 100
 	if limitStr := r.URL.Query().Get("limit"); limitStr != "" {
@@ -188,20 +209,20 @@ func handleMatches(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
-	
+
 	// Get matches from in-memory store (very fast, no YDB query needed)
 	matches := GetMatches(limit)
-	
+
 	duration := time.Since(startTime)
 	matchCount := len(matches)
-	
+
 	// Add performance headers
 	w.Header().Set("X-Query-Duration", duration.String())
 	w.Header().Set("X-Matches-Count", fmt.Sprintf("%d", matchCount))
 	w.Header().Set("X-Source", "memory") // Indicate data comes from memory, not YDB
-	
+
 	log.Printf("✅ Retrieved %d matches from memory in %v", matchCount, duration)
-	
+
 	if err := json.NewEncoder(w).Encode(map[string]interface{}{
 		"matches": matches,
 		"meta": map[string]interface{}{
@@ -216,7 +237,6 @@ func handleMatches(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 }
-
 
 // AddrFor returns a consistent default health listen address.
 func AddrFor(service string) string {

@@ -1,29 +1,20 @@
-# vm-parsers: Parser service (Fonbet + Pinnacle) + nginx reverse proxy
+# vm-parsers: Parser service (Fonbet + Pinnacle in one container) + nginx reverse proxy
+# Both parsers run in the same container to share in-memory store
 
 services:
-  parser_fonbet:
+  parser:
     image: ghcr.io/${IMAGE_OWNER}/vodeneevbet-parser:${IMAGE_TAG}
-    container_name: vodeneevbet-parser-fonbet
+    container_name: vodeneevbet-parser
     restart: unless-stopped
-    command: ["-config", "/app/configs/parser_fonbet.yaml", "-parser", "fonbet"]
-    expose:
-      - "8080"
-    volumes:
-      - ./configs:/app/configs:ro
-      # configs/production.yaml uses ../keys/... (relative to /app/configs), which resolves to /app/keys/...
-      - ./keys:/app/keys:ro
-
-  parser_pinnacle:
-    image: ghcr.io/${IMAGE_OWNER}/vodeneevbet-parser:${IMAGE_TAG}
-    container_name: vodeneevbet-parser-pinnacle
-    restart: unless-stopped
+    # Run both parsers (enabled_parsers in production.yaml: ["fonbet", "pinnacle"])
+    command: ["-config", "/app/configs/production.yaml"]
     expose:
       - "8080"
     environment:
       - PINNACLE_INSECURE_TLS=1
-    command: ["-config", "/app/configs/parser_pinnacle.yaml", "-parser", "pinnacle", "-health-addr", ":8080"]
     volumes:
       - ./configs:/app/configs:ro
+      # configs/production.yaml uses ../keys/... (relative to /app/configs), which resolves to /app/keys/...
       - ./keys:/app/keys:ro
 
   nginx:
@@ -31,8 +22,7 @@ services:
     container_name: vodeneevbet-parsers-nginx
     restart: unless-stopped
     depends_on:
-      - parser_fonbet
-      - parser_pinnacle
+      - parser
     ports:
       - "80:80"
     volumes:

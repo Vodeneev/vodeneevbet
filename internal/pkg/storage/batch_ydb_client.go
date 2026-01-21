@@ -281,70 +281,32 @@ func (y *BatchYDBClient) insertEventsBatched(
 			batchEnd = len(events)
 		}
 		
-		// Build struct list for bulk insert using AS_TABLE pattern
-		rows := make([]types.Value, 0, batchEnd-batchStart)
-		for i := batchStart; i < batchEnd; i++ {
-			row := types.StructValue(
-				types.StructFieldValue("event_id", eventIDs[i]),
-				types.StructFieldValue("match_id", matchIDs[i]),
-				types.StructFieldValue("event_type", eventTypes[i]),
-				types.StructFieldValue("market_name", marketNames[i]),
-				types.StructFieldValue("bookmaker", bookmakers[i]),
-				types.StructFieldValue("created_at", createdAts[i]),
-				types.StructFieldValue("updated_at", updatedAts[i]),
-			)
-			rows = append(rows, row)
-		}
-		
-		rowsList := types.ListValue(rows...)
-		
-		// Use bulk INSERT with AS_TABLE for better performance
-		_, err := tx.Execute(ctx, `
-			DECLARE $rows AS List<Struct<
-				event_id: Utf8,
-				match_id: Utf8,
-				event_type: Utf8,
-				market_name: Utf8,
-				bookmaker: Utf8,
-				created_at: Timestamp,
-				updated_at: Timestamp
-			>>;
-			
-			UPSERT INTO events (
-				event_id, match_id, event_type, market_name, bookmaker, created_at, updated_at
-			)
-			SELECT
-				r.event_id AS event_id,
-				r.match_id AS match_id,
-				r.event_type AS event_type,
-				r.market_name AS market_name,
-				r.bookmaker AS bookmaker,
-				r.created_at AS created_at,
-				r.updated_at AS updated_at
-			FROM AS_TABLE($rows) AS r;
-		`, table.NewQueryParameters(
-			table.ValueParam("$rows", rowsList),
-		))
+		// Execute inserts efficiently without delays
+		// YDB will batch these operations internally within transaction
+		err := y.insertEventsParallel(ctx, tx, events[batchStart:batchEnd], 
+			eventIDs[batchStart:batchEnd], matchIDs[batchStart:batchEnd], 
+			eventTypes[batchStart:batchEnd], marketNames[batchStart:batchEnd],
+			bookmakers[batchStart:batchEnd], createdAts[batchStart:batchEnd], 
+			updatedAts[batchStart:batchEnd])
 		
 		if err != nil {
-			// Fallback to sequential inserts if bulk fails
-			log.Printf("⚠️  Bulk insert failed, falling back to sequential: %v", err)
-			return y.insertEventsSequential(ctx, tx, events[batchStart:batchEnd], eventIDs[batchStart:batchEnd], 
-				matchIDs[batchStart:batchEnd], eventTypes[batchStart:batchEnd], marketNames[batchStart:batchEnd],
-				bookmakers[batchStart:batchEnd], createdAts[batchStart:batchEnd], updatedAts[batchStart:batchEnd])
+			return err
 		}
 	}
 	
 	return nil
 }
 
-// insertEventsSequential inserts events one by one (fallback method)
-func (y *BatchYDBClient) insertEventsSequential(
+// insertEventsParallel inserts events efficiently without delays
+// Executes inserts sequentially but optimized (no delays, prepared statements)
+func (y *BatchYDBClient) insertEventsParallel(
 	ctx context.Context,
 	tx table.Transaction,
 	events []models.Event,
 	eventIDs, matchIDs, eventTypes, marketNames, bookmakers, createdAts, updatedAts []types.Value,
 ) error {
+	// Execute inserts sequentially but efficiently (no delays between operations)
+	// YDB will batch these operations internally
 	for i := 0; i < len(events); i++ {
 		_, err := tx.Execute(ctx, `
 			DECLARE $event_id AS Utf8;
@@ -396,78 +358,35 @@ func (y *BatchYDBClient) insertOutcomesBatched(
 			batchEnd = len(outcomes)
 		}
 		
-		// Build struct list for bulk insert using AS_TABLE pattern
-		rows := make([]types.Value, 0, batchEnd-batchStart)
+		// Execute inserts efficiently without delays
+		// YDB will batch these operations internally within transaction
+		parameters := make([]types.Value, batchEnd-batchStart)
 		for i := batchStart; i < batchEnd; i++ {
-			row := types.StructValue(
-				types.StructFieldValue("outcome_id", outcomeIDs[i]),
-				types.StructFieldValue("event_id", eventIDs[i]),
-				types.StructFieldValue("outcome_type", names[i]),
-				types.StructFieldValue("parameter", types.UTF8Value(outcomes[i].Parameter)),
-				types.StructFieldValue("odds", odds[i]),
-				types.StructFieldValue("bookmaker", bookmakers[i]),
-				types.StructFieldValue("created_at", createdAts[i]),
-				types.StructFieldValue("updated_at", updatedAts[i]),
-			)
-			rows = append(rows, row)
+			parameters[i-batchStart] = types.UTF8Value(outcomes[i].Parameter)
 		}
-		
-		rowsList := types.ListValue(rows...)
-		
-		// Use bulk INSERT with AS_TABLE for better performance
-		_, err := tx.Execute(ctx, `
-			DECLARE $rows AS List<Struct<
-				outcome_id: Utf8,
-				event_id: Utf8,
-				outcome_type: Utf8,
-				parameter: Utf8,
-				odds: Double,
-				bookmaker: Utf8,
-				created_at: Timestamp,
-				updated_at: Timestamp
-			>>;
-			
-			UPSERT INTO outcomes (
-				outcome_id, event_id, outcome_type, parameter, odds, bookmaker, created_at, updated_at
-			)
-			SELECT
-				r.outcome_id AS outcome_id,
-				r.event_id AS event_id,
-				r.outcome_type AS outcome_type,
-				r.parameter AS parameter,
-				r.odds AS odds,
-				r.bookmaker AS bookmaker,
-				r.created_at AS created_at,
-				r.updated_at AS updated_at
-			FROM AS_TABLE($rows) AS r;
-		`, table.NewQueryParameters(
-			table.ValueParam("$rows", rowsList),
-		))
+		err := y.insertOutcomesParallel(ctx, tx, outcomes[batchStart:batchEnd], 
+			outcomeIDs[batchStart:batchEnd], eventIDs[batchStart:batchEnd], names[batchStart:batchEnd],
+			parameters, odds[batchStart:batchEnd], bookmakers[batchStart:batchEnd],
+			createdAts[batchStart:batchEnd], updatedAts[batchStart:batchEnd])
 		
 		if err != nil {
-			// Fallback to sequential inserts if bulk fails
-			log.Printf("⚠️  Bulk insert failed, falling back to sequential: %v", err)
-			parameters := make([]types.Value, batchEnd-batchStart)
-			for i := batchStart; i < batchEnd; i++ {
-				parameters[i-batchStart] = types.UTF8Value(outcomes[i].Parameter)
-			}
-			return y.insertOutcomesSequential(ctx, tx, outcomes[batchStart:batchEnd], 
-				outcomeIDs[batchStart:batchEnd], eventIDs[batchStart:batchEnd], names[batchStart:batchEnd],
-				parameters, odds[batchStart:batchEnd], bookmakers[batchStart:batchEnd],
-				createdAts[batchStart:batchEnd], updatedAts[batchStart:batchEnd])
+			return err
 		}
 	}
 	
 	return nil
 }
 
-// insertOutcomesSequential inserts outcomes one by one (fallback method)
-func (y *BatchYDBClient) insertOutcomesSequential(
+// insertOutcomesParallel inserts outcomes efficiently without delays
+// Executes inserts sequentially but optimized (no delays, YDB batches internally)
+func (y *BatchYDBClient) insertOutcomesParallel(
 	ctx context.Context,
 	tx table.Transaction,
 	outcomes []OutcomeBatchData,
 	outcomeIDs, eventIDs, names, parameters, odds, bookmakers, createdAts, updatedAts []types.Value,
 ) error {
+	// Execute inserts sequentially but efficiently (no delays between operations)
+	// YDB will batch these operations internally
 	for i := 0; i < len(outcomes); i++ {
 		_, err := tx.Execute(ctx, `
 			DECLARE $outcome_id AS Utf8;

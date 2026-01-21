@@ -12,6 +12,9 @@ services:
       - "8080"
     environment:
       - PINNACLE_INSECURE_TLS=1
+      # Pinnacle API credentials (set via .env file or environment)
+      - PINNACLE_API_KEY=${PINNACLE_API_KEY:-}
+      - PINNACLE_DEVICE_UUID=${PINNACLE_DEVICE_UUID:-}
     volumes:
       - ./configs:/app/configs:ro
       # configs/production.yaml uses ../keys/... (relative to /app/configs), which resolves to /app/keys/...

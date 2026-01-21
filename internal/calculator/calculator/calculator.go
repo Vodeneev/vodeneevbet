@@ -16,10 +16,6 @@ import (
 	"github.com/Vodeneev/vodeneevbet/internal/pkg/models"
 )
 
-type fastMatchesReader interface {
-	GetMatchesWithLimitFast(ctx context.Context, limit int) ([]models.Match, error)
-}
-
 // ValueCalculator reads odds from HTTP endpoint and calculates top diffs between bookmakers.
 // It keeps a small in-memory cache and exposes it via HTTP handlers.
 type ValueCalculator struct {
@@ -143,11 +139,7 @@ func (c *ValueCalculator) recalculate(ctx context.Context) {
 	)
 
 	// Always fetch all matches (limit parameter is ignored)
-	if fr, ok := c.httpClient.(fastMatchesReader); ok {
-		matches, err = fr.GetMatchesWithLimitFast(readCtx, 0)
-	} else {
-		matches, err = c.httpClient.GetMatchesWithLimit(readCtx, 0)
-	}
+	matches, err = c.httpClient.GetMatchesWithLimitFast(readCtx, 0)
 	if err != nil {
 		log.Printf("calculator: failed to load matches: %v", err)
 		c.mu.Lock()

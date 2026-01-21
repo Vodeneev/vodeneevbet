@@ -163,23 +163,37 @@ func (t *Tracker) PrintSummary() {
 	fmt.Printf("  Total Outcomes:    %d (avg: %.1f per event)\n", t.TotalOutcomes, float64(t.TotalOutcomes)/float64(t.TotalEvents))
 	
 	fmt.Printf("\n⏱️  Timing Breakdown (average per run):\n")
+	avgTotal := t.TotalDuration / time.Duration(t.TotalRuns)
+	avgHTTPFetch := t.HTTPFetchDuration / time.Duration(t.TotalRuns)
+	avgJSONParse := t.JSONParseDuration / time.Duration(t.TotalRuns)
+	avgGrouping := t.GroupingDuration / time.Duration(t.TotalRuns)
+	avgProcessing := t.ProcessingDuration / time.Duration(t.TotalRuns)
+	avgYDBWrite := t.YDBWriteDuration / time.Duration(t.TotalRuns)
+	
 	fmt.Printf("  HTTP Fetch:        %v (%.1f%%)\n", 
-		t.HTTPFetchDuration/time.Duration(t.TotalRuns),
+		avgHTTPFetch,
 		float64(t.HTTPFetchDuration)/float64(t.TotalDuration)*100)
 	fmt.Printf("  JSON Parse:        %v (%.1f%%)\n",
-		t.JSONParseDuration/time.Duration(t.TotalRuns),
+		avgJSONParse,
 		float64(t.JSONParseDuration)/float64(t.TotalDuration)*100)
 	fmt.Printf("  Event Grouping:    %v (%.1f%%)\n",
-		t.GroupingDuration/time.Duration(t.TotalRuns),
+		avgGrouping,
 		float64(t.GroupingDuration)/float64(t.TotalDuration)*100)
 	fmt.Printf("  Processing:        %v (%.1f%%)\n",
-		t.ProcessingDuration/time.Duration(t.TotalRuns),
+		avgProcessing,
 		float64(t.ProcessingDuration)/float64(t.TotalDuration)*100)
-	fmt.Printf("  YDB Write:         %v (%.1f%%)\n",
-		t.YDBWriteDuration/time.Duration(t.TotalRuns),
-		float64(t.YDBWriteDuration)/float64(t.TotalDuration)*100)
-	fmt.Printf("  Total:             %v\n",
-		t.TotalDuration/time.Duration(t.TotalRuns))
+	// YDB Write is part of Processing, so calculate percentage relative to Processing duration
+	ydbPercentOfProcessing := 0.0
+	if t.ProcessingDuration > 0 {
+		ydbPercentOfProcessing = float64(t.YDBWriteDuration) / float64(t.ProcessingDuration) * 100
+	}
+	ydbPercentOfTotal := 0.0
+	if t.TotalDuration > 0 {
+		ydbPercentOfTotal = float64(t.YDBWriteDuration) / float64(t.TotalDuration) * 100
+	}
+	fmt.Printf("  YDB Write:         %v (%.1f%% of total, %.1f%% of processing)\n",
+		avgYDBWrite, ydbPercentOfTotal, ydbPercentOfProcessing)
+	fmt.Printf("  Total:             %v\n", avgTotal)
 	
 	// Per-match statistics
 	if len(t.MatchTimings) > 0 {
@@ -354,7 +368,12 @@ func (t *Tracker) GetMetrics() MetricsResponse {
 			resp.Timing.JSONParsePercent = float64(t.JSONParseDuration) / float64(t.TotalDuration) * 100
 			resp.Timing.GroupingPercent = float64(t.GroupingDuration) / float64(t.TotalDuration) * 100
 			resp.Timing.ProcessingPercent = float64(t.ProcessingDuration) / float64(t.TotalDuration) * 100
-			resp.Timing.YDBWritePercent = float64(t.YDBWriteDuration) / float64(t.TotalDuration) * 100
+			// YDB Write is part of Processing, calculate percentage relative to Processing
+			if t.ProcessingDuration > 0 {
+				resp.Timing.YDBWritePercent = float64(t.YDBWriteDuration) / float64(t.ProcessingDuration) * 100
+			} else {
+				resp.Timing.YDBWritePercent = 0
+			}
 		}
 	}
 	

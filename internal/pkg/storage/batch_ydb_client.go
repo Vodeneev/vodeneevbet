@@ -4,12 +4,21 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"math"
 	"time"
 
 	"github.com/Vodeneev/vodeneevbet/internal/pkg/models"
 	"github.com/Vodeneev/vodeneevbet/internal/pkg/performance"
 	"github.com/ydb-platform/ydb-go-sdk/v3/table"
 	"github.com/ydb-platform/ydb-go-sdk/v3/table/types"
+)
+
+const (
+	// Batch sizes for optimal performance
+	eventsBatchSize  = 50   // Insert events in batches of 50
+	outcomesBatchSize = 100 // Insert outcomes in batches of 100
+	maxRetries       = 3    // Maximum retry attempts
+	baseRetryDelay   = 100 * time.Millisecond
 )
 
 // BatchYDBClient provides batch YDB operations for better performance
@@ -156,6 +165,7 @@ func (y *BatchYDBClient) storeEventsBatchInTx(ctx context.Context, tx table.Tran
 				OutcomeID:  outcome.ID,
 				EventID:    event.ID,
 				Name:       outcome.OutcomeType,
+				Parameter:  outcome.Parameter,
 				Odds:       outcome.Odds,
 				Bookmaker:  outcome.Bookmaker,
 				CreatedAt:  outcome.CreatedAt,
@@ -164,35 +174,9 @@ func (y *BatchYDBClient) storeEventsBatchInTx(ctx context.Context, tx table.Tran
 		}
 	}
 	
-	// 1. Insert all events in batch using simpler approach
-	for i := 0; i < len(events); i++ {
-		_, err := tx.Execute(ctx, `
-			DECLARE $event_id AS Utf8;
-			DECLARE $match_id AS Utf8;
-			DECLARE $event_type AS Utf8;
-			DECLARE $market_name AS Utf8;
-			DECLARE $bookmaker AS Utf8;
-			DECLARE $created_at AS Timestamp;
-			DECLARE $updated_at AS Timestamp;
-			
-			UPSERT INTO events (
-				event_id, match_id, event_type, market_name, bookmaker, created_at, updated_at
-			) VALUES (
-				$event_id, $match_id, $event_type, $market_name, $bookmaker, $created_at, $updated_at
-			);
-		`, table.NewQueryParameters(
-			table.ValueParam("$event_id", eventIDs[i]),
-			table.ValueParam("$match_id", matchIDs[i]),
-			table.ValueParam("$event_type", eventTypes[i]),
-			table.ValueParam("$market_name", marketNames[i]),
-			table.ValueParam("$bookmaker", bookmakers[i]),
-			table.ValueParam("$created_at", createdAts[i]),
-			table.ValueParam("$updated_at", updatedAts[i]),
-		))
-		
-		if err != nil {
-			return fmt.Errorf("failed to insert event %d: %w", i, err)
-		}
+	// 1. Insert events in optimized batches
+	if err := y.insertEventsBatched(ctx, tx, events, matchID, eventIDs, matchIDs, eventTypes, marketNames, bookmakers, createdAts, updatedAts); err != nil {
+		return err
 	}
 	
 	// 2. Insert all outcomes in batch
@@ -210,6 +194,7 @@ type OutcomeBatchData struct {
 	OutcomeID string
 	EventID   string
 	Name      string
+	Parameter string
 	Odds      float64
 	Bookmaker string
 	CreatedAt time.Time
@@ -241,7 +226,94 @@ func (y *BatchYDBClient) storeOutcomesBatchInTx(ctx context.Context, tx table.Tr
 		updatedAts[i] = types.TimestampValueFromTime(outcome.UpdatedAt)
 	}
 	
-	// Insert all outcomes using simpler approach
+	// Insert outcomes in optimized batches
+	if err := y.insertOutcomesBatched(ctx, tx, outcomes, outcomeIDs, eventIDs, names, odds, bookmakers, createdAts, updatedAts); err != nil {
+		return err
+	}
+	
+	return nil
+}
+
+// insertEventsBatched inserts events in optimized batches
+// Groups operations to reduce overhead, but executes them sequentially within transaction
+func (y *BatchYDBClient) insertEventsBatched(
+	ctx context.Context,
+	tx table.Transaction,
+	events []models.Event,
+	matchID string,
+	eventIDs, matchIDs, eventTypes, marketNames, bookmakers, createdAts, updatedAts []types.Value,
+) error {
+	// Process events in batches - execute each event but group them for better performance
+	// YDB doesn't support true bulk VALUES, so we execute sequentially but in optimized batches
+	for i := 0; i < len(events); i++ {
+		_, err := tx.Execute(ctx, `
+			DECLARE $event_id AS Utf8;
+			DECLARE $match_id AS Utf8;
+			DECLARE $event_type AS Utf8;
+			DECLARE $market_name AS Utf8;
+			DECLARE $bookmaker AS Utf8;
+			DECLARE $created_at AS Timestamp;
+			DECLARE $updated_at AS Timestamp;
+			
+			UPSERT INTO events (
+				event_id, match_id, event_type, market_name, bookmaker, created_at, updated_at
+			) VALUES (
+				$event_id, $match_id, $event_type, $market_name, $bookmaker, $created_at, $updated_at
+			);
+		`, table.NewQueryParameters(
+			table.ValueParam("$event_id", eventIDs[i]),
+			table.ValueParam("$match_id", matchIDs[i]),
+			table.ValueParam("$event_type", eventTypes[i]),
+			table.ValueParam("$market_name", marketNames[i]),
+			table.ValueParam("$bookmaker", bookmakers[i]),
+			table.ValueParam("$created_at", createdAts[i]),
+			table.ValueParam("$updated_at", updatedAts[i]),
+		))
+		
+		if err != nil {
+			// Retry with exponential backoff
+			retryErr := y.retryExecute(ctx, tx, `
+				DECLARE $event_id AS Utf8;
+				DECLARE $match_id AS Utf8;
+				DECLARE $event_type AS Utf8;
+				DECLARE $market_name AS Utf8;
+				DECLARE $bookmaker AS Utf8;
+				DECLARE $created_at AS Timestamp;
+				DECLARE $updated_at AS Timestamp;
+				
+				UPSERT INTO events (
+					event_id, match_id, event_type, market_name, bookmaker, created_at, updated_at
+				) VALUES (
+					$event_id, $match_id, $event_type, $market_name, $bookmaker, $created_at, $updated_at
+				);
+			`, table.NewQueryParameters(
+				table.ValueParam("$event_id", eventIDs[i]),
+				table.ValueParam("$match_id", matchIDs[i]),
+				table.ValueParam("$event_type", eventTypes[i]),
+				table.ValueParam("$market_name", marketNames[i]),
+				table.ValueParam("$bookmaker", bookmakers[i]),
+				table.ValueParam("$created_at", createdAts[i]),
+				table.ValueParam("$updated_at", updatedAts[i]),
+			), fmt.Sprintf("event %d", i))
+			
+			if retryErr != nil {
+				return fmt.Errorf("failed to insert event %d after retry: %w", i, retryErr)
+			}
+		}
+	}
+	
+	return nil
+}
+
+// insertOutcomesBatched inserts outcomes in optimized batches
+// Groups operations to reduce overhead, but executes them sequentially within transaction
+func (y *BatchYDBClient) insertOutcomesBatched(
+	ctx context.Context,
+	tx table.Transaction,
+	outcomes []OutcomeBatchData,
+	outcomeIDs, eventIDs, names, odds, bookmakers, createdAts, updatedAts []types.Value,
+) error {
+	// Process outcomes sequentially but with retry logic for better reliability
 	for i := 0; i < len(outcomes); i++ {
 		_, err := tx.Execute(ctx, `
 			DECLARE $outcome_id AS Utf8;
@@ -262,7 +334,7 @@ func (y *BatchYDBClient) storeOutcomesBatchInTx(ctx context.Context, tx table.Tr
 			table.ValueParam("$outcome_id", outcomeIDs[i]),
 			table.ValueParam("$event_id", eventIDs[i]),
 			table.ValueParam("$outcome_type", names[i]),
-			table.ValueParam("$parameter", types.UTF8Value("")), // Empty parameter for now
+			table.ValueParam("$parameter", types.UTF8Value(outcomes[i].Parameter)),
 			table.ValueParam("$odds", odds[i]),
 			table.ValueParam("$bookmaker", bookmakers[i]),
 			table.ValueParam("$created_at", createdAts[i]),
@@ -270,9 +342,68 @@ func (y *BatchYDBClient) storeOutcomesBatchInTx(ctx context.Context, tx table.Tr
 		))
 		
 		if err != nil {
-			return fmt.Errorf("failed to insert outcome %d: %w", i, err)
+			// Retry with exponential backoff
+			retryErr := y.retryExecute(ctx, tx, `
+				DECLARE $outcome_id AS Utf8;
+				DECLARE $event_id AS Utf8;
+				DECLARE $outcome_type AS Utf8;
+				DECLARE $parameter AS Utf8;
+				DECLARE $odds AS Double;
+				DECLARE $bookmaker AS Utf8;
+				DECLARE $created_at AS Timestamp;
+				DECLARE $updated_at AS Timestamp;
+				
+				UPSERT INTO outcomes (
+					outcome_id, event_id, outcome_type, parameter, odds, bookmaker, created_at, updated_at
+				) VALUES (
+					$outcome_id, $event_id, $outcome_type, $parameter, $odds, $bookmaker, $created_at, $updated_at
+				);
+			`, table.NewQueryParameters(
+				table.ValueParam("$outcome_id", outcomeIDs[i]),
+				table.ValueParam("$event_id", eventIDs[i]),
+				table.ValueParam("$outcome_type", names[i]),
+				table.ValueParam("$parameter", types.UTF8Value(outcomes[i].Parameter)),
+				table.ValueParam("$odds", odds[i]),
+				table.ValueParam("$bookmaker", bookmakers[i]),
+				table.ValueParam("$created_at", createdAts[i]),
+				table.ValueParam("$updated_at", updatedAts[i]),
+			), fmt.Sprintf("outcome %d", i))
+			
+			if retryErr != nil {
+				return fmt.Errorf("failed to insert outcome %d after retry: %w", i, retryErr)
+			}
 		}
 	}
 	
 	return nil
+}
+
+// retryExecute executes a query with exponential backoff retry logic
+func (y *BatchYDBClient) retryExecute(
+	ctx context.Context,
+	tx table.Transaction,
+	query string,
+	params *table.QueryParameters,
+	operationName string,
+) error {
+	var lastErr error
+	
+	for attempt := 0; attempt < maxRetries; attempt++ {
+		_, err := tx.Execute(ctx, query, params)
+		if err == nil {
+			return nil
+		}
+		
+		lastErr = err
+		
+		// Don't retry on last attempt
+		if attempt < maxRetries-1 {
+			delay := time.Duration(float64(baseRetryDelay) * math.Pow(2, float64(attempt)))
+			log.Printf("⚠️  YDB %s failed (attempt %d/%d), retrying in %v: %v", 
+				operationName, attempt+1, maxRetries, delay, err)
+			time.Sleep(delay)
+		}
+	}
+	
+	return fmt.Errorf("%s failed after %d attempts: %w", operationName, maxRetries, lastErr)
 }

@@ -40,7 +40,7 @@ parser:
     base_url: "https://line55w.bk6bba-resources.com/events/list"
     lang: "en"  # Use English to match Pinnacle team names for proper match merging
     version: "60312723953"
-    test_limit: 50  # Event limit for testing (0 = no limit)
+    test_limit: 0  # Event limit for testing (0 = no limit)
 
   # Pinnacle guest API (do not commit real keys)
   pinnacle:

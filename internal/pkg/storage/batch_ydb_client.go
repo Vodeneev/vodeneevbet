@@ -22,7 +22,9 @@ const (
 	baseRetryDelay   = 100 * time.Millisecond
 	
 	// Rate limiting to avoid YDB ResourceExhausted
-	ydbOperationDelay = 10 * time.Millisecond // Delay between YDB operations to avoid throttling
+	// YDB Serverless has strict rate limits, so we need longer delays
+	ydbOperationDelay = 50 * time.Millisecond  // Delay between YDB operations to avoid throttling
+	ydbResourceExhaustedDelay = 500 * time.Millisecond // Longer delay after ResourceExhausted
 )
 
 // BatchYDBClient provides batch YDB operations for better performance
@@ -319,7 +321,7 @@ func (y *BatchYDBClient) insertOutcomesBatched(
 ) error {
 	// Process outcomes sequentially but with retry logic for better reliability
 	for i := 0; i < len(outcomes); i++ {
-		// Add small delay to avoid YDB ResourceExhausted
+		// Add delay to avoid YDB ResourceExhausted (YDB Serverless has strict limits)
 		if i > 0 {
 			time.Sleep(ydbOperationDelay)
 		}
@@ -417,9 +419,9 @@ func (y *BatchYDBClient) retryExecute(
 		// Don't retry on last attempt
 		if attempt < maxRetries-1 {
 			delay := time.Duration(float64(baseRetryDelay) * math.Pow(2, float64(attempt)))
-			// For ResourceExhausted, use longer delay
+			// For ResourceExhausted, use much longer delay to let YDB recover
 			if isResourceExhausted {
-				delay = time.Duration(float64(baseRetryDelay) * math.Pow(3, float64(attempt))) // 100ms, 300ms, 900ms
+				delay = time.Duration(float64(ydbResourceExhaustedDelay) * math.Pow(2, float64(attempt))) // 500ms, 1s, 2s
 			}
 			log.Printf("⚠️  YDB %s failed (attempt %d/%d), retrying in %v: %v", 
 				operationName, attempt+1, maxRetries, delay, err)

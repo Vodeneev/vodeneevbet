@@ -44,7 +44,7 @@ func NewBatchProcessor(
 		oddsParser:   oddsParser,
 		matchBuilder: matchBuilder,
 		batchSize:    50,  // Начальный размер батча
-		workers:      5,   // 5 параллельных воркеров
+		workers:      3,   // 3 параллельных воркера (уменьшено для YDB Serverless)
 		testLimit:    testLimit,
 		// Динамические параметры
 		avgBatchTime:   0,

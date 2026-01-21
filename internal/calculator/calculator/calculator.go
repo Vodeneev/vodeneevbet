@@ -82,12 +82,35 @@ func (c *ValueCalculator) handleTopDiffs(w http.ResponseWriter, r *http.Request)
 	// Filter by match status: "live" (started), "upcoming" (not started), or empty (all)
 	statusFilter := r.URL.Query().Get("status")
 
-	c.mu.RLock()
-	diffs := c.topDiffs
-	c.mu.RUnlock()
+	// Fetch fresh data from parser on each request
+	var diffs []DiffBet
+	if c.httpClient != nil {
+		// Create context with timeout for the request
+		ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
+		defer cancel()
 
-	if diffs == nil {
-		diffs = []DiffBet{}
+		matches, err := c.httpClient.GetMatches(ctx)
+		if err != nil {
+			log.Printf("calculator: failed to load matches in handleTopDiffs: %v", err)
+			// Fallback to cached data if available
+			c.mu.RLock()
+			diffs = c.topDiffs
+			c.mu.RUnlock()
+			if diffs == nil {
+				diffs = []DiffBet{}
+			}
+		} else {
+			// Calculate diffs from fresh data
+			diffs = computeTopDiffs(matches, 100)
+		}
+	} else {
+		// Fallback to cached data if httpClient is not configured
+		c.mu.RLock()
+		diffs = c.topDiffs
+		c.mu.RUnlock()
+		if diffs == nil {
+			diffs = []DiffBet{}
+		}
 	}
 
 	// Filter by status if specified
@@ -118,12 +141,21 @@ func (c *ValueCalculator) handleTopDiffs(w http.ResponseWriter, r *http.Request)
 		diffs = filtered
 	}
 
+	// Re-sort after filtering (computeTopDiffs already sorts, but we filter after)
+	sort.Slice(diffs, func(i, j int) bool {
+		return diffs[i].DiffPercent > diffs[j].DiffPercent
+	})
+
 	if limit > len(diffs) {
 		limit = len(diffs)
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(diffs[:limit])
+	if len(diffs) > 0 {
+		_ = json.NewEncoder(w).Encode(diffs[:limit])
+	} else {
+		_ = json.NewEncoder(w).Encode([]DiffBet{})
+	}
 }
 
 func (c *ValueCalculator) handleStatus(w http.ResponseWriter, r *http.Request) {

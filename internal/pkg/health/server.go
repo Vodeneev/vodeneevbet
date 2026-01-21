@@ -66,24 +66,47 @@ func AddMatch(match *models.Match) {
 
 	// Add or update match (UPSERT logic - merge events from different bookmakers)
 	if existing, ok := globalMatchStore.matches[match.ID]; ok {
-		// Merge events: add new events from this bookmaker
+		// Merge events: add new events or update existing ones
 		existingEvents := make(map[string]*models.Event)
 		for i := range existing.Events {
 			existingEvents[existing.Events[i].ID] = &existing.Events[i]
 		}
 
 		addedCount := 0
-		// Add new events
+		updatedCount := 0
+		// Add new events or update existing ones
 		for _, newEvent := range match.Events {
-			if _, exists := existingEvents[newEvent.ID]; !exists {
+			if existingEvent, exists := existingEvents[newEvent.ID]; exists {
+				// Update existing event: merge outcomes (update odds for live matches)
+				existingOutcomes := make(map[string]*models.Outcome)
+				for i := range existingEvent.Outcomes {
+					existingOutcomes[existingEvent.Outcomes[i].ID] = &existingEvent.Outcomes[i]
+				}
+
+				// Update or add outcomes
+				for _, newOutcome := range newEvent.Outcomes {
+					if existingOutcome, outcomeExists := existingOutcomes[newOutcome.ID]; outcomeExists {
+						// Update existing outcome (important for live matches - odds change)
+						existingOutcome.Odds = newOutcome.Odds
+						existingOutcome.UpdatedAt = newOutcome.UpdatedAt
+						updatedCount++
+					} else {
+						// Add new outcome
+						existingEvent.Outcomes = append(existingEvent.Outcomes, newOutcome)
+						updatedCount++
+					}
+				}
+				existingEvent.UpdatedAt = newEvent.UpdatedAt
+			} else {
+				// Add new event
 				existing.Events = append(existing.Events, newEvent)
 				addedCount++
 			}
 		}
 
-		if addedCount > 0 {
-			log.Printf("✅ Merged %d events from %v into match %s (now has %d events total)",
-				addedCount, bookmakerList, match.ID, len(existing.Events))
+		if addedCount > 0 || updatedCount > 0 {
+			log.Printf("✅ Updated match %s: added %d events, updated %d outcomes from %v",
+				match.ID, addedCount, updatedCount, bookmakerList)
 		}
 
 		// Update metadata

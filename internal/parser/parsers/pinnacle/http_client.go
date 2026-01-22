@@ -15,13 +15,13 @@ import (
 )
 
 type Client struct {
-	baseURL    string
-	apiKey     string
-	deviceUUID string
-	httpClient *http.Client
-	proxyList  []string
+	baseURL           string
+	apiKey            string
+	deviceUUID        string
+	httpClient        *http.Client
+	proxyList         []string
 	currentProxyIndex int
-	proxyMu    sync.Mutex
+	proxyMu           sync.Mutex
 }
 
 func NewClient(baseURL, apiKey, deviceUUID string, timeout time.Duration, proxyList []string) *Client {
@@ -34,7 +34,7 @@ func NewClient(baseURL, apiKey, deviceUUID string, timeout time.Duration, proxyL
 	}
 
 	insecureTLS := os.Getenv("PINNACLE_INSECURE_TLS") == "1"
-	
+
 	// Support proxy via environment variable (takes precedence over config)
 	envProxy := os.Getenv("PINNACLE_PROXY")
 	if envProxy != "" {
@@ -43,7 +43,7 @@ func NewClient(baseURL, apiKey, deviceUUID string, timeout time.Duration, proxyL
 	} else if len(proxyList) > 0 {
 		fmt.Printf("Pinnacle: Using proxy list from config (%d proxies)\n", len(proxyList))
 	}
-	
+
 	// Create default transport (without proxy - we'll use proxy per request)
 	transport := http.DefaultTransport.(*http.Transport).Clone()
 	if transport.TLSClientConfig == nil {
@@ -54,7 +54,7 @@ func NewClient(baseURL, apiKey, deviceUUID string, timeout time.Duration, proxyL
 		// Allow opting out of verification for guest API scraping.
 		transport.TLSClientConfig.InsecureSkipVerify = true
 	}
-	
+
 	// Use default proxy from environment (HTTP_PROXY, HTTPS_PROXY) for non-Pinnacle requests
 	transport.Proxy = http.ProxyFromEnvironment
 
@@ -185,7 +185,7 @@ func (c *Client) getJSON(path string, out any) error {
 	if len(c.proxyList) > 0 {
 		return c.getJSONWithProxyRetry(path, out)
 	}
-	
+
 	return c.getJSONDirect(path, out)
 }
 
@@ -207,7 +207,7 @@ func (c *Client) getJSONDirect(path string, out any) error {
 		return fmt.Errorf("request: %w", err)
 	}
 	defer resp.Body.Close()
-	
+
 	return c.handleResponse(resp, out)
 }
 
@@ -221,19 +221,19 @@ func (c *Client) getJSONWithProxyRetry(path string, out any) error {
 	c.proxyMu.Lock()
 	startIndex := c.currentProxyIndex
 	c.proxyMu.Unlock()
-	
+
 	for attempt := 0; attempt < len(c.proxyList); attempt++ {
 		c.proxyMu.Lock()
 		proxyIndex := (startIndex + attempt) % len(c.proxyList)
 		proxyURLStr := c.proxyList[proxyIndex]
 		c.proxyMu.Unlock()
-		
+
 		proxyURL, err := url.Parse(proxyURLStr)
 		if err != nil {
 			fmt.Printf("Pinnacle: Invalid proxy URL %s: %v\n", maskProxyURL(proxyURLStr), err)
 			continue
 		}
-		
+
 		// Create transport with this proxy
 		transport := http.DefaultTransport.(*http.Transport).Clone()
 		if transport.TLSClientConfig == nil {
@@ -243,26 +243,26 @@ func (c *Client) getJSONWithProxyRetry(path string, out any) error {
 			transport.TLSClientConfig.InsecureSkipVerify = true
 		}
 		transport.Proxy = http.ProxyURL(proxyURL)
-		
+
 		client := &http.Client{
 			Timeout:   c.httpClient.Timeout,
 			Transport: transport,
 		}
-		
+
 		req, err := http.NewRequest(http.MethodGet, requestURL, nil)
 		if err != nil {
 			fmt.Printf("Pinnacle: Failed to create request: %v, trying next proxy...\n", err)
 			continue
 		}
-		
+
 		c.setHeaders(req)
-		
+
 		resp, err := client.Do(req)
 		if err != nil {
 			fmt.Printf("Pinnacle: Proxy %s failed: %v, trying next...\n", maskProxyURL(proxyURLStr), err)
 			continue
 		}
-		
+
 		// Check if response is valid JSON (not HTML blocking page)
 		contentType := resp.Header.Get("Content-Type")
 		if resp.StatusCode == http.StatusOK && strings.Contains(contentType, "application/json") {
@@ -271,17 +271,17 @@ func (c *Client) getJSONWithProxyRetry(path string, out any) error {
 			c.currentProxyIndex = proxyIndex
 			c.proxyMu.Unlock()
 			fmt.Printf("Pinnacle: Using working proxy %s\n", maskProxyURL(proxyURLStr))
-			
+
 			err := c.handleResponse(resp, out)
 			resp.Body.Close()
 			return err
 		}
-		
+
 		// Got HTML instead of JSON (blocked)
 		resp.Body.Close()
 		fmt.Printf("Pinnacle: Proxy %s returned HTML (blocked), trying next...\n", maskProxyURL(proxyURLStr))
 	}
-	
+
 	// All proxies failed, try direct connection as last resort
 	fmt.Printf("Pinnacle: All proxies failed, trying direct connection...\n")
 	return c.getJSONDirect(path, out)

@@ -233,21 +233,38 @@ func (p *Parser) processAll(ctx context.Context) error {
 					}
 				}
 			}
-			
+
 			// For live matchups, try to get markets directly if not found in general markets
+			// Use async request with timeout to avoid blocking
 			if len(relMarkets) == 0 && len(alternateMarkets) == 0 {
-				// Try to get markets directly for the main matchup (useful for live matches)
-				directMarkets, err := p.client.GetRelatedStraightMarkets(mainID)
-				if err == nil && len(directMarkets) > 0 {
-					// Filter to only open markets with Period 0 or -1
-					for _, m := range directMarkets {
-						if m.Status == "open" && (m.Period == 0 || m.Period == -1) && !m.IsAlternate {
-							relMarkets = append(relMarkets, m)
+				marketsCh := make(chan []Market, 1)
+				go func() {
+					directMarkets, err := p.client.GetRelatedStraightMarkets(mainID)
+					if err == nil && len(directMarkets) > 0 {
+						marketsCh <- directMarkets
+					} else {
+						marketsCh <- nil
+					}
+				}()
+				
+				// Wait for markets with timeout (5 seconds max)
+				select {
+				case directMarkets := <-marketsCh:
+					if directMarkets != nil {
+						// Filter to only open markets with Period 0 or -1
+						for _, m := range directMarkets {
+							if m.Status == "open" && (m.Period == 0 || m.Period == -1) && !m.IsAlternate {
+								relMarkets = append(relMarkets, m)
+							}
 						}
 					}
+				case <-time.After(5 * time.Second):
+					// Timeout - skip this matchup
+				case <-ctx.Done():
+					return ctx.Err()
 				}
 			}
-			
+
 			// If no regular markets but we have alternate markets, use them
 			if len(relMarkets) == 0 && len(alternateMarkets) > 0 {
 				relMarkets = alternateMarkets

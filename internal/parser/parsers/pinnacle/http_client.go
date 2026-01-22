@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 )
 
@@ -122,11 +123,14 @@ func (c *Client) GetSportLiveMatchups(sportID int64) ([]RelatedMatchup, error) {
 	// Convert to RelatedMatchup format, filtering only actually live matches
 	out := make([]RelatedMatchup, 0, len(raw))
 	for _, lm := range raw {
-		// Only include matches that are actually live (isLive=true and status="started")
-		// This ensures we don't include matches that have already ended
-		if !lm.IsLive || lm.Status != "started" {
+		// Only include matches that are actually live (isLive=true)
+		// Status "started" is preferred, but we also accept other statuses if isLive=true
+		// This ensures we don't miss live matches due to status variations
+		if !lm.IsLive {
 			continue
 		}
+		// Prefer "started" status, but don't exclude if status is different (might be "live" or other)
+		// The key indicator is isLive=true
 		
 		rm := RelatedMatchup{
 			ID:        lm.ID,
@@ -190,12 +194,19 @@ func (c *Client) getJSON(path string, out any) error {
 
 	if resp.StatusCode != http.StatusOK {
 		b, _ := io.ReadAll(resp.Body)
-		// Log first 200 chars to help debug
+		// Log first 500 chars to help debug
 		preview := string(b)
-		if len(preview) > 200 {
-			preview = preview[:200] + "..."
+		if len(preview) > 500 {
+			preview = preview[:500] + "..."
 		}
-		return fmt.Errorf("unexpected status %d for %s: %s", resp.StatusCode, url, preview)
+		// Log headers for debugging
+		headers := ""
+		for k, v := range resp.Header {
+			if len(v) > 0 {
+				headers += fmt.Sprintf("%s: %s; ", k, v[0])
+			}
+		}
+		return fmt.Errorf("unexpected status %d for %s (headers: %s): %s", resp.StatusCode, url, headers, preview)
 	}
 
 	body, err := readBodyMaybeGzip(resp)
@@ -204,7 +215,16 @@ func (c *Client) getJSON(path string, out any) error {
 	}
 
 	if err := json.Unmarshal(body, out); err != nil {
-		return fmt.Errorf("unmarshal: %w", err)
+		// If unmarshal fails, log the body to help debug (might be HTML error page)
+		preview := string(body)
+		if len(preview) > 500 {
+			preview = preview[:500] + "..."
+		}
+		// Check if it's HTML (common error response)
+		if len(body) > 0 && (body[0] == '<' || strings.Contains(strings.ToLower(preview), "<html")) {
+			return fmt.Errorf("unmarshal: received HTML instead of JSON (status %d): %s", resp.StatusCode, preview)
+		}
+		return fmt.Errorf("unmarshal: %w (body preview: %s)", err, preview)
 	}
 	return nil
 }

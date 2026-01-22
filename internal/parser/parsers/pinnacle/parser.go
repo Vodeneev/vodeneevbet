@@ -112,12 +112,12 @@ func (p *Parser) processAll(ctx context.Context) error {
 		nameToID[sp.Name] = sp.ID
 	}
 
-		// Keep a modest window to avoid processing thousands of stale matchups.
-		// For regular matchups, only include future matches (upcoming).
-		// Live matches are handled separately via GetSportLiveMatchups which filters by isLive=true.
-		now := time.Now().UTC()
-		maxStart := now.Add(48 * time.Hour)
-		minStart := now // Only include matches that haven't started yet (for regular matchups)
+	// Keep a modest window to avoid processing thousands of stale matchups.
+	// For regular matchups, only include future matches (upcoming).
+	// Live matches are handled separately via GetSportLiveMatchups which filters by isLive=true.
+	now := time.Now().UTC()
+	maxStart := now.Add(48 * time.Hour)
+	minStart := now // Only include matches that haven't started yet (for regular matchups)
 
 	for _, sportName := range targetSportNames {
 		sportID, ok := nameToID[sportName]
@@ -233,7 +233,7 @@ func (p *Parser) processAll(ctx context.Context) error {
 					}
 				}
 			}
-			
+
 			// For live matchups, try to get markets directly if not found in general markets
 			if len(relMarkets) == 0 && len(alternateMarkets) == 0 {
 				// Try to get markets directly for the main matchup (useful for live matches)
@@ -247,7 +247,7 @@ func (p *Parser) processAll(ctx context.Context) error {
 					}
 				}
 			}
-			
+
 			// If no regular markets but we have alternate markets, use them
 			if len(relMarkets) == 0 && len(alternateMarkets) > 0 {
 				relMarkets = alternateMarkets

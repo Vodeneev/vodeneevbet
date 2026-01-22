@@ -138,9 +138,9 @@ func (c *ValueCalculator) handleTopDiffs(w http.ResponseWriter, r *http.Request)
 func (c *ValueCalculator) handleStatus(w http.ResponseWriter, r *http.Request) {
 	// Status endpoint - data is fetched on-demand, no caching
 	status := map[string]any{
-		"status":           "ok",
+		"status":            "ok",
 		"parser_configured": c.httpClient != nil,
-		"mode":             "on-demand",
+		"mode":              "on-demand",
 	}
 	if c.httpClient == nil {
 		status["error"] = "parser URL is not configured"
@@ -149,7 +149,6 @@ func (c *ValueCalculator) handleStatus(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(status)
 }
-
 
 func computeTopDiffs(matches []models.Match, keepTop int) []DiffBet {
 	if keepTop <= 0 {

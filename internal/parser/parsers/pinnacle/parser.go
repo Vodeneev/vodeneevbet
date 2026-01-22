@@ -346,7 +346,8 @@ func (p *Parser) processAll(ctx context.Context) error {
 				default:
 				}
 
-				// Use the actual matchup ID for fetching markets (not parentID)
+				// For live matches, try both live matchup ID and parentID to find which has open markets
+				// We need to check which one actually returns open live markets with current odds
 				matchupID := mu.ID
 				// Determine mainID for grouping
 				mainID := matchupID
@@ -355,9 +356,9 @@ func (p *Parser) processAll(ctx context.Context) error {
 				}
 				related := liveGroup[mainID]
 
-				go func(mID int64, matchID int64, rel []RelatedMatchup) {
-					// Fetch markets directly for this live matchup using its actual ID
-					logMsg := fmt.Sprintf("Pinnacle: Fetching markets asynchronously for live matchup ID %d (mainID: %d)\n", matchID, mID)
+				go func(mID int64, matchID int64, parentID *int64, rel []RelatedMatchup) {
+					// Try live matchup ID first
+					logMsg := fmt.Sprintf("Pinnacle: Trying to fetch markets for live matchup ID %d\n", matchID)
 					fmt.Print(logMsg)
 					logToFile(logMsg)
 					liveMarkets, err := p.client.GetRelatedStraightMarkets(matchID)
@@ -365,9 +366,8 @@ func (p *Parser) processAll(ctx context.Context) error {
 						logMsg = fmt.Sprintf("Pinnacle: Failed to fetch markets for live matchup %d: %v\n", matchID, err)
 						fmt.Print(logMsg)
 						logToFile(logMsg)
-						resultsCh <- liveMatchResult{mainID: mID, matchupID: matchID, related: rel, markets: nil, err: err}
-						return
 					}
+					
 					// Filter to only open markets with Period 0 or -1
 					filtered := make([]Market, 0, len(liveMarkets))
 					for _, m := range liveMarkets {
@@ -375,11 +375,37 @@ func (p *Parser) processAll(ctx context.Context) error {
 							filtered = append(filtered, m)
 						}
 					}
-					logMsg = fmt.Sprintf("Pinnacle: Found %d open markets for live matchup %d (filtered from %d total markets)\n", len(filtered), matchID, len(liveMarkets))
+					logMsg = fmt.Sprintf("Pinnacle: Live matchup ID %d returned %d open markets (from %d total)\n", matchID, len(filtered), len(liveMarkets))
 					fmt.Print(logMsg)
 					logToFile(logMsg)
+					
+					// If no open markets from live matchup ID, try parentID
+					if len(filtered) == 0 && parentID != nil && *parentID > 0 {
+						logMsg = fmt.Sprintf("Pinnacle: No open markets from live matchup %d, trying parentID %d\n", matchID, *parentID)
+						fmt.Print(logMsg)
+						logToFile(logMsg)
+						parentMarkets, err := p.client.GetRelatedStraightMarkets(*parentID)
+						if err == nil {
+							parentFiltered := make([]Market, 0, len(parentMarkets))
+							for _, m := range parentMarkets {
+								if m.Status == "open" && (m.Period == 0 || m.Period == -1) && !m.IsAlternate {
+									parentFiltered = append(parentFiltered, m)
+								}
+							}
+							logMsg = fmt.Sprintf("Pinnacle: ParentID %d returned %d open markets (from %d total)\n", *parentID, len(parentFiltered), len(parentMarkets))
+							fmt.Print(logMsg)
+							logToFile(logMsg)
+							if len(parentFiltered) > 0 {
+								filtered = parentFiltered
+								logMsg = fmt.Sprintf("Pinnacle: Using parentID %d markets (has %d open markets vs 0 from live matchup %d)\n", *parentID, len(filtered), matchID)
+								fmt.Print(logMsg)
+								logToFile(logMsg)
+							}
+						}
+					}
+					
 					resultsCh <- liveMatchResult{mainID: mID, matchupID: matchID, related: rel, markets: filtered, err: nil}
-				}(mainID, matchupID, related)
+				}(mainID, matchupID, mu.ParentID, related)
 			}
 
 			// Collect results from async market fetches

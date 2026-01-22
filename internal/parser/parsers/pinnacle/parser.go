@@ -130,7 +130,7 @@ func (p *Parser) processAll(ctx context.Context) error {
 		if err != nil {
 			return err
 		}
-		
+
 		// Get live matchups asynchronously
 		liveMatchupsCh := make(chan []RelatedMatchup, 1)
 		go func() {
@@ -141,12 +141,12 @@ func (p *Parser) processAll(ctx context.Context) error {
 			}
 			liveMatchupsCh <- liveMatchups
 		}()
-		
+
 		markets, err := p.client.GetSportStraightMarkets(sportID)
 		if err != nil {
 			return err
 		}
-		
+
 		// Wait for live matchups and merge them
 		select {
 		case liveMatchups := <-liveMatchupsCh:
@@ -233,6 +233,21 @@ func (p *Parser) processAll(ctx context.Context) error {
 					}
 				}
 			}
+			
+			// For live matchups, try to get markets directly if not found in general markets
+			if len(relMarkets) == 0 && len(alternateMarkets) == 0 {
+				// Try to get markets directly for the main matchup (useful for live matches)
+				directMarkets, err := p.client.GetRelatedStraightMarkets(mainID)
+				if err == nil && len(directMarkets) > 0 {
+					// Filter to only open markets with Period 0 or -1
+					for _, m := range directMarkets {
+						if m.Status == "open" && (m.Period == 0 || m.Period == -1) && !m.IsAlternate {
+							relMarkets = append(relMarkets, m)
+						}
+					}
+				}
+			}
+			
 			// If no regular markets but we have alternate markets, use them
 			if len(relMarkets) == 0 && len(alternateMarkets) > 0 {
 				relMarkets = alternateMarkets

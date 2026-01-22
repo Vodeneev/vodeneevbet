@@ -176,7 +176,9 @@ func (c *Client) getJSON(path string, out any) error {
 	req.Header.Set("Accept-Language", "ru,en;q=0.9")
 	// Use realistic browser User-Agent to match browser requests
 	req.Header.Set("User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 YaBrowser/25.12.0.0 Safari/537.36")
-	// Note: Origin and Referer headers cause 401 errors, so we don't send them
+	// Add Referer header - it helps bypass blocking (as seen in working browser requests)
+	req.Header.Set("Referer", "https://www.pinnacle.com/")
+	// Note: Origin header may cause 401 errors, so we don't send it
 
 	// Pinnacle guest API expects these headers (captured from browser).
 	if c.apiKey != "" {
@@ -191,6 +193,12 @@ func (c *Client) getJSON(path string, out any) error {
 		return fmt.Errorf("request: %w", err)
 	}
 	defer resp.Body.Close()
+
+	// Log response headers for debugging (especially for blocked requests)
+	if resp.StatusCode != http.StatusOK || resp.Header.Get("Content-Type") != "application/json" {
+		fmt.Printf("Pinnacle API response: status=%d, content-type=%s, cf-ray=%s\n", 
+			resp.StatusCode, resp.Header.Get("Content-Type"), resp.Header.Get("Cf-Ray"))
+	}
 
 	if resp.StatusCode != http.StatusOK {
 		b, _ := io.ReadAll(resp.Body)

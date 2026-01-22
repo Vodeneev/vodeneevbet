@@ -93,6 +93,8 @@ func (c *Client) GetSportLiveMatchups(sportID int64) ([]RelatedMatchup, error) {
 	type LiveMatchupResponse struct {
 		ID       int64   `json:"id"`
 		ParentID *int64  `json:"parentId,omitempty"`
+		IsLive   bool    `json:"isLive"`   // Only include matches that are actually live
+		Status   string  `json:"status"`   // "started" means match is in progress
 		Parent   *struct {
 			ID          int64  `json:"id"`
 			StartTime   string `json:"startTime"`
@@ -117,9 +119,15 @@ func (c *Client) GetSportLiveMatchups(sportID int64) ([]RelatedMatchup, error) {
 		return nil, err
 	}
 	
-	// Convert to RelatedMatchup format
+	// Convert to RelatedMatchup format, filtering only actually live matches
 	out := make([]RelatedMatchup, 0, len(raw))
 	for _, lm := range raw {
+		// Only include matches that are actually live (isLive=true and status="started")
+		// This ensures we don't include matches that have already ended
+		if !lm.IsLive || lm.Status != "started" {
+			continue
+		}
+		
 		rm := RelatedMatchup{
 			ID:        lm.ID,
 			ParentID:  lm.ParentID,

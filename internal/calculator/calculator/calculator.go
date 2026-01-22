@@ -89,13 +89,17 @@ func (c *ValueCalculator) handleTopDiffs(w http.ResponseWriter, r *http.Request)
 	// Filter by status if specified
 	// Use UTC for comparison to handle timezones correctly (StartTime is stored in UTC)
 	now := time.Now().UTC()
+	// Matches typically last up to 2-3 hours, so exclude matches that started more than 3 hours ago
+	maxLiveAge := 3 * time.Hour
 	if statusFilter != "" {
 		filtered := make([]DiffBet, 0, len(diffs))
 		for _, diff := range diffs {
-			// Match is live if it has started (StartTime is in the past)
+			// Match is live if it has started (StartTime is in the past) but not too long ago
 			// StartTime is stored in UTC, so we compare with UTC time
 			// Use Before with equal check to handle edge cases
-			isLive := !diff.StartTime.IsZero() && (diff.StartTime.Before(now) || diff.StartTime.Equal(now))
+			hasStarted := !diff.StartTime.IsZero() && (diff.StartTime.Before(now) || diff.StartTime.Equal(now))
+			notTooOld := !diff.StartTime.IsZero() && now.Sub(diff.StartTime) <= maxLiveAge
+			isLive := hasStarted && notTooOld
 			switch statusFilter {
 			case "live":
 				if isLive {
@@ -103,7 +107,7 @@ func (c *ValueCalculator) handleTopDiffs(w http.ResponseWriter, r *http.Request)
 				}
 			case "upcoming":
 				// Upcoming means match hasn't started yet (StartTime is in the future)
-				if !isLive {
+				if !hasStarted {
 					filtered = append(filtered, diff)
 				}
 			default:

@@ -112,12 +112,12 @@ func (p *Parser) processAll(ctx context.Context) error {
 		nameToID[sp.Name] = sp.ID
 	}
 
-	// Keep a modest window to avoid processing thousands of stale matchups.
-	// For live matches, we need to include matches that started recently (up to 4 hours ago)
-	// to catch matches that are still in progress.
-	now := time.Now().UTC()
-	maxStart := now.Add(48 * time.Hour)
-	minStart := now.Add(-4 * time.Hour) // Include live matches that started up to 4 hours ago
+		// Keep a modest window to avoid processing thousands of stale matchups.
+		// For regular matchups, only include future matches (upcoming).
+		// Live matches are handled separately via GetSportLiveMatchups which filters by isLive=true.
+		now := time.Now().UTC()
+		maxStart := now.Add(48 * time.Hour)
+		minStart := now // Only include matches that haven't started yet (for regular matchups)
 
 	for _, sportName := range targetSportNames {
 		sportID, ok := nameToID[sportName]
@@ -199,9 +199,9 @@ func (p *Parser) processAll(ctx context.Context) error {
 			}
 			st = st.UTC()
 
-			// Include matches that:
-			// 1. Haven't started yet (up to 48 hours in the future)
-			// 2. Started recently (up to 4 hours ago) - for live matches
+			// Include only matches that haven't started yet (up to 48 hours in the future).
+			// Live matches are handled separately via GetSportLiveMatchups which filters by isLive=true.
+			// This ensures we don't include already finished matches in the regular matchups list.
 			if st.Before(minStart) || st.After(maxStart) {
 				filteredByTime++
 				continue

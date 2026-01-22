@@ -138,26 +138,6 @@ func (p *BatchProcessor) ProcessSportEvents(sport string) error {
 	// Group events by match (Level 1 events are main matches)
 	groupStart := time.Now()
 
-	// Debug: log all events looking for Bayern vs Union Saint-Gilloise
-	for _, event := range apiResponse.Events {
-		if event.Level == 1 {
-			matchName := fmt.Sprintf("%s vs %s", event.Team1, event.Team2)
-			if strings.Contains(strings.ToLower(matchName), "bayern") ||
-				strings.Contains(strings.ToLower(matchName), "бавария") ||
-				strings.Contains(strings.ToLower(matchName), "union") ||
-				strings.Contains(strings.ToLower(matchName), "saint-gilloise") ||
-				strings.Contains(strings.ToLower(matchName), "gilloise") ||
-				strings.Contains(strings.ToLower(event.Name), "bayern") ||
-				strings.Contains(strings.ToLower(event.Name), "бавария") ||
-				strings.Contains(strings.ToLower(event.Name), "union") ||
-				strings.Contains(strings.ToLower(event.Name), "saint-gilloise") {
-				startTime := time.Unix(event.StartTime, 0)
-				fmt.Printf("Fonbet DEBUG: Found potential match: %s (ID=%d, Name=%s, StartTime=%s, SportID=%d)\n",
-					matchName, event.ID, event.Name, startTime.Format(time.RFC3339), event.SportID)
-			}
-		}
-	}
-
 	eventsByMatch := p.groupEventsByMatchFromAPI(apiResponse.Events, allowedSportIDs)
 	groupDuration := time.Since(groupStart)
 	fmt.Printf("⏱️  Event grouping took: %v\n", groupDuration)

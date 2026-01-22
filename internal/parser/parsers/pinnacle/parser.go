@@ -154,37 +154,6 @@ func (p *Parser) processAll(ctx context.Context) error {
 			marketsByMatchup[m.MatchupID] = append(marketsByMatchup[m.MatchupID], m)
 		}
 
-		// Debug: log filtered markets for specific matchups (e.g., Kopa Tigers)
-		for muID, stats := range filteredStats {
-			totalFiltered := 0
-			for _, count := range stats {
-				totalFiltered += count
-			}
-			if totalFiltered > 0 {
-				// Check if this matchup is for Kopa Tigers match
-				for _, mu := range matchups {
-					if mu.ID == muID {
-						homeTeam, awayTeam := "", ""
-						for _, p := range mu.Participants {
-							if p.Alignment == "home" {
-								homeTeam = p.Name
-							} else if p.Alignment == "away" {
-								awayTeam = p.Name
-							}
-						}
-						matchName := fmt.Sprintf("%s vs %s", homeTeam, awayTeam)
-						if strings.Contains(strings.ToLower(matchName), "kopa") ||
-							strings.Contains(strings.ToLower(matchName), "tigers") ||
-							strings.Contains(strings.ToLower(matchName), "medinipur") {
-							fmt.Printf("Pinnacle DEBUG: Matchup %d (%s) had %d markets filtered: %+v\n",
-								muID, matchName, totalFiltered, stats)
-						}
-						break
-					}
-				}
-			}
-		}
-
 		// Group matchups by main matchup (parentId or self).
 		group := map[int64][]RelatedMatchup{}
 		filteredByTime := 0
@@ -296,26 +265,6 @@ func (p *Parser) processAll(ctx context.Context) error {
 			}
 
 			fmt.Printf("Pinnacle: built match %s (%s vs %s), events=%d\n", m.ID, m.HomeTeam, m.AwayTeam, len(m.Events))
-
-			// Debug: log when match has no events but markets were available
-			if len(m.Events) == 0 && len(relMarkets) > 0 {
-				periods := make(map[int]bool)
-				statuses := make(map[string]bool)
-				for _, mkt := range relMarkets {
-					periods[mkt.Period] = true
-					statuses[mkt.Status] = true
-				}
-				var periodStrs []string
-				for p := range periods {
-					periodStrs = append(periodStrs, fmt.Sprintf("Period%d", p))
-				}
-				var statusStrs []string
-				for s := range statuses {
-					statusStrs = append(statusStrs, fmt.Sprintf("Status%s", s))
-				}
-				fmt.Printf("Pinnacle DEBUG: Match %s (%s vs %s) has 0 events but %d markets were available. Markets: %v, %v\n",
-					m.ID, m.HomeTeam, m.AwayTeam, len(relMarkets), periodStrs, statusStrs)
-			}
 
 			// Add match to in-memory store for fast API access (primary storage)
 			// YDB is not used - data is served directly from memory
@@ -560,7 +509,7 @@ func buildMatchFromPinnacle(matchupID int64, related []RelatedMatchup, markets [
 		ev := getOrCreate(et)
 		appendMarketOutcomes(ev, mkt)
 	}
-	
+
 	// If no events were created or events have no outcomes, try alternate markets as fallback
 	hasOutcomes := false
 	for _, ev := range eventsByType {

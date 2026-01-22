@@ -210,25 +210,8 @@ func (p *BatchProcessor) processMatchesInBatches(
 		mainEvent := matchEvents[0]
 		p.normalizeMainEventTeams(&mainEvent)
 
-		// Debug: log when Kopa Tigers match is filtered
-		if strings.Contains(strings.ToLower(mainEvent.Team1), "kopa") ||
-			strings.Contains(strings.ToLower(mainEvent.Team2), "medinipur") ||
-			strings.Contains(strings.ToLower(mainEvent.Team1), "tigers") ||
-			strings.Contains(strings.ToLower(mainEvent.Team1), "birbhum") {
-			fmt.Printf("Fonbet DEBUG: Processing match %s vs %s (ID=%d, Level=%d, Kind=%d)\n",
-				mainEvent.Team1, mainEvent.Team2, mainEvent.ID, mainEvent.Level, mainEvent.Kind)
-		}
-
 		// Применяем фильтры к матчу
 		if !p.isValidMatch(mainEvent) {
-			// Debug: log why Kopa Tigers match was filtered
-			if strings.Contains(strings.ToLower(mainEvent.Team1), "kopa") ||
-				strings.Contains(strings.ToLower(mainEvent.Team2), "medinipur") ||
-				strings.Contains(strings.ToLower(mainEvent.Team1), "tigers") ||
-				strings.Contains(strings.ToLower(mainEvent.Team1), "birbhum") {
-				fmt.Printf("Fonbet DEBUG: Match %s vs %s (ID=%d) was FILTERED by isValidMatch\n",
-					mainEvent.Team1, mainEvent.Team2, mainEvent.ID)
-			}
 			filteredCount++
 			continue
 		}
@@ -550,35 +533,14 @@ func (p *BatchProcessor) groupEventsByMatchFromAPI(events []FonbetAPIEvent, allo
 	// First, find all main matches (Level 1)
 	mainMatches := make(map[string]FonbetAPIEvent)
 	for _, event := range events {
-		// Debug: log when Kopa Tigers match is found
-		if strings.Contains(strings.ToLower(event.Team1), "kopa") ||
-			strings.Contains(strings.ToLower(event.Team2), "medinipur") ||
-			event.ID == 61750327 {
-			fmt.Printf("Fonbet DEBUG: Found event ID=%d: %s vs %s (Level=%d, Kind=%d, SportID=%d)\n",
-				event.ID, event.Team1, event.Team2, event.Level, event.Kind, event.SportID)
-		}
-
 		if len(allowedSportIDs) > 0 {
 			if _, ok := allowedSportIDs[event.SportID]; !ok {
-				// Debug: log when Kopa Tigers match is filtered by SportID
-				if strings.Contains(strings.ToLower(event.Team1), "kopa") ||
-					strings.Contains(strings.ToLower(event.Team2), "medinipur") ||
-					event.ID == 61750327 {
-					fmt.Printf("Fonbet DEBUG: Event ID=%d filtered by SportID (SportID=%d not in allowed list)\n",
-						event.ID, event.SportID)
-				}
 				continue
 			}
 		}
 		if event.Level == 1 {
 			matchID := fmt.Sprintf("%d", event.ID)
 			mainMatches[matchID] = event
-			// Debug: log when Kopa Tigers match is added to mainMatches
-			if strings.Contains(strings.ToLower(event.Team1), "kopa") ||
-				strings.Contains(strings.ToLower(event.Team2), "medinipur") ||
-				event.ID == 61750327 {
-				fmt.Printf("Fonbet DEBUG: Added event ID=%d to mainMatches\n", event.ID)
-			}
 		}
 	}
 

@@ -134,11 +134,14 @@ func (p *Parser) processAll(ctx context.Context) error {
 		// Get live matchups asynchronously - these are the ONLY source of truth for live matches
 		liveMatchupsCh := make(chan []RelatedMatchup, 1)
 		go func() {
+			fmt.Printf("Pinnacle: [NEW VERSION] Fetching live matchups from /0.1/sports/%d/matchups/live endpoint\n", sportID)
 			liveMatchups, err := p.client.GetSportLiveMatchups(sportID)
 			if err != nil {
+				fmt.Printf("Pinnacle: [NEW VERSION] Failed to fetch live matchups: %v\n", err)
 				liveMatchupsCh <- nil
 				return
 			}
+			fmt.Printf("Pinnacle: [NEW VERSION] Found %d live matchups from live endpoint\n", len(liveMatchups))
 			liveMatchupsCh <- liveMatchups
 		}()
 
@@ -274,6 +277,7 @@ func (p *Parser) processAll(ctx context.Context) error {
 		// Process live matchups separately - no time check, only presence in live endpoint matters
 		// Fetch markets asynchronously for each live matchup
 		if len(liveMatchups) > 0 {
+			fmt.Printf("Pinnacle: [NEW VERSION] Processing %d live matchups separately (no time check, only from live endpoint)\n", len(liveMatchups))
 			// Group live matchups by main matchup (for building match structure)
 			// But fetch markets using the actual live matchup ID
 			liveGroup := map[int64][]RelatedMatchup{}
@@ -284,6 +288,7 @@ func (p *Parser) processAll(ctx context.Context) error {
 				}
 				liveGroup[mainID] = append(liveGroup[mainID], mu)
 			}
+			fmt.Printf("Pinnacle: [NEW VERSION] Grouped into %d unique live match groups\n", len(liveGroup))
 
 			// Process each live matchup with async market fetching
 			type liveMatchResult struct {
@@ -313,8 +318,10 @@ func (p *Parser) processAll(ctx context.Context) error {
 
 				go func(mID int64, matchID int64, rel []RelatedMatchup) {
 					// Fetch markets directly for this live matchup using its actual ID
+					fmt.Printf("Pinnacle: [NEW VERSION] Fetching markets asynchronously for live matchup ID %d (mainID: %d)\n", matchID, mID)
 					liveMarkets, err := p.client.GetRelatedStraightMarkets(matchID)
 					if err != nil {
+						fmt.Printf("Pinnacle: [NEW VERSION] Failed to fetch markets for live matchup %d: %v\n", matchID, err)
 						resultsCh <- liveMatchResult{mainID: mID, related: rel, markets: nil, err: err}
 						return
 					}
@@ -325,27 +332,40 @@ func (p *Parser) processAll(ctx context.Context) error {
 							filtered = append(filtered, m)
 						}
 					}
+					fmt.Printf("Pinnacle: [NEW VERSION] Found %d markets for live matchup %d (filtered from %d total)\n", len(filtered), matchID, len(liveMarkets))
 					resultsCh <- liveMatchResult{mainID: mID, related: rel, markets: filtered, err: nil}
 				}(mainID, matchupID, related)
 			}
 
 			// Collect results from async market fetches
+			liveMatchesAdded := 0
 			for i := 0; i < len(liveMatchups); i++ {
 				select {
 				case result := <-resultsCh:
 					if result.err != nil || len(result.markets) == 0 {
+						if result.err != nil {
+							fmt.Printf("Pinnacle: [NEW VERSION] Skipping live matchup %d: error=%v\n", result.mainID, result.err)
+						} else {
+							fmt.Printf("Pinnacle: [NEW VERSION] Skipping live matchup %d: no markets found\n", result.mainID)
+						}
 						continue
 					}
 					m, err := buildMatchFromPinnacle(result.mainID, result.related, result.markets)
 					if err != nil || m == nil {
+						fmt.Printf("Pinnacle: [NEW VERSION] Failed to build match from live matchup %d: err=%v\n", result.mainID, err)
 						continue
 					}
 					// Add match to in-memory store - it will be available in /matches endpoint
 					health.AddMatch(m)
+					liveMatchesAdded++
+					fmt.Printf("Pinnacle: [NEW VERSION] Successfully added live match: %s (matchup ID: %d)\n", m.Name, result.mainID)
 				case <-ctx.Done():
 					return ctx.Err()
 				}
 			}
+			fmt.Printf("Pinnacle: [NEW VERSION] Completed processing live matchups: %d added to store out of %d total\n", liveMatchesAdded, len(liveMatchups))
+		} else {
+			fmt.Printf("Pinnacle: [NEW VERSION] No live matchups found in live endpoint\n")
 		}
 	}
 
@@ -371,9 +391,9 @@ func (p *Parser) processMatchup(ctx context.Context, matchupID int64) error {
 		return nil
 	}
 
-			// Add match to in-memory store for fast API access (primary storage)
-			// YDB is not used - data is served directly from memory
-			health.AddMatch(m)
+	// Add match to in-memory store for fast API access (primary storage)
+	// YDB is not used - data is served directly from memory
+	health.AddMatch(m)
 
 	return nil
 }

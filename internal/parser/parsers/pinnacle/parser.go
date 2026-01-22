@@ -136,11 +136,9 @@ func (p *Parser) processAll(ctx context.Context) error {
 		go func() {
 			liveMatchups, err := p.client.GetSportLiveMatchups(sportID)
 			if err != nil {
-				fmt.Printf("Pinnacle: failed to get live matchups for sport %s: %v\n", sportName, err)
 				liveMatchupsCh <- nil
 				return
 			}
-			fmt.Printf("Pinnacle: found %d live matchups for sport %s\n", len(liveMatchups), sportName)
 			liveMatchupsCh <- liveMatchups
 		}()
 		
@@ -214,11 +212,6 @@ func (p *Parser) processAll(ctx context.Context) error {
 			}
 			group[mainID] = append(group[mainID], mu)
 		}
-		if filteredByTime > 0 {
-			fmt.Printf("Pinnacle: filtered %d matchups by time window\n", filteredByTime)
-		}
-
-		fmt.Printf("Pinnacle: processing %d main matchups for sport %s\n", len(group), sportName)
 
 		// Process each main matchup as a match.
 		for mainID, related := range group {
@@ -245,26 +238,17 @@ func (p *Parser) processAll(ctx context.Context) error {
 				relMarkets = alternateMarkets
 			}
 			if len(relMarkets) == 0 {
-				fmt.Printf("Pinnacle: skipping matchup %d (no markets)\n", mainID)
 				continue
 			}
 
 			m, err := buildMatchFromPinnacle(mainID, related, relMarkets)
 			if err != nil || m == nil {
-				if err != nil {
-					fmt.Printf("Pinnacle: failed to build match for matchup %d: %v\n", mainID, err)
-				}
 				continue
 			}
 
-			fmt.Printf("Pinnacle: built match %s (%s vs %s), events=%d\n", m.ID, m.HomeTeam, m.AwayTeam, len(m.Events))
-
 			// Add match to in-memory store for fast API access (primary storage)
 			// YDB is not used - data is served directly from memory
-			if m != nil {
-				health.AddMatch(m)
-				fmt.Printf("Pinnacle: added match %s to in-memory store with %d events\n", m.ID, len(m.Events))
-			}
+			health.AddMatch(m)
 		}
 	}
 
@@ -289,8 +273,6 @@ func (p *Parser) processMatchup(ctx context.Context, matchupID int64) error {
 	if m == nil {
 		return nil
 	}
-
-	fmt.Printf("Pinnacle: built match %s (%s vs %s), events=%d\n", m.ID, m.HomeTeam, m.AwayTeam, len(m.Events))
 
 	// Add match to in-memory store for fast API access (primary storage)
 	// YDB is not used - data is served directly from memory

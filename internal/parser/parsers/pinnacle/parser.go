@@ -368,14 +368,32 @@ func (p *Parser) processAll(ctx context.Context) error {
 						logToFile(logMsg)
 					}
 					
-					// Filter to only open markets with Period 0 or -1
+					// Filter to only open markets - for live matches, prefer Period -1 (current period live) over Period 0 (full match, may be pre-match odds)
+					// Period -1 = current period live odds, Period 0 = full match (may be pre-match for live matches)
 					filtered := make([]Market, 0, len(liveMarkets))
+					period0Count := 0
+					periodMinus1Count := 0
 					for _, m := range liveMarkets {
-						if m.Status == "open" && (m.Period == 0 || m.Period == -1) && !m.IsAlternate {
-							filtered = append(filtered, m)
+						if m.Status == "open" && !m.IsAlternate {
+							if m.Period == -1 {
+								// Period -1 = current period live - this is what we want for live matches
+								filtered = append(filtered, m)
+								periodMinus1Count++
+							} else if m.Period == 0 {
+								period0Count++
+								// Only use Period 0 if no Period -1 markets found (fallback)
+							}
 						}
 					}
-					logMsg = fmt.Sprintf("Pinnacle: Live matchup ID %d returned %d open markets (from %d total)\n", matchID, len(filtered), len(liveMarkets))
+					// If no Period -1 markets, fallback to Period 0
+					if len(filtered) == 0 && period0Count > 0 {
+						for _, m := range liveMarkets {
+							if m.Status == "open" && m.Period == 0 && !m.IsAlternate {
+								filtered = append(filtered, m)
+							}
+						}
+					}
+					logMsg = fmt.Sprintf("Pinnacle: Live matchup ID %d returned %d open markets (Period -1: %d, Period 0: %d, from %d total)\n", matchID, len(filtered), periodMinus1Count, period0Count, len(liveMarkets))
 					fmt.Print(logMsg)
 					logToFile(logMsg)
 					
@@ -387,9 +405,24 @@ func (p *Parser) processAll(ctx context.Context) error {
 						parentMarkets, err := p.client.GetRelatedStraightMarkets(*parentID)
 						if err == nil {
 							parentFiltered := make([]Market, 0, len(parentMarkets))
+							parentPeriod0Count := 0
+							parentPeriodMinus1Count := 0
 							for _, m := range parentMarkets {
-								if m.Status == "open" && (m.Period == 0 || m.Period == -1) && !m.IsAlternate {
-									parentFiltered = append(parentFiltered, m)
+								if m.Status == "open" && !m.IsAlternate {
+									if m.Period == -1 {
+										parentFiltered = append(parentFiltered, m)
+										parentPeriodMinus1Count++
+									} else if m.Period == 0 {
+										parentPeriod0Count++
+									}
+								}
+							}
+							// If no Period -1 markets, fallback to Period 0
+							if len(parentFiltered) == 0 && parentPeriod0Count > 0 {
+								for _, m := range parentMarkets {
+									if m.Status == "open" && m.Period == 0 && !m.IsAlternate {
+										parentFiltered = append(parentFiltered, m)
+									}
 								}
 							}
 							logMsg = fmt.Sprintf("Pinnacle: ParentID %d returned %d open markets (from %d total)\n", *parentID, len(parentFiltered), len(parentMarkets))

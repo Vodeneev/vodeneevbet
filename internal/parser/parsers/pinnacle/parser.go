@@ -131,7 +131,7 @@ func (p *Parser) processAll(ctx context.Context) error {
 			return err
 		}
 
-		// Get live matchups asynchronously
+		// Get live matchups asynchronously - these are the ONLY source of truth for live matches
 		liveMatchupsCh := make(chan []RelatedMatchup, 1)
 		go func() {
 			liveMatchups, err := p.client.GetSportLiveMatchups(sportID)
@@ -147,23 +147,22 @@ func (p *Parser) processAll(ctx context.Context) error {
 			return err
 		}
 
-		// Wait for live matchups and merge them
+		// Wait for live matchups - process them separately with async market fetching
+		var liveMatchups []RelatedMatchup
 		select {
-		case liveMatchups := <-liveMatchupsCh:
-			if liveMatchups != nil {
-				// Simple merge: add live matchups that don't exist in regular matchups
-				existingIDs := make(map[int64]bool, len(matchups))
-				for _, mu := range matchups {
-					existingIDs[mu.ID] = true
-				}
-				for _, mu := range liveMatchups {
-					if !existingIDs[mu.ID] {
-						matchups = append(matchups, mu)
-					}
-				}
-			}
+		case liveMatchups = <-liveMatchupsCh:
+			// Live matchups will be processed separately below
 		case <-ctx.Done():
 			return ctx.Err()
+		}
+
+		// Track live matchup IDs to avoid processing them in regular flow
+		liveMatchupIDs := make(map[int64]bool)
+		for _, mu := range liveMatchups {
+			liveMatchupIDs[mu.ID] = true
+			if mu.ParentID != nil {
+				liveMatchupIDs[*mu.ParentID] = true
+			}
 		}
 
 		// Filter markets upfront.
@@ -190,9 +189,15 @@ func (p *Parser) processAll(ctx context.Context) error {
 		}
 
 		// Group matchups by main matchup (parentId or self).
+		// Skip live matchups - they will be processed separately
 		group := map[int64][]RelatedMatchup{}
 		filteredByTime := 0
 		for _, mu := range matchups {
+			// Skip if this is a live matchup - process separately
+			if liveMatchupIDs[mu.ID] || (mu.ParentID != nil && liveMatchupIDs[*mu.ParentID]) {
+				continue
+			}
+
 			st, err := time.Parse(time.RFC3339, mu.StartTime)
 			if err != nil {
 				continue
@@ -265,6 +270,83 @@ func (p *Parser) processAll(ctx context.Context) error {
 			// YDB is not used - data is served directly from memory
 			health.AddMatch(m)
 		}
+
+		// Process live matchups separately - no time check, only presence in live endpoint matters
+		// Fetch markets asynchronously for each live matchup
+		if len(liveMatchups) > 0 {
+			// Group live matchups by main matchup (for building match structure)
+			// But fetch markets using the actual live matchup ID
+			liveGroup := map[int64][]RelatedMatchup{}
+			for _, mu := range liveMatchups {
+				mainID := mu.ID
+				if mu.ParentID != nil && *mu.ParentID > 0 {
+					mainID = *mu.ParentID
+				}
+				liveGroup[mainID] = append(liveGroup[mainID], mu)
+			}
+
+			// Process each live matchup with async market fetching
+			type liveMatchResult struct {
+				mainID  int64
+				related []RelatedMatchup
+				markets []Market
+				err     error
+			}
+			resultsCh := make(chan liveMatchResult, len(liveMatchups))
+
+			// Fetch markets asynchronously for each live matchup using its actual ID
+			for _, mu := range liveMatchups {
+				select {
+				case <-ctx.Done():
+					return ctx.Err()
+				default:
+				}
+
+				// Use the actual matchup ID for fetching markets (not parentID)
+				matchupID := mu.ID
+				// Determine mainID for grouping
+				mainID := matchupID
+				if mu.ParentID != nil && *mu.ParentID > 0 {
+					mainID = *mu.ParentID
+				}
+				related := liveGroup[mainID]
+
+				go func(mID int64, matchID int64, rel []RelatedMatchup) {
+					// Fetch markets directly for this live matchup using its actual ID
+					liveMarkets, err := p.client.GetRelatedStraightMarkets(matchID)
+					if err != nil {
+						resultsCh <- liveMatchResult{mainID: mID, related: rel, markets: nil, err: err}
+						return
+					}
+					// Filter to only open markets with Period 0 or -1
+					filtered := make([]Market, 0, len(liveMarkets))
+					for _, m := range liveMarkets {
+						if m.Status == "open" && (m.Period == 0 || m.Period == -1) && !m.IsAlternate {
+							filtered = append(filtered, m)
+						}
+					}
+					resultsCh <- liveMatchResult{mainID: mID, related: rel, markets: filtered, err: nil}
+				}(mainID, matchupID, related)
+			}
+
+			// Collect results from async market fetches
+			for i := 0; i < len(liveMatchups); i++ {
+				select {
+				case result := <-resultsCh:
+					if result.err != nil || len(result.markets) == 0 {
+						continue
+					}
+					m, err := buildMatchFromPinnacle(result.mainID, result.related, result.markets)
+					if err != nil || m == nil {
+						continue
+					}
+					// Add match to in-memory store - it will be available in /matches endpoint
+					health.AddMatch(m)
+				case <-ctx.Done():
+					return ctx.Err()
+				}
+			}
+		}
 	}
 
 	return nil
@@ -289,11 +371,9 @@ func (p *Parser) processMatchup(ctx context.Context, matchupID int64) error {
 		return nil
 	}
 
-	// Add match to in-memory store for fast API access (primary storage)
-	// YDB is not used - data is served directly from memory
-	if m != nil {
-		health.AddMatch(m)
-	}
+			// Add match to in-memory store for fast API access (primary storage)
+			// YDB is not used - data is served directly from memory
+			health.AddMatch(m)
 
 	return nil
 }

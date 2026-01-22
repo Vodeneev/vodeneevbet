@@ -7,8 +7,10 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -17,9 +19,12 @@ type Client struct {
 	apiKey     string
 	deviceUUID string
 	httpClient *http.Client
+	proxyList  []string
+	currentProxyIndex int
+	proxyMu    sync.Mutex
 }
 
-func NewClient(baseURL, apiKey, deviceUUID string, timeout time.Duration) *Client {
+func NewClient(baseURL, apiKey, deviceUUID string, timeout time.Duration, proxyList []string) *Client {
 	// Allow env overrides to avoid committing secrets into configs.
 	if apiKey == "" {
 		apiKey = os.Getenv("PINNACLE_API_KEY")
@@ -29,6 +34,17 @@ func NewClient(baseURL, apiKey, deviceUUID string, timeout time.Duration) *Clien
 	}
 
 	insecureTLS := os.Getenv("PINNACLE_INSECURE_TLS") == "1"
+	
+	// Support proxy via environment variable (takes precedence over config)
+	envProxy := os.Getenv("PINNACLE_PROXY")
+	if envProxy != "" {
+		proxyList = []string{envProxy}
+		fmt.Printf("Pinnacle: Using proxy from environment: %s\n", maskProxyURL(envProxy))
+	} else if len(proxyList) > 0 {
+		fmt.Printf("Pinnacle: Using proxy list from config (%d proxies)\n", len(proxyList))
+	}
+	
+	// Create default transport (without proxy - we'll use proxy per request)
 	transport := http.DefaultTransport.(*http.Transport).Clone()
 	if transport.TLSClientConfig == nil {
 		transport.TLSClientConfig = &tls.Config{}
@@ -38,12 +54,17 @@ func NewClient(baseURL, apiKey, deviceUUID string, timeout time.Duration) *Clien
 		// Allow opting out of verification for guest API scraping.
 		transport.TLSClientConfig.InsecureSkipVerify = true
 	}
+	
+	// Use default proxy from environment (HTTP_PROXY, HTTPS_PROXY) for non-Pinnacle requests
+	transport.Proxy = http.ProxyFromEnvironment
 
 	return &Client{
-		baseURL:    baseURL,
-		apiKey:     apiKey,
-		deviceUUID: deviceUUID,
-		httpClient: &http.Client{Timeout: timeout, Transport: transport},
+		baseURL:           baseURL,
+		apiKey:            apiKey,
+		deviceUUID:        deviceUUID,
+		httpClient:        &http.Client{Timeout: timeout, Transport: transport},
+		proxyList:         proxyList,
+		currentProxyIndex: 0,
 	}
 }
 
@@ -160,6 +181,15 @@ func (c *Client) GetSportLiveMatchups(sportID int64) ([]RelatedMatchup, error) {
 }
 
 func (c *Client) getJSON(path string, out any) error {
+	// Try proxies in order if available, fallback to direct connection
+	if len(c.proxyList) > 0 {
+		return c.getJSONWithProxyRetry(path, out)
+	}
+	
+	return c.getJSONDirect(path, out)
+}
+
+func (c *Client) getJSONDirect(path string, out any) error {
 	if c.baseURL == "" {
 		c.baseURL = "https://guest.api.arcadia.pinnacle.com"
 	}
@@ -170,6 +200,94 @@ func (c *Client) getJSON(path string, out any) error {
 		return fmt.Errorf("create request: %w", err)
 	}
 
+	c.setHeaders(req)
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("request: %w", err)
+	}
+	defer resp.Body.Close()
+	
+	return c.handleResponse(resp, out)
+}
+
+func (c *Client) getJSONWithProxyRetry(path string, out any) error {
+	if c.baseURL == "" {
+		c.baseURL = "https://guest.api.arcadia.pinnacle.com"
+	}
+	requestURL := c.baseURL + path
+
+	// Try each proxy in the list
+	c.proxyMu.Lock()
+	startIndex := c.currentProxyIndex
+	c.proxyMu.Unlock()
+	
+	for attempt := 0; attempt < len(c.proxyList); attempt++ {
+		c.proxyMu.Lock()
+		proxyIndex := (startIndex + attempt) % len(c.proxyList)
+		proxyURLStr := c.proxyList[proxyIndex]
+		c.proxyMu.Unlock()
+		
+		proxyURL, err := url.Parse(proxyURLStr)
+		if err != nil {
+			fmt.Printf("Pinnacle: Invalid proxy URL %s: %v\n", maskProxyURL(proxyURLStr), err)
+			continue
+		}
+		
+		// Create transport with this proxy
+		transport := http.DefaultTransport.(*http.Transport).Clone()
+		if transport.TLSClientConfig == nil {
+			transport.TLSClientConfig = &tls.Config{}
+		}
+		if os.Getenv("PINNACLE_INSECURE_TLS") == "1" {
+			transport.TLSClientConfig.InsecureSkipVerify = true
+		}
+		transport.Proxy = http.ProxyURL(proxyURL)
+		
+		client := &http.Client{
+			Timeout:   c.httpClient.Timeout,
+			Transport: transport,
+		}
+		
+		req, err := http.NewRequest(http.MethodGet, requestURL, nil)
+		if err != nil {
+			fmt.Printf("Pinnacle: Failed to create request: %v, trying next proxy...\n", err)
+			continue
+		}
+		
+		c.setHeaders(req)
+		
+		resp, err := client.Do(req)
+		if err != nil {
+			fmt.Printf("Pinnacle: Proxy %s failed: %v, trying next...\n", maskProxyURL(proxyURLStr), err)
+			continue
+		}
+		
+		// Check if response is valid JSON (not HTML blocking page)
+		contentType := resp.Header.Get("Content-Type")
+		if resp.StatusCode == http.StatusOK && strings.Contains(contentType, "application/json") {
+			// Success! Update current proxy index
+			c.proxyMu.Lock()
+			c.currentProxyIndex = proxyIndex
+			c.proxyMu.Unlock()
+			fmt.Printf("Pinnacle: Using working proxy %s\n", maskProxyURL(proxyURLStr))
+			
+			err := c.handleResponse(resp, out)
+			resp.Body.Close()
+			return err
+		}
+		
+		// Got HTML instead of JSON (blocked)
+		resp.Body.Close()
+		fmt.Printf("Pinnacle: Proxy %s returned HTML (blocked), trying next...\n", maskProxyURL(proxyURLStr))
+	}
+	
+	// All proxies failed, try direct connection as last resort
+	fmt.Printf("Pinnacle: All proxies failed, trying direct connection...\n")
+	return c.getJSONDirect(path, out)
+}
+
+func (c *Client) setHeaders(req *http.Request) {
 	// Set headers in the same order as browser (may help bypass Cloudflare detection)
 	req.Header.Set("Accept", "application/json")
 	req.Header.Set("Accept-Language", "ru,en;q=0.9")
@@ -192,13 +310,9 @@ func (c *Client) getJSON(path string, out any) error {
 	if c.deviceUUID != "" {
 		req.Header.Set("X-Device-UUID", c.deviceUUID)
 	}
+}
 
-	resp, err := c.httpClient.Do(req)
-	if err != nil {
-		return fmt.Errorf("request: %w", err)
-	}
-	defer resp.Body.Close()
-
+func (c *Client) handleResponse(resp *http.Response, out any) error {
 	// Log response headers for debugging (especially for blocked requests)
 	if resp.StatusCode != http.StatusOK || resp.Header.Get("Content-Type") != "application/json" {
 		fmt.Printf("Pinnacle API response: status=%d, content-type=%s, cf-ray=%s\n",
@@ -219,7 +333,7 @@ func (c *Client) getJSON(path string, out any) error {
 				headers += fmt.Sprintf("%s: %s; ", k, v[0])
 			}
 		}
-		return fmt.Errorf("unexpected status %d for %s (headers: %s): %s", resp.StatusCode, url, headers, preview)
+		return fmt.Errorf("unexpected status %d (headers: %s): %s", resp.StatusCode, headers, preview)
 	}
 
 	body, err := readBodyMaybeGzip(resp)
@@ -240,6 +354,21 @@ func (c *Client) getJSON(path string, out any) error {
 		return fmt.Errorf("unmarshal: %w (body preview: %s)", err, preview)
 	}
 	return nil
+}
+
+func maskProxyURL(proxyURL string) string {
+	// Mask password in proxy URL for logging
+	parsed, err := url.Parse(proxyURL)
+	if err != nil {
+		return "***"
+	}
+	if parsed.User != nil {
+		password, _ := parsed.User.Password()
+		if password != "" {
+			parsed.User = url.UserPassword(parsed.User.Username(), "***")
+		}
+	}
+	return parsed.String()
 }
 
 func readBodyMaybeGzip(resp *http.Response) ([]byte, error) {

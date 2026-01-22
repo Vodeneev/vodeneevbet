@@ -15,6 +15,11 @@ services:
       # Pinnacle API credentials (set via .env file or environment)
       - PINNACLE_API_KEY=${PINNACLE_API_KEY:-}
       - PINNACLE_DEVICE_UUID=${PINNACLE_DEVICE_UUID:-}
+      # Proxy for Pinnacle API (to bypass Cloudflare blocking)
+      # Format: http://proxy-server:port or socks5://proxy-server:port
+      # Example: http://proxy.example.com:8080
+      # With auth: http://user:password@proxy.example.com:8080
+      - PINNACLE_PROXY=${PINNACLE_PROXY:-}
     volumes:
       - ./configs:/app/configs:ro
       # configs/production.yaml uses ../keys/... (relative to /app/configs), which resolves to /app/keys/...

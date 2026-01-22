@@ -30,7 +30,7 @@ func NewParser(cfg *config.Config) *Parser {
 		baseURL = "https://guest.api.arcadia.pinnacle.com"
 	}
 
-	client := NewClient(baseURL, cfg.Parser.Pinnacle.APIKey, cfg.Parser.Pinnacle.DeviceUUID, cfg.Parser.Timeout)
+	client := NewClient(baseURL, cfg.Parser.Pinnacle.APIKey, cfg.Parser.Pinnacle.DeviceUUID, cfg.Parser.Timeout, cfg.Parser.Pinnacle.ProxyList)
 
 	return &Parser{
 		cfg:     cfg,

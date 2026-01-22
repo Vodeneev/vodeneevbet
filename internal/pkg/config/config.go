@@ -52,10 +52,11 @@ type FonbetConfig struct {
 }
 
 type PinnacleConfig struct {
-	BaseURL    string  `yaml:"base_url"`
-	APIKey     string  `yaml:"api_key"`
-	DeviceUUID string  `yaml:"device_uuid"`
-	MatchupIDs []int64 `yaml:"matchup_ids"`
+	BaseURL    string   `yaml:"base_url"`
+	APIKey     string   `yaml:"api_key"`
+	DeviceUUID string   `yaml:"device_uuid"`
+	MatchupIDs []int64  `yaml:"matchup_ids"`
+	ProxyList  []string `yaml:"proxy_list"` // List of proxies to try in order
 }
 
 type ValueCalculatorConfig struct {

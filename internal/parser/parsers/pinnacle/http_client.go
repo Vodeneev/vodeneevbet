@@ -269,30 +269,30 @@ func (c *Client) getJSONWithProxyRetry(path string, out any) error {
 		contentType := resp.Header.Get("Content-Type")
 		bodyPeek := make([]byte, 100)
 		n, _ := resp.Body.Read(bodyPeek)
-		
+
 		// Check if it's JSON by looking at first character
 		isJSON := n > 0 && (bodyPeek[0] == '[' || bodyPeek[0] == '{')
 		isHTML := n > 0 && bodyPeek[0] == '<'
-		
+
 		if resp.StatusCode == http.StatusOK && (strings.Contains(contentType, "application/json") || isJSON) && !isHTML {
 			// Success! Create a new reader that includes the peeked bytes
 			bodyReader := io.MultiReader(bytes.NewReader(bodyPeek[:n]), resp.Body)
-			
+
 			// Create a new response with the combined body
 			// We need to wrap the body reader
 			resp.Body = io.NopCloser(bodyReader)
-			
+
 			// Update current proxy index
 			c.proxyMu.Lock()
 			c.currentProxyIndex = proxyIndex
 			c.proxyMu.Unlock()
 			fmt.Printf("Pinnacle: Using working proxy %s\n", maskProxyURL(proxyURLStr))
-			
+
 			err := c.handleResponse(resp, out)
 			resp.Body.Close()
 			return err
 		}
-		
+
 		// Not JSON, close body
 		resp.Body.Close()
 
@@ -305,7 +305,7 @@ func (c *Client) getJSONWithProxyRetry(path string, out any) error {
 			preview = preview[:200] + "..."
 		}
 		cfRay := resp.Header.Get("Cf-Ray")
-		fmt.Printf("Pinnacle: Proxy %s returned status=%d, content-type=%s, cf-ray=%s, body_preview=%s (blocked/invalid), trying next...\n", 
+		fmt.Printf("Pinnacle: Proxy %s returned status=%d, content-type=%s, cf-ray=%s, body_preview=%s (blocked/invalid), trying next...\n",
 			maskProxyURL(proxyURLStr), resp.StatusCode, contentType, cfRay, preview)
 	}
 

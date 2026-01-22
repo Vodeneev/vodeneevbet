@@ -29,7 +29,8 @@ func RegisterParsers(parsers []interfaces.Parser) {
 }
 
 // triggerParsingAsync triggers parsing for all parsers asynchronously (non-blocking)
-func triggerParsingAsync(ctx context.Context) {
+// Uses a separate context with timeout to allow parsing to complete even after HTTP request ends
+func triggerParsingAsync() {
 	globalParsersMu.RLock()
 	parsers := globalParsers
 	globalParsersMu.RUnlock()
@@ -38,16 +39,31 @@ func triggerParsingAsync(ctx context.Context) {
 		return
 	}
 	
+	// Create a separate context with timeout for parsing (60 seconds should be enough for Pinnacle)
+	// This allows parsing to continue even after HTTP request completes
+	parseCtx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	
+	// Use WaitGroup to track when all parsers are done, then cancel context
+	var wg sync.WaitGroup
+	wg.Add(len(parsers))
+	
 	// Trigger parsing for all parsers in parallel (asynchronously to different bookmakers)
 	// Don't wait - return immediately, parsing happens in background
 	for _, p := range parsers {
 		p := p
 		go func() {
-			if err := p.ParseOnce(ctx); err != nil {
+			defer wg.Done()
+			if err := p.ParseOnce(parseCtx); err != nil {
 				log.Printf("On-demand parsing failed for %s: %v", p.GetName(), err)
 			}
 		}()
 	}
+	
+	// Cancel context after all parsers complete (or timeout)
+	go func() {
+		wg.Wait()
+		cancel()
+	}()
 }
 
 // InMemoryMatchStore stores matches in memory for fast API access
@@ -255,7 +271,7 @@ func handleMatches(w http.ResponseWriter, r *http.Request) {
 
 	// Trigger asynchronous parsing to all bookmakers in parallel (non-blocking)
 	// Don't wait - return cached data immediately, fresh data will be available on next request
-	triggerParsingAsync(r.Context())
+	triggerParsingAsync()
 
 	// Get all matches from in-memory store (returns current cached data)
 	// Fresh data from async parsing will be available on next request

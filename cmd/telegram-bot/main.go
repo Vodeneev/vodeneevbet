@@ -79,8 +79,16 @@ func main() {
 	}
 
 	bot.Debug = false
-	log.Printf("Authorized on account %s (ID: %d)", bot.Self.UserName, bot.Self.ID)
+	
+	// Test bot connection by getting bot info
+	botInfo, err := bot.GetMe()
+	if err != nil {
+		log.Fatalf("Failed to get bot info (token might be invalid): %v", err)
+	}
+	
+	log.Printf("Authorized on account %s (ID: %d)", botInfo.UserName, botInfo.ID)
 	log.Printf("Bot is ready to receive messages")
+	log.Printf("Bot token: %s...%s (first 10, last 4 chars)", config.Token[:10], config.Token[len(config.Token)-4:])
 
 	u := tgbotapi.NewUpdate(0)
 	u.Timeout = config.UpdateTimeout
@@ -273,7 +281,7 @@ You can also send messages like:
 func fetchAndSendDiffs(bot *tgbotapi.BotAPI, chatID int64, config BotConfig, limit int, status string) {
 	// Show "typing..." indicator
 	typing := tgbotapi.NewChatAction(chatID, tgbotapi.ChatTyping)
-	if _, err := bot.Send(typing); err != nil {
+	if _, err := bot.Request(typing); err != nil {
 		log.Printf("Failed to send typing indicator to chat %d: %v", chatID, err)
 	}
 

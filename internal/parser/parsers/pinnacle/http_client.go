@@ -182,7 +182,12 @@ func (c *Client) getJSON(path string, out any) error {
 
 	if resp.StatusCode != http.StatusOK {
 		b, _ := io.ReadAll(resp.Body)
-		return fmt.Errorf("unexpected status %d: %s", resp.StatusCode, string(b))
+		// Log first 200 chars to help debug
+		preview := string(b)
+		if len(preview) > 200 {
+			preview = preview[:200] + "..."
+		}
+		return fmt.Errorf("unexpected status %d for %s: %s", resp.StatusCode, url, preview)
 	}
 
 	body, err := readBodyMaybeGzip(resp)

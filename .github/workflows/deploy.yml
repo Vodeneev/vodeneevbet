@@ -239,7 +239,8 @@ jobs:
             exit 1
           fi
 
-          # Wait for container to be running (avoid flakiness right after up -d)
+          # Wait for containers to be running (avoid flakiness right after up -d)
+          # Check calculator
           ok=0
           for i in {1..30}; do
             if [ "$(sudo docker ps -q -f name=vodeneevbet-calculator -f status=running | wc -l)" -ge 1 ]; then
@@ -255,6 +256,23 @@ jobs:
             sudo docker logs --tail=200 vodeneevbet-calculator 2>/dev/null || true
             exit 1
           fi
+
+          # Check telegram-bot
+          ok=0
+          for i in {1..30}; do
+            if [ "$(sudo docker ps -q -f name=vodeneevbet-telegram-bot -f status=running | wc -l)" -ge 1 ]; then
+              ok=1
+              break
+            fi
+            sleep 2
+          done
+
+          if [ "$ok" -ne 1 ]; then
+            echo "Telegram-bot container is not running after 60s" >&2
+            sudo docker ps -a --filter name=vodeneevbet-telegram-bot || true
+            sudo docker logs --tail=200 vodeneevbet-telegram-bot 2>/dev/null || true
+            exit 1
+          fi
           EOF
 
       - name: Debug on failure
@@ -265,6 +283,7 @@ jobs:
           echo \"--- docker ps -a\"; sudo docker ps -a || true
           echo \"--- docker compose ps\"; (sudo docker compose ps || sudo docker-compose ps) 2>/dev/null || true
           echo \"--- calculator logs (tail)\"; sudo docker logs --tail=200 vodeneevbet-calculator 2>/dev/null || true
+          echo \"--- telegram-bot logs (tail)\"; sudo docker logs --tail=200 vodeneevbet-telegram-bot 2>/dev/null || true
           echo \"--- configs listing\"; ls -la \"${REMOTE_DIR}/configs\" || true
           echo \"--- config head\"; sed -n \"1,120p\" \"${REMOTE_DIR}/configs/production.yaml\" 2>/dev/null || true
           '"

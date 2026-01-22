@@ -79,7 +79,8 @@ func main() {
 	}
 
 	bot.Debug = false
-	log.Printf("Authorized on account %s", bot.Self.UserName)
+	log.Printf("Authorized on account %s (ID: %d)", bot.Self.UserName, bot.Self.ID)
+	log.Printf("Bot is ready to receive messages")
 
 	u := tgbotapi.NewUpdate(0)
 	u.Timeout = config.UpdateTimeout
@@ -96,39 +97,58 @@ func main() {
 		cancel()
 	}()
 
-	updates := bot.GetUpdatesChan(u)
-
 	// Start bot handler
+	log.Println("Starting updates channel...")
+	updates := bot.GetUpdatesChan(u)
+	
 	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				log.Printf("PANIC in bot handler: %v", r)
+			}
+		}()
+		
 		for {
 			select {
 			case <-ctx.Done():
+				log.Println("Stopping bot updates...")
 				bot.StopReceivingUpdates()
 				return
 			case update := <-updates:
-				if update.Message == nil {
-					continue
-				}
+				// Handle each update in a separate goroutine to prevent one error from blocking others
+				go func(upd tgbotapi.Update) {
+					defer func() {
+						if r := recover(); r != nil {
+							log.Printf("PANIC handling message from user %d: %v", upd.Message.From.ID, r)
+						}
+					}()
+					
+					if upd.Message == nil {
+						return
+					}
 
-				log.Printf("Received message from user %d: %s", update.Message.From.ID, update.Message.Text)
+					log.Printf("Received message from user %d: %s", upd.Message.From.ID, upd.Message.Text)
 
-				// Check if user is allowed (if restrictions are set)
-				if len(config.AllowedUserIDs) > 0 {
-					allowed := false
-					for _, id := range config.AllowedUserIDs {
-						if update.Message.From.ID == id {
-							allowed = true
-							break
+					// Check if user is allowed (if restrictions are set)
+					if len(config.AllowedUserIDs) > 0 {
+						allowed := false
+						for _, id := range config.AllowedUserIDs {
+							if upd.Message.From.ID == id {
+								allowed = true
+								break
+							}
+						}
+						if !allowed {
+							msg := tgbotapi.NewMessage(upd.Message.Chat.ID, "Access denied. You are not authorized to use this bot.")
+							if _, err := bot.Send(msg); err != nil {
+								log.Printf("Failed to send access denied message to user %d: %v", upd.Message.From.ID, err)
+							}
+							return
 						}
 					}
-					if !allowed {
-						msg := tgbotapi.NewMessage(update.Message.Chat.ID, "Access denied. You are not authorized to use this bot.")
-						bot.Send(msg)
-						continue
-					}
-				}
 
-				handleMessage(bot, update.Message, config)
+					handleMessage(bot, upd.Message, config)
+				}(update)
 			}
 		}
 	}()
@@ -178,7 +198,9 @@ func handleMessage(bot *tgbotapi.BotAPI, message *tgbotapi.Message, config BotCo
 			fetchAndSendDiffs(bot, message.Chat.ID, config, limit, "upcoming")
 		default:
 			msg := tgbotapi.NewMessage(message.Chat.ID, "Unknown command. Use /help to see available commands.")
-			bot.Send(msg)
+			if _, err := bot.Send(msg); err != nil {
+				log.Printf("Failed to send unknown command message to user %d: %v", message.From.ID, err)
+			}
 		}
 	} else {
 		// Try to parse as inline query for diffs
@@ -243,13 +265,17 @@ You can also send messages like:
 
 	msg := tgbotapi.NewMessage(chatID, helpText)
 	msg.ParseMode = tgbotapi.ModeMarkdown
-	bot.Send(msg)
+	if _, err := bot.Send(msg); err != nil {
+		log.Printf("Failed to send help message to chat %d: %v", chatID, err)
+	}
 }
 
 func fetchAndSendDiffs(bot *tgbotapi.BotAPI, chatID int64, config BotConfig, limit int, status string) {
 	// Show "typing..." indicator
 	typing := tgbotapi.NewChatAction(chatID, tgbotapi.ChatTyping)
-	bot.Send(typing)
+	if _, err := bot.Send(typing); err != nil {
+		log.Printf("Failed to send typing indicator to chat %d: %v", chatID, err)
+	}
 
 	// Build URL
 	url := fmt.Sprintf("%s/diffs/top?limit=%d", config.CalculatorURL, limit)
@@ -258,33 +284,47 @@ func fetchAndSendDiffs(bot *tgbotapi.BotAPI, chatID int64, config BotConfig, lim
 	}
 
 	// Fetch data from calculator
+	log.Printf("Fetching diffs from %s", url)
 	client := &http.Client{Timeout: 30 * time.Second}
 	resp, err := client.Get(url)
 	if err != nil {
+		log.Printf("Failed to fetch from calculator: %v", err)
 		msg := tgbotapi.NewMessage(chatID, fmt.Sprintf("❌ Error: Failed to connect to calculator service: %v", err))
-		bot.Send(msg)
+		if _, sendErr := bot.Send(msg); sendErr != nil {
+			log.Printf("Failed to send error message to chat %d: %v", chatID, sendErr)
+		}
 		return
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
+		log.Printf("Calculator returned status %d", resp.StatusCode)
 		var errorResp map[string]string
 		if err := json.NewDecoder(resp.Body).Decode(&errorResp); err == nil {
 			msg := tgbotapi.NewMessage(chatID, fmt.Sprintf("❌ Error: %s", errorResp["error"]))
-			bot.Send(msg)
+			if _, sendErr := bot.Send(msg); sendErr != nil {
+				log.Printf("Failed to send error message to chat %d: %v", chatID, sendErr)
+			}
 		} else {
 			msg := tgbotapi.NewMessage(chatID, fmt.Sprintf("❌ Error: Calculator service returned status %d", resp.StatusCode))
-			bot.Send(msg)
+			if _, sendErr := bot.Send(msg); sendErr != nil {
+				log.Printf("Failed to send error message to chat %d: %v", chatID, sendErr)
+			}
 		}
 		return
 	}
 
 	var diffs []DiffBet
 	if err := json.NewDecoder(resp.Body).Decode(&diffs); err != nil {
+		log.Printf("Failed to parse calculator response: %v", err)
 		msg := tgbotapi.NewMessage(chatID, fmt.Sprintf("❌ Error: Failed to parse response: %v", err))
-		bot.Send(msg)
+		if _, sendErr := bot.Send(msg); sendErr != nil {
+			log.Printf("Failed to send error message to chat %d: %v", chatID, sendErr)
+		}
 		return
 	}
+
+	log.Printf("Received %d diffs from calculator", len(diffs))
 
 	if len(diffs) == 0 {
 		statusText := ""
@@ -294,7 +334,9 @@ func fetchAndSendDiffs(bot *tgbotapi.BotAPI, chatID int64, config BotConfig, lim
 			statusText = " upcoming"
 		}
 		msg := tgbotapi.NewMessage(chatID, fmt.Sprintf("📊 No%s value bet differences found.", statusText))
-		bot.Send(msg)
+		if _, sendErr := bot.Send(msg); sendErr != nil {
+			log.Printf("Failed to send empty result message to chat %d: %v", chatID, sendErr)
+		}
 		return
 	}
 
@@ -342,7 +384,10 @@ func fetchAndSendDiffs(bot *tgbotapi.BotAPI, chatID int64, config BotConfig, lim
 			// Send current message and start new one
 			msg := tgbotapi.NewMessage(chatID, builder.String())
 			msg.ParseMode = tgbotapi.ModeMarkdown
-			bot.Send(msg)
+			if _, err := bot.Send(msg); err != nil {
+				log.Printf("Failed to send message part to chat %d: %v", chatID, err)
+				return
+			}
 			builder.Reset()
 			builder.WriteString(header)
 		}
@@ -354,7 +399,11 @@ func fetchAndSendDiffs(bot *tgbotapi.BotAPI, chatID int64, config BotConfig, lim
 	if builder.Len() > len(header) {
 		msg := tgbotapi.NewMessage(chatID, builder.String())
 		msg.ParseMode = tgbotapi.ModeMarkdown
-		bot.Send(msg)
+		if _, err := bot.Send(msg); err != nil {
+			log.Printf("Failed to send final message to chat %d: %v", chatID, err)
+		} else {
+			log.Printf("Successfully sent diffs to chat %d", chatID)
+		}
 	}
 }
 

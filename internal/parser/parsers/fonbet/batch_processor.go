@@ -23,10 +23,10 @@ type BatchProcessor struct {
 	workers      int
 	testLimit    int
 	// Динамические параметры
-	avgBatchTime time.Duration
+	avgBatchTime    time.Duration
 	targetBatchTime time.Duration
-	minBatchSize int
-	maxBatchSize int
+	minBatchSize    int
+	maxBatchSize    int
 }
 
 // NewBatchProcessor creates a new batch processor
@@ -46,10 +46,10 @@ func NewBatchProcessor(
 		workers:      5,   // Увеличено количество воркеров (bulk операции более эффективны)
 		testLimit:    testLimit,
 		// Динамические параметры
-		avgBatchTime:   0,
+		avgBatchTime:    0,
 		targetBatchTime: 3 * time.Second, // Увеличено целевое время батча (bulk операции быстрее)
-		minBatchSize:   20,  // Увеличено минимальный размер батча
-		maxBatchSize:   300, // Увеличено максимальный размер батча
+		minBatchSize:    20,              // Увеличено минимальный размер батча
+		maxBatchSize:    300,             // Увеличено максимальный размер батча
 	}
 }
 
@@ -101,9 +101,9 @@ func (p *BatchProcessor) normalizeMainEventTeams(event *FonbetAPIEvent) {
 func (p *BatchProcessor) ProcessSportEvents(sport string) error {
 	startTime := time.Now()
 	tracker := performance.GetTracker()
-	
+
 	fmt.Printf("🚀 Starting batch processing for sport: %s\n", sport)
-	
+
 	// Fetch events for the sport (single HTTP request)
 	fetchStart := time.Now()
 	eventsData, err := p.eventFetcher.FetchEvents(sport)
@@ -122,7 +122,7 @@ func (p *BatchProcessor) ProcessSportEvents(sport string) error {
 	parseDuration := time.Since(parseStart)
 	fmt.Printf("⏱️  JSON parsing took: %v\n", parseDuration)
 
-	fmt.Printf("📊 Found %d events and %d factor groups in API response\n", 
+	fmt.Printf("📊 Found %d events and %d factor groups in API response\n",
 		len(apiResponse.Events), len(apiResponse.CustomFactors))
 
 	// Index custom factors by event id for fast lookup.
@@ -137,40 +137,40 @@ func (p *BatchProcessor) ProcessSportEvents(sport string) error {
 
 	// Group events by match (Level 1 events are main matches)
 	groupStart := time.Now()
-	
+
 	// Debug: log all events looking for Bayern vs Union Saint-Gilloise
 	for _, event := range apiResponse.Events {
 		if event.Level == 1 {
 			matchName := fmt.Sprintf("%s vs %s", event.Team1, event.Team2)
-			if strings.Contains(strings.ToLower(matchName), "bayern") || 
-			   strings.Contains(strings.ToLower(matchName), "бавария") ||
-			   strings.Contains(strings.ToLower(matchName), "union") ||
-			   strings.Contains(strings.ToLower(matchName), "saint-gilloise") ||
-			   strings.Contains(strings.ToLower(matchName), "gilloise") ||
-			   strings.Contains(strings.ToLower(event.Name), "bayern") ||
-			   strings.Contains(strings.ToLower(event.Name), "бавария") ||
-			   strings.Contains(strings.ToLower(event.Name), "union") ||
-			   strings.Contains(strings.ToLower(event.Name), "saint-gilloise") {
+			if strings.Contains(strings.ToLower(matchName), "bayern") ||
+				strings.Contains(strings.ToLower(matchName), "бавария") ||
+				strings.Contains(strings.ToLower(matchName), "union") ||
+				strings.Contains(strings.ToLower(matchName), "saint-gilloise") ||
+				strings.Contains(strings.ToLower(matchName), "gilloise") ||
+				strings.Contains(strings.ToLower(event.Name), "bayern") ||
+				strings.Contains(strings.ToLower(event.Name), "бавария") ||
+				strings.Contains(strings.ToLower(event.Name), "union") ||
+				strings.Contains(strings.ToLower(event.Name), "saint-gilloise") {
 				startTime := time.Unix(event.StartTime, 0)
 				fmt.Printf("Fonbet DEBUG: Found potential match: %s (ID=%d, Name=%s, StartTime=%s, SportID=%d)\n",
 					matchName, event.ID, event.Name, startTime.Format(time.RFC3339), event.SportID)
 			}
 		}
 	}
-	
+
 	eventsByMatch := p.groupEventsByMatchFromAPI(apiResponse.Events, allowedSportIDs)
 	groupDuration := time.Since(groupStart)
 	fmt.Printf("⏱️  Event grouping took: %v\n", groupDuration)
-	
+
 	fmt.Printf("🏆 Found %d main matches\n", len(eventsByMatch))
 
 	// Process matches in batches with parallel workers
 	processStart := time.Now()
 	processedCount, totalEvents, totalOutcomes, ydbWriteTime := p.processMatchesInBatches(eventsByMatch, factorsByEventID)
 	processDuration := time.Since(processStart)
-	
+
 	totalDuration := time.Since(startTime)
-	
+
 	// Record metrics
 	tracker.RecordRun(
 		fetchDuration,
@@ -183,56 +183,56 @@ func (p *BatchProcessor) ProcessSportEvents(sport string) error {
 		totalEvents,
 		totalOutcomes,
 	)
-	
+
 	fmt.Printf("✅ Successfully processed %d matches for sport: %s\n", processedCount, sport)
-	fmt.Printf("⏱️  Total timing: fetch=%v, parse=%v, group=%v, process=%v, ydb_write=%v, total=%v\n", 
+	fmt.Printf("⏱️  Total timing: fetch=%v, parse=%v, group=%v, process=%v, ydb_write=%v, total=%v\n",
 		fetchDuration, parseDuration, groupDuration, processDuration, ydbWriteTime, totalDuration)
 	fmt.Printf("📈 Stats: %d events, %d outcomes processed\n", totalEvents, totalOutcomes)
-	
+
 	return nil
 }
 
 // processMatchesInBatches processes matches in batches with parallel workers
 // Returns: processedCount, totalEvents, totalOutcomes, ydbWriteTime
 func (p *BatchProcessor) processMatchesInBatches(
-	eventsByMatch map[string][]FonbetAPIEvent, 
+	eventsByMatch map[string][]FonbetAPIEvent,
 	factorsByEventID map[int64]FonbetFactorGroup,
 ) (int, int, int, time.Duration) {
 	// Convert to slice for batch processing with filtering
 	matches := make([]MatchData, 0, len(eventsByMatch))
 	filteredCount := 0
-	
+
 	for matchID, matchEvents := range eventsByMatch {
 		if len(matchEvents) == 0 {
 			continue
 		}
-		
+
 		mainEvent := matchEvents[0]
 		p.normalizeMainEventTeams(&mainEvent)
-		
+
 		// Debug: log when Kopa Tigers match is filtered
 		if strings.Contains(strings.ToLower(mainEvent.Team1), "kopa") ||
-		   strings.Contains(strings.ToLower(mainEvent.Team2), "medinipur") ||
-		   strings.Contains(strings.ToLower(mainEvent.Team1), "tigers") ||
-		   strings.Contains(strings.ToLower(mainEvent.Team1), "birbhum") {
+			strings.Contains(strings.ToLower(mainEvent.Team2), "medinipur") ||
+			strings.Contains(strings.ToLower(mainEvent.Team1), "tigers") ||
+			strings.Contains(strings.ToLower(mainEvent.Team1), "birbhum") {
 			fmt.Printf("Fonbet DEBUG: Processing match %s vs %s (ID=%d, Level=%d, Kind=%d)\n",
 				mainEvent.Team1, mainEvent.Team2, mainEvent.ID, mainEvent.Level, mainEvent.Kind)
 		}
-		
+
 		// Применяем фильтры к матчу
 		if !p.isValidMatch(mainEvent) {
 			// Debug: log why Kopa Tigers match was filtered
 			if strings.Contains(strings.ToLower(mainEvent.Team1), "kopa") ||
-			   strings.Contains(strings.ToLower(mainEvent.Team2), "medinipur") ||
-			   strings.Contains(strings.ToLower(mainEvent.Team1), "tigers") ||
-			   strings.Contains(strings.ToLower(mainEvent.Team1), "birbhum") {
+				strings.Contains(strings.ToLower(mainEvent.Team2), "medinipur") ||
+				strings.Contains(strings.ToLower(mainEvent.Team1), "tigers") ||
+				strings.Contains(strings.ToLower(mainEvent.Team1), "birbhum") {
 				fmt.Printf("Fonbet DEBUG: Match %s vs %s (ID=%d) was FILTERED by isValidMatch\n",
 					mainEvent.Team1, mainEvent.Team2, mainEvent.ID)
 			}
 			filteredCount++
 			continue
 		}
-		
+
 		statisticalEvents := matchEvents[1:]
 		// Ensure stat events have teams too (often missing in API list response).
 		for i := range statisticalEvents {
@@ -254,7 +254,7 @@ func (p *BatchProcessor) processMatchesInBatches(
 				factorGroups = append(factorGroups, g)
 			}
 		}
-		
+
 		matches = append(matches, MatchData{
 			ID:                matchID,
 			MainEvent:         mainEvent,
@@ -262,47 +262,47 @@ func (p *BatchProcessor) processMatchesInBatches(
 			FactorGroups:      factorGroups,
 		})
 	}
-	
+
 	fmt.Printf("🔍 Filtered out %d matches (invalid teams/name)\n", filteredCount)
 
 	if p.testLimit > 0 && len(matches) > p.testLimit {
 		fmt.Printf("🧪 Test limit enabled: processing first %d matches (out of %d)\n", p.testLimit, len(matches))
 		matches = matches[:p.testLimit]
 	}
-	
-	fmt.Printf("🔄 Processing %d matches in batches of %d with %d workers\n", 
+
+	fmt.Printf("🔄 Processing %d matches in batches of %d with %d workers\n",
 		len(matches), p.batchSize, p.workers)
-	
+
 	// Process in batches with dynamic sizing
 	processedCount := 0
 	totalEvents := 0
 	totalOutcomes := 0
 	var totalYDBWriteTime time.Duration
-	
+
 	for i := 0; i < len(matches); i += p.batchSize {
 		end := i + p.batchSize
 		if end > len(matches) {
 			end = len(matches)
 		}
-		
+
 		batch := matches[i:end]
 		batchStart := time.Now()
-		
+
 		// Process batch with parallel workers
 		count, events, outcomes, ydbTime := p.processBatch(batch)
 		processedCount += count
 		totalEvents += events
 		totalOutcomes += outcomes
 		totalYDBWriteTime += ydbTime
-		
+
 		batchDuration := time.Since(batchStart)
-		fmt.Printf("⏱️  Batch %d-%d: %d matches, %d events, %d outcomes in %v (ydb_write=%v, batch_size=%d)\n", 
+		fmt.Printf("⏱️  Batch %d-%d: %d matches, %d events, %d outcomes in %v (ydb_write=%v, batch_size=%d)\n",
 			i+1, end, count, events, outcomes, batchDuration, ydbTime, p.batchSize)
-		
+
 		// Динамически корректируем размер батча
 		p.adjustBatchSize(batchDuration)
 	}
-	
+
 	return processedCount, totalEvents, totalOutcomes, totalYDBWriteTime
 }
 
@@ -312,39 +312,39 @@ func (p *BatchProcessor) isValidMatch(event FonbetAPIEvent) bool {
 	if event.Team1 == "" || event.Team2 == "" {
 		return false
 	}
-	
+
 	// Фильтр 2: Пропускаем матчи с командами "vs" или пустыми названиями
 	if event.Team1 == "vs" || event.Team2 == "vs" {
 		return false
 	}
-	
+
 	// Фильтр 3: Пропускаем матчи с очень короткими названиями команд (менее 2 символов)
 	if len(event.Team1) < 2 || len(event.Team2) < 2 {
 		return false
 	}
-	
+
 	// Фильтр 4: Пропускаем матчи с одинаковыми командами
 	if event.Team1 == event.Team2 {
 		return false
 	}
-	
+
 	// Фильтр 6: Пропускаем матчи с общими названиями команд
 	genericTeams := []string{
 		"Хозяева", "Гости", "Home", "Away", "Team 1", "Team 2", "TBD", "vs",
 	}
-	
+
 	for _, genericTeam := range genericTeams {
 		if event.Team1 == genericTeam || event.Team2 == genericTeam {
 			return false
 		}
 	}
-	
+
 	// Фильтр 7: если имя есть — отбрасываем совсем короткие; пустое имя допускаем
 	// (у Fonbet в некоторых ответах `name` бывает пустым при наличии team1/team2).
 	if event.Name != "" && len(event.Name) < 5 {
 		return false
 	}
-	
+
 	return true
 }
 
@@ -354,32 +354,32 @@ func (p *BatchProcessor) processBatch(matches []MatchData) (int, int, int, time.
 	// Create channels for parallel processing
 	matchesChan := make(chan MatchData, len(matches))
 	resultsChan := make(chan ProcessResult, len(matches))
-	
+
 	// Start workers
 	var wg sync.WaitGroup
 	for i := 0; i < p.workers; i++ {
 		wg.Add(1)
 		go p.worker(matchesChan, resultsChan, &wg)
 	}
-	
+
 	// Send matches to workers
 	for _, match := range matches {
 		matchesChan <- match
 	}
 	close(matchesChan)
-	
+
 	// Wait for all workers to complete
 	go func() {
 		wg.Wait()
 		close(resultsChan)
 	}()
-	
+
 	// Collect results
 	successCount := 0
 	totalEvents := 0
 	totalOutcomes := 0
 	var totalYDBWriteTime time.Duration
-	
+
 	for result := range resultsChan {
 		if result.Success {
 			successCount++
@@ -390,7 +390,7 @@ func (p *BatchProcessor) processBatch(matches []MatchData) (int, int, int, time.
 			fmt.Printf("❌ Failed to process match %s: %v\n", result.MatchID, result.Error)
 		}
 	}
-	
+
 	return successCount, totalEvents, totalOutcomes, totalYDBWriteTime
 }
 
@@ -403,7 +403,7 @@ func (p *BatchProcessor) adjustBatchSize(batchDuration time.Duration) {
 		// Экспоненциальное скользящее среднее
 		p.avgBatchTime = time.Duration(0.7*float64(p.avgBatchTime) + 0.3*float64(batchDuration))
 	}
-	
+
 	// Корректируем размер батча
 	if batchDuration > time.Duration(float64(p.targetBatchTime)*1.5) {
 		// Батч слишком медленный - уменьшаем размер
@@ -412,7 +412,7 @@ func (p *BatchProcessor) adjustBatchSize(batchDuration time.Duration) {
 			newSize = p.minBatchSize
 		}
 		if newSize != p.batchSize {
-			fmt.Printf("📉 Reducing batch size: %d -> %d (batch took %v, target: %v)\n", 
+			fmt.Printf("📉 Reducing batch size: %d -> %d (batch took %v, target: %v)\n",
 				p.batchSize, newSize, batchDuration, p.targetBatchTime)
 			p.batchSize = newSize
 		}
@@ -423,7 +423,7 @@ func (p *BatchProcessor) adjustBatchSize(batchDuration time.Duration) {
 			newSize = p.maxBatchSize
 		}
 		if newSize != p.batchSize {
-			fmt.Printf("📈 Increasing batch size: %d -> %d (batch took %v, target: %v)\n", 
+			fmt.Printf("📈 Increasing batch size: %d -> %d (batch took %v, target: %v)\n",
 				p.batchSize, newSize, batchDuration, p.targetBatchTime)
 			p.batchSize = newSize
 		}
@@ -438,44 +438,42 @@ func (p *BatchProcessor) worker(
 ) {
 	defer wg.Done()
 	tracker := performance.GetTracker()
-	
+
 	for match := range matchesChan {
 		startTime := time.Now()
 		buildStart := time.Now()
-		
+
 		// Process the match
 		// Note: CustomFactors from main API response should already contain updated odds for live matches
 		matchModel, err := p.buildMatchWithEventsAndFactors(
-			match.MainEvent, 
-			match.StatisticalEvents, 
+			match.MainEvent,
+			match.StatisticalEvents,
 			match.FactorGroups,
 		)
-		
+
 		buildTime := time.Since(buildStart)
 		var storeTime time.Duration
 		var eventsCount, outcomesCount int
-		
+
 		if err == nil && matchModel != nil {
 			eventsCount = len(matchModel.Events)
 			for _, event := range matchModel.Events {
 				outcomesCount += len(event.Outcomes)
 			}
-			
+
 			// Add match to in-memory store for fast API access (primary storage)
 			// YDB is not used - data is served directly from memory
-			if matchModel != nil {
-				health.AddMatch(matchModel)
-			}
-			
+			health.AddMatch(matchModel)
+
 			// No YDB storage - data is served from memory only
 			storeTime := time.Duration(0)
-			
+
 			// Record match timing
 			tracker.RecordMatch(match.ID, eventsCount, outcomesCount, buildTime, storeTime, time.Since(startTime), err == nil)
 		}
-		
+
 		duration := time.Since(startTime)
-		
+
 		resultsChan <- ProcessResult{
 			MatchID:       match.ID,
 			Success:       err == nil,
@@ -485,9 +483,9 @@ func (p *BatchProcessor) worker(
 			OutcomesCount: outcomesCount,
 			YDBWriteTime:  storeTime,
 		}
-		
+
 		if duration > 1*time.Second {
-			fmt.Printf("⏱️  Worker: Match %s took %v (build=%v, store=%v, events=%d, outcomes=%d)\n", 
+			fmt.Printf("⏱️  Worker: Match %s took %v (build=%v, store=%v, events=%d, outcomes=%d)\n",
 				match.ID, duration, buildTime, storeTime, eventsCount, outcomesCount)
 		}
 	}
@@ -503,13 +501,13 @@ type MatchData struct {
 
 // ProcessResult represents the result of processing a match
 type ProcessResult struct {
-	MatchID      string
-	Success      bool
-	Error        error
-	Duration     time.Duration
-	EventsCount  int
+	MatchID       string
+	Success       bool
+	Error         error
+	Duration      time.Duration
+	EventsCount   int
 	OutcomesCount int
-	YDBWriteTime time.Duration
+	YDBWriteTime  time.Duration
 }
 
 func (p *BatchProcessor) getAllowedSportIDs(sports []FonbetSport, sportAlias string) map[int64]struct{} {
@@ -531,6 +529,13 @@ func (p *BatchProcessor) getAllowedSportIDs(sports []FonbetSport, sportAlias str
 		if s.SportCategoryID == sportCategoryID {
 			allowed[int64(s.ID)] = struct{}{}
 		}
+		// Some segments may have null sportCategoryId but still belong to the sport
+		// Allow segments with kind="segment" that don't have sportCategoryId set
+		// (they will be filtered later if they don't match the sport)
+		if s.Kind == "segment" && s.SportCategoryID == 0 && sportCategoryID > 0 {
+			// Allow all segments for now - they will be filtered by event processing
+			allowed[int64(s.ID)] = struct{}{}
+		}
 	}
 
 	// Include the category id itself as a safety net (some responses may use it directly).
@@ -541,24 +546,24 @@ func (p *BatchProcessor) getAllowedSportIDs(sports []FonbetSport, sportAlias str
 // groupEventsByMatchFromAPI groups events by their parent match ID from API response
 func (p *BatchProcessor) groupEventsByMatchFromAPI(events []FonbetAPIEvent, allowedSportIDs map[int64]struct{}) map[string][]FonbetAPIEvent {
 	groups := make(map[string][]FonbetAPIEvent)
-	
+
 	// First, find all main matches (Level 1)
 	mainMatches := make(map[string]FonbetAPIEvent)
 	for _, event := range events {
 		// Debug: log when Kopa Tigers match is found
 		if strings.Contains(strings.ToLower(event.Team1), "kopa") ||
-		   strings.Contains(strings.ToLower(event.Team2), "medinipur") ||
-		   event.ID == 61750327 {
+			strings.Contains(strings.ToLower(event.Team2), "medinipur") ||
+			event.ID == 61750327 {
 			fmt.Printf("Fonbet DEBUG: Found event ID=%d: %s vs %s (Level=%d, Kind=%d, SportID=%d)\n",
 				event.ID, event.Team1, event.Team2, event.Level, event.Kind, event.SportID)
 		}
-		
+
 		if len(allowedSportIDs) > 0 {
 			if _, ok := allowedSportIDs[event.SportID]; !ok {
 				// Debug: log when Kopa Tigers match is filtered by SportID
 				if strings.Contains(strings.ToLower(event.Team1), "kopa") ||
-				   strings.Contains(strings.ToLower(event.Team2), "medinipur") ||
-				   event.ID == 61750327 {
+					strings.Contains(strings.ToLower(event.Team2), "medinipur") ||
+					event.ID == 61750327 {
 					fmt.Printf("Fonbet DEBUG: Event ID=%d filtered by SportID (SportID=%d not in allowed list)\n",
 						event.ID, event.SportID)
 				}
@@ -570,18 +575,18 @@ func (p *BatchProcessor) groupEventsByMatchFromAPI(events []FonbetAPIEvent, allo
 			mainMatches[matchID] = event
 			// Debug: log when Kopa Tigers match is added to mainMatches
 			if strings.Contains(strings.ToLower(event.Team1), "kopa") ||
-			   strings.Contains(strings.ToLower(event.Team2), "medinipur") ||
-			   event.ID == 61750327 {
+				strings.Contains(strings.ToLower(event.Team2), "medinipur") ||
+				event.ID == 61750327 {
 				fmt.Printf("Fonbet DEBUG: Added event ID=%d to mainMatches\n", event.ID)
 			}
 		}
 	}
-	
+
 	// Then, for each main match, find all related events
 	for matchID, mainMatch := range mainMatches {
 		// Add the main match itself
 		groups[matchID] = append(groups[matchID], mainMatch)
-		
+
 		// Find all statistical events for this match
 		for _, event := range events {
 			if len(allowedSportIDs) > 0 {
@@ -597,15 +602,15 @@ func (p *BatchProcessor) groupEventsByMatchFromAPI(events []FonbetAPIEvent, allo
 			}
 		}
 	}
-	
+
 	return groups
 }
 
 // buildMatchWithEventsAndFactors builds a match model from events and factors
 // Returns the match model or error
 func (p *BatchProcessor) buildMatchWithEventsAndFactors(
-	mainEvent FonbetAPIEvent, 
-	statisticalEvents []FonbetAPIEvent, 
+	mainEvent FonbetAPIEvent,
+	statisticalEvents []FonbetAPIEvent,
 	factorGroups []FonbetFactorGroup,
 ) (*models.Match, error) {
 	// Convert main event to FonbetEvent
@@ -669,5 +674,3 @@ func (p *BatchProcessor) ProcessEvent(event interface{}) error {
 func (p *BatchProcessor) ProcessEvents(events []interface{}) error {
 	return fmt.Errorf("ProcessEvents not supported in batch processor")
 }
-
-

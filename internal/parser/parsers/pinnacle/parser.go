@@ -153,7 +153,7 @@ func (p *Parser) processAll(ctx context.Context) error {
 			}
 			marketsByMatchup[m.MatchupID] = append(marketsByMatchup[m.MatchupID], m)
 		}
-		
+
 		// Debug: log filtered markets for specific matchups (e.g., Kopa Tigers)
 		for muID, stats := range filteredStats {
 			totalFiltered := 0
@@ -248,8 +248,21 @@ func (p *Parser) processAll(ctx context.Context) error {
 
 			// Collect markets for all related matchups.
 			var relMarkets []Market
+			var alternateMarkets []Market // Fallback: alternate markets if no regular markets
 			for _, mu := range related {
 				relMarkets = append(relMarkets, marketsByMatchup[mu.ID]...)
+				// Also collect alternate markets as fallback
+				for _, m := range markets {
+					if m.MatchupID == mu.ID && m.IsAlternate && m.Status == "open" && (m.Period == 0 || m.Period == -1) {
+						alternateMarkets = append(alternateMarkets, m)
+					}
+				}
+			}
+			// If no regular markets but we have alternate markets, use them
+			if len(relMarkets) == 0 && len(alternateMarkets) > 0 {
+				relMarkets = alternateMarkets
+				fmt.Printf("Pinnacle DEBUG: Using %d alternate markets for matchup %d (no regular markets available)\n",
+					len(alternateMarkets), mainID)
 			}
 			if len(relMarkets) == 0 {
 				// Log if this might be the Bayern match
@@ -283,7 +296,7 @@ func (p *Parser) processAll(ctx context.Context) error {
 			}
 
 			fmt.Printf("Pinnacle: built match %s (%s vs %s), events=%d\n", m.ID, m.HomeTeam, m.AwayTeam, len(m.Events))
-			
+
 			// Debug: log when match has no events but markets were available
 			if len(m.Events) == 0 && len(relMarkets) > 0 {
 				periods := make(map[int]bool)
@@ -490,13 +503,28 @@ func buildMatchFromPinnacle(matchupID int64, related []RelatedMatchup, markets [
 
 	// Period 0 only for now (full match), but allow Period -1 for live matches
 	marketsByMatchupID := make(map[int64][]Market)
+	alternateMarketsByMatchupID := make(map[int64][]Market) // Fallback for alternate markets
 	for _, mkt := range markets {
 		// Allow Period 0 (full match) and Period -1 (live/current period)
 		// Period -1 is used by Pinnacle for live matches
 		if (mkt.Period != 0 && mkt.Period != -1) || mkt.Status != "open" {
 			continue
 		}
-		marketsByMatchupID[mkt.MatchupID] = append(marketsByMatchupID[mkt.MatchupID], mkt)
+		if mkt.IsAlternate {
+			alternateMarketsByMatchupID[mkt.MatchupID] = append(alternateMarketsByMatchupID[mkt.MatchupID], mkt)
+		} else {
+			marketsByMatchupID[mkt.MatchupID] = append(marketsByMatchupID[mkt.MatchupID], mkt)
+		}
+	}
+	// Use alternate markets as fallback if no regular markets available
+	for muID, altMarkets := range alternateMarketsByMatchupID {
+		if len(marketsByMatchupID[muID]) == 0 && len(altMarkets) > 0 {
+			marketsByMatchupID[muID] = altMarkets
+			if isBayernMatch {
+				fmt.Printf("Pinnacle DEBUG:   Using %d alternate markets for MatchupID=%d (no regular markets)\n",
+					len(altMarkets), muID)
+			}
+		}
 	}
 
 	if isBayernMatch {
@@ -511,9 +539,14 @@ func buildMatchFromPinnacle(matchupID int64, related []RelatedMatchup, markets [
 		}
 	}
 
+	// Process regular markets first
 	for _, mkt := range markets {
 		// Allow Period 0 (full match) and Period -1 (live/current period)
 		if (mkt.Period != 0 && mkt.Period != -1) || mkt.Status != "open" {
+			continue
+		}
+		// Skip alternate markets for now - we'll use them as fallback
+		if mkt.IsAlternate {
 			continue
 		}
 		et, ok := matchupEventType[mkt.MatchupID]
@@ -526,6 +559,42 @@ func buildMatchFromPinnacle(matchupID int64, related []RelatedMatchup, markets [
 		}
 		ev := getOrCreate(et)
 		appendMarketOutcomes(ev, mkt)
+	}
+	
+	// If no events were created or events have no outcomes, try alternate markets as fallback
+	hasOutcomes := false
+	for _, ev := range eventsByType {
+		if len(ev.Outcomes) > 0 {
+			hasOutcomes = true
+			break
+		}
+	}
+	if !hasOutcomes {
+		for _, mkt := range markets {
+			if (mkt.Period != 0 && mkt.Period != -1) || mkt.Status != "open" {
+				continue
+			}
+			if !mkt.IsAlternate {
+				continue
+			}
+			et, ok := matchupEventType[mkt.MatchupID]
+			if !ok {
+				continue
+			}
+			ev := getOrCreate(et)
+			appendMarketOutcomes(ev, mkt)
+		}
+		// Check if we got outcomes from alternate markets
+		hasOutcomesAfterAlt := false
+		for _, ev := range eventsByType {
+			if len(ev.Outcomes) > 0 {
+				hasOutcomesAfterAlt = true
+				break
+			}
+		}
+		if hasOutcomesAfterAlt && isBayernMatch {
+			fmt.Printf("Pinnacle DEBUG:   Used alternate markets as fallback for match\n")
+		}
 	}
 
 	// Emit events in stable order (main_match first).

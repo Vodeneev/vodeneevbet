@@ -269,6 +269,15 @@ func handleMatches(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 
+	// Check for test parameter - return hardcoded word to verify deployment
+	if r.URL.Query().Get("test") != "" {
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		_ = json.NewEncoder(w).Encode(map[string]string{
+			"test": "DEPLOYED_V2",
+		})
+		return
+	}
+
 	// Trigger asynchronous parsing to all bookmakers in parallel (non-blocking)
 	// Don't wait - return cached data immediately, fresh data will be available on next request
 	triggerParsingAsync()

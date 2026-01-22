@@ -161,18 +161,18 @@ func (p *Parser) processAll(ctx context.Context) error {
 		// Get live matchups asynchronously - these are the ONLY source of truth for live matches
 		liveMatchupsCh := make(chan []RelatedMatchup, 1)
 		go func() {
-			logMsg := fmt.Sprintf("Pinnacle: [NEW VERSION v2.0] Fetching live matchups from /0.1/sports/%d/matchups/live endpoint\n", sportID)
+			logMsg := fmt.Sprintf("Pinnacle: Fetching live matchups from /0.1/sports/%d/matchups/live endpoint\n", sportID)
 			fmt.Print(logMsg)
 			logToFile(logMsg)
 			liveMatchups, err := p.client.GetSportLiveMatchups(sportID)
 			if err != nil {
-				logMsg = fmt.Sprintf("Pinnacle: [NEW VERSION v2.0] Failed to fetch live matchups: %v\n", err)
+				logMsg = fmt.Sprintf("Pinnacle: Failed to fetch live matchups: %v\n", err)
 				fmt.Print(logMsg)
 				logToFile(logMsg)
 				liveMatchupsCh <- nil
 				return
 			}
-			logMsg = fmt.Sprintf("Pinnacle: [NEW VERSION v2.0] Found %d live matchups from live endpoint\n", len(liveMatchups))
+			logMsg = fmt.Sprintf("Pinnacle: Found %d live matchups from live endpoint\n", len(liveMatchups))
 			fmt.Print(logMsg)
 			logToFile(logMsg)
 			liveMatchupsCh <- liveMatchups
@@ -311,7 +311,7 @@ func (p *Parser) processAll(ctx context.Context) error {
 		// Fetch markets asynchronously for each live matchup
 		if len(liveMatchups) > 0 {
 			var logMsg string
-			logMsg = fmt.Sprintf("Pinnacle: [NEW VERSION v2.0] Processing %d live matchups separately (no time check, only from live endpoint)\n", len(liveMatchups))
+			logMsg = fmt.Sprintf("Pinnacle: Processing %d live matchups separately (no time check, only from live endpoint)\n", len(liveMatchups))
 			fmt.Print(logMsg)
 			logToFile(logMsg)
 			// Group live matchups by main matchup (for building match structure)
@@ -324,16 +324,17 @@ func (p *Parser) processAll(ctx context.Context) error {
 				}
 				liveGroup[mainID] = append(liveGroup[mainID], mu)
 			}
-			logMsg = fmt.Sprintf("Pinnacle: [NEW VERSION v2.0] Grouped into %d unique live match groups\n", len(liveGroup))
+			logMsg = fmt.Sprintf("Pinnacle: Grouped into %d unique live match groups\n", len(liveGroup))
 			fmt.Print(logMsg)
 			logToFile(logMsg)
 
 			// Process each live matchup with async market fetching
 			type liveMatchResult struct {
-				mainID  int64
-				related []RelatedMatchup
-				markets []Market
-				err     error
+				mainID    int64
+				matchupID int64 // actual matchup ID used for fetching
+				related   []RelatedMatchup
+				markets   []Market
+				err       error
 			}
 			resultsCh := make(chan liveMatchResult, len(liveMatchups))
 
@@ -356,15 +357,15 @@ func (p *Parser) processAll(ctx context.Context) error {
 
 				go func(mID int64, matchID int64, rel []RelatedMatchup) {
 					// Fetch markets directly for this live matchup using its actual ID
-					logMsg := fmt.Sprintf("Pinnacle: [NEW VERSION v2.0] Fetching markets asynchronously for live matchup ID %d (mainID: %d)\n", matchID, mID)
+					logMsg := fmt.Sprintf("Pinnacle: Fetching markets asynchronously for live matchup ID %d (mainID: %d)\n", matchID, mID)
 					fmt.Print(logMsg)
 					logToFile(logMsg)
 					liveMarkets, err := p.client.GetRelatedStraightMarkets(matchID)
 					if err != nil {
-						logMsg = fmt.Sprintf("Pinnacle: [NEW VERSION v2.0] Failed to fetch markets for live matchup %d: %v\n", matchID, err)
+						logMsg = fmt.Sprintf("Pinnacle: Failed to fetch markets for live matchup %d: %v\n", matchID, err)
 						fmt.Print(logMsg)
 						logToFile(logMsg)
-						resultsCh <- liveMatchResult{mainID: mID, related: rel, markets: nil, err: err}
+						resultsCh <- liveMatchResult{mainID: mID, matchupID: matchID, related: rel, markets: nil, err: err}
 						return
 					}
 					// Filter to only open markets with Period 0 or -1
@@ -374,52 +375,81 @@ func (p *Parser) processAll(ctx context.Context) error {
 							filtered = append(filtered, m)
 						}
 					}
-					logMsg = fmt.Sprintf("Pinnacle: [NEW VERSION v2.0] Found %d markets for live matchup %d (filtered from %d total)\n", len(filtered), matchID, len(liveMarkets))
+					logMsg = fmt.Sprintf("Pinnacle: Found %d open markets for live matchup %d (filtered from %d total markets)\n", len(filtered), matchID, len(liveMarkets))
 					fmt.Print(logMsg)
 					logToFile(logMsg)
-					resultsCh <- liveMatchResult{mainID: mID, related: rel, markets: filtered, err: nil}
+					resultsCh <- liveMatchResult{mainID: mID, matchupID: matchID, related: rel, markets: filtered, err: nil}
 				}(mainID, matchupID, related)
 			}
 
 			// Collect results from async market fetches
-			liveMatchesAdded := 0
+			// Group by match ID to avoid duplicate updates and use best matchup ID with markets
+			matchesByID := make(map[string]liveMatchResult) // key: match ID from buildMatchFromPinnacle
 			for i := 0; i < len(liveMatchups); i++ {
 				select {
 				case result := <-resultsCh:
 					if result.err != nil || len(result.markets) == 0 {
 						if result.err != nil {
-							logMsg = fmt.Sprintf("Pinnacle: [NEW VERSION v2.0] Skipping live matchup %d: error=%v\n", result.mainID, result.err)
+							logMsg = fmt.Sprintf("Pinnacle: Skipping live matchup %d (matchupID: %d): error=%v\n", result.mainID, result.matchupID, result.err)
 							fmt.Print(logMsg)
 							logToFile(logMsg)
 						} else {
-							logMsg = fmt.Sprintf("Pinnacle: [NEW VERSION v2.0] Skipping live matchup %d: no markets found\n", result.mainID)
+							logMsg = fmt.Sprintf("Pinnacle: Skipping live matchup %d (matchupID: %d): no open markets found\n", result.mainID, result.matchupID)
 							fmt.Print(logMsg)
 							logToFile(logMsg)
 						}
 						continue
 					}
+					// Build match to get its ID
 					m, err := buildMatchFromPinnacle(result.mainID, result.related, result.markets)
 					if err != nil || m == nil {
-						logMsg = fmt.Sprintf("Pinnacle: [NEW VERSION v2.0] Failed to build match from live matchup %d: err=%v\n", result.mainID, err)
+						logMsg = fmt.Sprintf("Pinnacle: Failed to build match from live matchup %d (matchupID: %d): err=%v\n", result.mainID, result.matchupID, err)
 						fmt.Print(logMsg)
 						logToFile(logMsg)
 						continue
 					}
-					// Add match to in-memory store - it will be available in /matches endpoint
-					health.AddMatch(m)
-					liveMatchesAdded++
-					logMsg = fmt.Sprintf("Pinnacle: [NEW VERSION v2.0] Successfully added live match: %s (matchup ID: %d)\n", m.Name, result.mainID)
-					fmt.Print(logMsg)
-					logToFile(logMsg)
+					// Use match with most markets if we have multiple matchup IDs for same match
+					if existing, exists := matchesByID[m.ID]; exists {
+						if len(result.markets) > len(existing.markets) {
+							logMsg = fmt.Sprintf("Pinnacle: Replacing match %s: using matchupID %d (%d markets) instead of %d (%d markets)\n", m.Name, result.matchupID, len(result.markets), existing.matchupID, len(existing.markets))
+							fmt.Print(logMsg)
+							logToFile(logMsg)
+							matchesByID[m.ID] = result
+						} else {
+							logMsg = fmt.Sprintf("Pinnacle: Keeping existing match %s: matchupID %d has %d markets (new matchupID %d has %d)\n", m.Name, existing.matchupID, len(existing.markets), result.matchupID, len(result.markets))
+							fmt.Print(logMsg)
+							logToFile(logMsg)
+						}
+					} else {
+						matchesByID[m.ID] = result
+					}
 				case <-ctx.Done():
 					return ctx.Err()
 				}
 			}
-			logMsg = fmt.Sprintf("Pinnacle: [NEW VERSION v2.0] Completed processing live matchups: %d added to store out of %d total\n", liveMatchesAdded, len(liveMatchups))
+
+			// Add all unique matches to store
+			liveMatchesAdded := 0
+			for matchID, result := range matchesByID {
+				m, err := buildMatchFromPinnacle(result.mainID, result.related, result.markets)
+				if err != nil || m == nil {
+					logMsg = fmt.Sprintf("Pinnacle: Failed to build match %s from result: err=%v\n", matchID, err)
+					fmt.Print(logMsg)
+					logToFile(logMsg)
+					continue
+				}
+				// Add match to in-memory store - it will be available in /matches endpoint
+				health.AddMatch(m)
+				liveMatchesAdded++
+				logMsg = fmt.Sprintf("Pinnacle: Successfully added live match: %s (matchupID: %d, mainID: %d, %d markets)\n", m.Name, result.matchupID, result.mainID, len(result.markets))
+				fmt.Print(logMsg)
+				logToFile(logMsg)
+			}
+			logMsg = fmt.Sprintf("Pinnacle: Completed processing live matchups: %d unique matches added out of %d total matchup IDs\n", liveMatchesAdded, len(liveMatchups))
 			fmt.Print(logMsg)
 			logToFile(logMsg)
 		} else {
-			logMsg := "Pinnacle: [NEW VERSION v2.0] No live matchups found in live endpoint\n"
+			logMsg := "Pinnacle: No live matchups found in live endpoint\n"
 			fmt.Print(logMsg)
 			logToFile(logMsg)
 		}

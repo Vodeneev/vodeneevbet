@@ -132,12 +132,57 @@ func (p *Parser) processAll(ctx context.Context) error {
 		}
 
 		// Filter markets upfront.
+		// Allow Period 0 (full match) and Period -1 (live/current period) for live matches
 		marketsByMatchup := map[int64][]Market{}
+		filteredStats := map[int64]map[string]int{} // matchupID -> reason -> count
 		for _, m := range markets {
-			if m.IsAlternate || m.Status != "open" || m.Period != 0 {
+			reason := ""
+			if m.IsAlternate {
+				reason = "IsAlternate"
+			} else if m.Status != "open" {
+				reason = fmt.Sprintf("Status=%s", m.Status)
+			} else if m.Period != 0 && m.Period != -1 {
+				reason = fmt.Sprintf("Period=%d", m.Period)
+			}
+			if reason != "" {
+				if filteredStats[m.MatchupID] == nil {
+					filteredStats[m.MatchupID] = make(map[string]int)
+				}
+				filteredStats[m.MatchupID][reason]++
 				continue
 			}
 			marketsByMatchup[m.MatchupID] = append(marketsByMatchup[m.MatchupID], m)
+		}
+		
+		// Debug: log filtered markets for specific matchups (e.g., Kopa Tigers)
+		for muID, stats := range filteredStats {
+			totalFiltered := 0
+			for _, count := range stats {
+				totalFiltered += count
+			}
+			if totalFiltered > 0 {
+				// Check if this matchup is for Kopa Tigers match
+				for _, mu := range matchups {
+					if mu.ID == muID {
+						homeTeam, awayTeam := "", ""
+						for _, p := range mu.Participants {
+							if p.Alignment == "home" {
+								homeTeam = p.Name
+							} else if p.Alignment == "away" {
+								awayTeam = p.Name
+							}
+						}
+						matchName := fmt.Sprintf("%s vs %s", homeTeam, awayTeam)
+						if strings.Contains(strings.ToLower(matchName), "kopa") ||
+							strings.Contains(strings.ToLower(matchName), "tigers") ||
+							strings.Contains(strings.ToLower(matchName), "medinipur") {
+							fmt.Printf("Pinnacle DEBUG: Matchup %d (%s) had %d markets filtered: %+v\n",
+								muID, matchName, totalFiltered, stats)
+						}
+						break
+					}
+				}
+			}
 		}
 
 		// Group matchups by main matchup (parentId or self).
@@ -238,6 +283,26 @@ func (p *Parser) processAll(ctx context.Context) error {
 			}
 
 			fmt.Printf("Pinnacle: built match %s (%s vs %s), events=%d\n", m.ID, m.HomeTeam, m.AwayTeam, len(m.Events))
+			
+			// Debug: log when match has no events but markets were available
+			if len(m.Events) == 0 && len(relMarkets) > 0 {
+				periods := make(map[int]bool)
+				statuses := make(map[string]bool)
+				for _, mkt := range relMarkets {
+					periods[mkt.Period] = true
+					statuses[mkt.Status] = true
+				}
+				var periodStrs []string
+				for p := range periods {
+					periodStrs = append(periodStrs, fmt.Sprintf("Period%d", p))
+				}
+				var statusStrs []string
+				for s := range statuses {
+					statusStrs = append(statusStrs, fmt.Sprintf("Status%s", s))
+				}
+				fmt.Printf("Pinnacle DEBUG: Match %s (%s vs %s) has 0 events but %d markets were available. Markets: %v, %v\n",
+					m.ID, m.HomeTeam, m.AwayTeam, len(relMarkets), periodStrs, statusStrs)
+			}
 
 			// Add match to in-memory store for fast API access (primary storage)
 			// YDB is not used - data is served directly from memory
@@ -423,10 +488,12 @@ func buildMatchFromPinnacle(matchupID int64, related []RelatedMatchup, markets [
 		return ev
 	}
 
-	// Period 0 only for now.
+	// Period 0 only for now (full match), but allow Period -1 for live matches
 	marketsByMatchupID := make(map[int64][]Market)
 	for _, mkt := range markets {
-		if mkt.Period != 0 || mkt.Status != "open" {
+		// Allow Period 0 (full match) and Period -1 (live/current period)
+		// Period -1 is used by Pinnacle for live matches
+		if (mkt.Period != 0 && mkt.Period != -1) || mkt.Status != "open" {
 			continue
 		}
 		marketsByMatchupID[mkt.MatchupID] = append(marketsByMatchupID[mkt.MatchupID], mkt)
@@ -445,7 +512,8 @@ func buildMatchFromPinnacle(matchupID int64, related []RelatedMatchup, markets [
 	}
 
 	for _, mkt := range markets {
-		if mkt.Period != 0 || mkt.Status != "open" {
+		// Allow Period 0 (full match) and Period -1 (live/current period)
+		if (mkt.Period != 0 && mkt.Period != -1) || mkt.Status != "open" {
 			continue
 		}
 		et, ok := matchupEventType[mkt.MatchupID]

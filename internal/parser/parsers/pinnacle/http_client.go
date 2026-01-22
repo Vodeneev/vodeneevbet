@@ -36,12 +36,8 @@ func NewClient(baseURL, apiKey, deviceUUID string, timeout time.Duration, proxyL
 
 	insecureTLS := os.Getenv("PINNACLE_INSECURE_TLS") == "1"
 
-	// Support proxy via environment variable (takes precedence over config)
-	envProxy := os.Getenv("PINNACLE_PROXY")
-	if envProxy != "" {
-		proxyList = []string{envProxy}
-		fmt.Printf("Pinnacle: Using proxy from environment: %s\n", maskProxyURL(envProxy))
-	} else if len(proxyList) > 0 {
+	// Use proxy list from config
+	if len(proxyList) > 0 {
 		fmt.Printf("Pinnacle: Using proxy list from config (%d proxies)\n", len(proxyList))
 	}
 
@@ -139,11 +135,15 @@ func (c *Client) GetSportLiveMatchups(sportID int64) ([]RelatedMatchup, error) {
 	var raw []LiveMatchupResponse
 	path := fmt.Sprintf("/0.1/sports/%d/matchups/live?withSpecials=false&brandId=0", sportID)
 	if err := c.getJSON(path, &raw); err != nil {
+		fmt.Printf("Pinnacle: GetSportLiveMatchups failed for sport %d: %v\n", sportID, err)
 		return nil, err
 	}
 
+	fmt.Printf("Pinnacle: GetSportLiveMatchups returned %d raw matchups for sport %d\n", len(raw), sportID)
+
 	// Convert to RelatedMatchup format, filtering only actually live matches
 	out := make([]RelatedMatchup, 0, len(raw))
+	liveCount := 0
 	for _, lm := range raw {
 		// Only include matches that are actually live (isLive=true)
 		// Status "started" is preferred, but we also accept other statuses if isLive=true
@@ -151,6 +151,7 @@ func (c *Client) GetSportLiveMatchups(sportID int64) ([]RelatedMatchup, error) {
 		if !lm.IsLive {
 			continue
 		}
+		liveCount++
 		// Prefer "started" status, but don't exclude if status is different (might be "live" or other)
 		// The key indicator is isLive=true
 
@@ -178,6 +179,7 @@ func (c *Client) GetSportLiveMatchups(sportID int64) ([]RelatedMatchup, error) {
 		out = append(out, rm)
 	}
 
+	fmt.Printf("Pinnacle: GetSportLiveMatchups filtered to %d live matchups (from %d total, %d with isLive=true)\n", len(out), len(raw), liveCount)
 	return out, nil
 }
 
@@ -293,11 +295,7 @@ func (c *Client) getJSONWithProxyRetry(path string, out any) error {
 			return err
 		}
 
-		// Not JSON, close body
-		resp.Body.Close()
-
-		// Got HTML instead of JSON (blocked) or wrong status
-		// Read body to check what we got
+		// Not JSON - read body to check what we got before closing
 		body, _ := io.ReadAll(resp.Body)
 		resp.Body.Close()
 		preview := string(body)

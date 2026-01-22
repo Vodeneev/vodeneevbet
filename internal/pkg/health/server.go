@@ -34,19 +34,19 @@ func triggerParsingAsync() {
 	globalParsersMu.RLock()
 	parsers := globalParsers
 	globalParsersMu.RUnlock()
-	
+
 	if len(parsers) == 0 {
 		return
 	}
-	
+
 	// Create a separate context with timeout for parsing (60 seconds should be enough for Pinnacle)
 	// This allows parsing to continue even after HTTP request completes
 	parseCtx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
-	
+
 	// Use WaitGroup to track when all parsers are done, then cancel context
 	var wg sync.WaitGroup
 	wg.Add(len(parsers))
-	
+
 	// Trigger parsing for all parsers in parallel (asynchronously to different bookmakers)
 	// Don't wait - return immediately, parsing happens in background
 	for _, p := range parsers {
@@ -58,7 +58,7 @@ func triggerParsingAsync() {
 			}
 		}()
 	}
-	
+
 	// Cancel context after all parsers complete (or timeout)
 	go func() {
 		wg.Wait()

@@ -87,12 +87,63 @@ func (c *Client) GetSportStraightMarkets(sportID int64) ([]Market, error) {
 }
 
 // GetSportLiveMatchups fetches live matchups for a specific sport
+// Note: Live endpoint returns a different structure with parent data nested
 func (c *Client) GetSportLiveMatchups(sportID int64) ([]RelatedMatchup, error) {
-	var out []RelatedMatchup
+	// Live endpoint returns array of objects with nested parent structure
+	type LiveMatchupResponse struct {
+		ID       int64   `json:"id"`
+		ParentID *int64  `json:"parentId,omitempty"`
+		Parent   *struct {
+			ID          int64  `json:"id"`
+			StartTime   string `json:"startTime"`
+			Participants []Participant `json:"participants"`
+		} `json:"parent,omitempty"`
+		League struct {
+			Name  string `json:"name"`
+			Sport struct {
+				ID   int64  `json:"id"`
+				Name string `json:"name"`
+			} `json:"sport"`
+		} `json:"league"`
+		Participants []Participant `json:"participants,omitempty"`
+		StartTime   string        `json:"startTime,omitempty"`
+		Type        string        `json:"type,omitempty"`
+		Units        string        `json:"units,omitempty"`
+	}
+	
+	var raw []LiveMatchupResponse
 	path := fmt.Sprintf("/0.1/sports/%d/matchups/live?withSpecials=false&brandId=0", sportID)
-	if err := c.getJSON(path, &out); err != nil {
+	if err := c.getJSON(path, &raw); err != nil {
 		return nil, err
 	}
+	
+	// Convert to RelatedMatchup format
+	out := make([]RelatedMatchup, 0, len(raw))
+	for _, lm := range raw {
+		rm := RelatedMatchup{
+			ID:        lm.ID,
+			ParentID:  lm.ParentID,
+			Type:      "matchup",
+			League:    lm.League,
+		}
+		
+		// Use parent data if available, otherwise use root data
+		if lm.Parent != nil {
+			rm.StartTime = lm.Parent.StartTime
+			rm.Participants = lm.Parent.Participants
+		} else {
+			rm.StartTime = lm.StartTime
+			rm.Participants = lm.Participants
+		}
+		
+		// Skip if no start time or participants
+		if rm.StartTime == "" || len(rm.Participants) == 0 {
+			continue
+		}
+		
+		out = append(out, rm)
+	}
+	
 	return out, nil
 }
 

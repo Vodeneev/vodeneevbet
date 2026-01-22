@@ -113,8 +113,11 @@ func (p *Parser) processAll(ctx context.Context) error {
 	}
 
 	// Keep a modest window to avoid processing thousands of stale matchups.
+	// For live matches, we need to include matches that started recently (up to 4 hours ago)
+	// to catch matches that are still in progress.
 	now := time.Now().UTC()
 	maxStart := now.Add(48 * time.Hour)
+	minStart := now.Add(-4 * time.Hour) // Include live matches that started up to 4 hours ago
 
 	for _, sportName := range targetSportNames {
 		sportID, ok := nameToID[sportName]
@@ -122,13 +125,47 @@ func (p *Parser) processAll(ctx context.Context) error {
 			continue
 		}
 
+		// Get regular matchups
 		matchups, err := p.client.GetSportMatchups(sportID)
 		if err != nil {
 			return err
 		}
+		
+		// Get live matchups asynchronously
+		liveMatchupsCh := make(chan []RelatedMatchup, 1)
+		go func() {
+			liveMatchups, err := p.client.GetSportLiveMatchups(sportID)
+			if err != nil {
+				fmt.Printf("Pinnacle: failed to get live matchups for sport %s: %v\n", sportName, err)
+				liveMatchupsCh <- nil
+				return
+			}
+			fmt.Printf("Pinnacle: found %d live matchups for sport %s\n", len(liveMatchups), sportName)
+			liveMatchupsCh <- liveMatchups
+		}()
+		
 		markets, err := p.client.GetSportStraightMarkets(sportID)
 		if err != nil {
 			return err
+		}
+		
+		// Wait for live matchups and merge them
+		select {
+		case liveMatchups := <-liveMatchupsCh:
+			if liveMatchups != nil {
+				// Simple merge: add live matchups that don't exist in regular matchups
+				existingIDs := make(map[int64]bool, len(matchups))
+				for _, mu := range matchups {
+					existingIDs[mu.ID] = true
+				}
+				for _, mu := range liveMatchups {
+					if !existingIDs[mu.ID] {
+						matchups = append(matchups, mu)
+					}
+				}
+			}
+		case <-ctx.Done():
+			return ctx.Err()
 		}
 
 		// Filter markets upfront.
@@ -164,7 +201,10 @@ func (p *Parser) processAll(ctx context.Context) error {
 			}
 			st = st.UTC()
 
-			if st.Before(now.Add(-2*time.Hour)) || st.After(maxStart) {
+			// Include matches that:
+			// 1. Haven't started yet (up to 48 hours in the future)
+			// 2. Started recently (up to 4 hours ago) - for live matches
+			if st.Before(minStart) || st.After(maxStart) {
 				filteredByTime++
 				continue
 			}

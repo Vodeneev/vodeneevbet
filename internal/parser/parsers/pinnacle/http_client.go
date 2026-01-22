@@ -86,6 +86,16 @@ func (c *Client) GetSportStraightMarkets(sportID int64) ([]Market, error) {
 	return out, nil
 }
 
+// GetSportLiveMatchups fetches live matchups for a specific sport
+func (c *Client) GetSportLiveMatchups(sportID int64) ([]RelatedMatchup, error) {
+	var out []RelatedMatchup
+	path := fmt.Sprintf("/0.1/sports/%d/matchups/live?withSpecials=false&brandId=0", sportID)
+	if err := c.getJSON(path, &out); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *Client) getJSON(path string, out any) error {
 	if c.baseURL == "" {
 		c.baseURL = "https://guest.api.arcadia.pinnacle.com"

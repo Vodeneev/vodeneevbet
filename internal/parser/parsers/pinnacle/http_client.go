@@ -92,13 +92,13 @@ func (c *Client) GetSportStraightMarkets(sportID int64) ([]Market, error) {
 func (c *Client) GetSportLiveMatchups(sportID int64) ([]RelatedMatchup, error) {
 	// Live endpoint returns array of objects with nested parent structure
 	type LiveMatchupResponse struct {
-		ID       int64   `json:"id"`
-		ParentID *int64  `json:"parentId,omitempty"`
-		IsLive   bool    `json:"isLive"`   // Only include matches that are actually live
-		Status   string  `json:"status"`   // "started" means match is in progress
+		ID       int64  `json:"id"`
+		ParentID *int64 `json:"parentId,omitempty"`
+		IsLive   bool   `json:"isLive"` // Only include matches that are actually live
+		Status   string `json:"status"` // "started" means match is in progress
 		Parent   *struct {
-			ID          int64  `json:"id"`
-			StartTime   string `json:"startTime"`
+			ID           int64         `json:"id"`
+			StartTime    string        `json:"startTime"`
 			Participants []Participant `json:"participants"`
 		} `json:"parent,omitempty"`
 		League struct {
@@ -109,17 +109,17 @@ func (c *Client) GetSportLiveMatchups(sportID int64) ([]RelatedMatchup, error) {
 			} `json:"sport"`
 		} `json:"league"`
 		Participants []Participant `json:"participants,omitempty"`
-		StartTime   string        `json:"startTime,omitempty"`
-		Type        string        `json:"type,omitempty"`
+		StartTime    string        `json:"startTime,omitempty"`
+		Type         string        `json:"type,omitempty"`
 		Units        string        `json:"units,omitempty"`
 	}
-	
+
 	var raw []LiveMatchupResponse
 	path := fmt.Sprintf("/0.1/sports/%d/matchups/live?withSpecials=false&brandId=0", sportID)
 	if err := c.getJSON(path, &raw); err != nil {
 		return nil, err
 	}
-	
+
 	// Convert to RelatedMatchup format, filtering only actually live matches
 	out := make([]RelatedMatchup, 0, len(raw))
 	for _, lm := range raw {
@@ -131,14 +131,14 @@ func (c *Client) GetSportLiveMatchups(sportID int64) ([]RelatedMatchup, error) {
 		}
 		// Prefer "started" status, but don't exclude if status is different (might be "live" or other)
 		// The key indicator is isLive=true
-		
+
 		rm := RelatedMatchup{
-			ID:        lm.ID,
-			ParentID:  lm.ParentID,
-			Type:      "matchup",
-			League:    lm.League,
+			ID:       lm.ID,
+			ParentID: lm.ParentID,
+			Type:     "matchup",
+			League:   lm.League,
 		}
-		
+
 		// Use parent data if available, otherwise use root data
 		if lm.Parent != nil {
 			rm.StartTime = lm.Parent.StartTime
@@ -147,15 +147,15 @@ func (c *Client) GetSportLiveMatchups(sportID int64) ([]RelatedMatchup, error) {
 			rm.StartTime = lm.StartTime
 			rm.Participants = lm.Participants
 		}
-		
+
 		// Skip if no start time or participants
 		if rm.StartTime == "" || len(rm.Participants) == 0 {
 			continue
 		}
-		
+
 		out = append(out, rm)
 	}
-	
+
 	return out, nil
 }
 
@@ -170,14 +170,19 @@ func (c *Client) getJSON(path string, out any) error {
 		return fmt.Errorf("create request: %w", err)
 	}
 
+	// Set headers in the same order as browser (may help bypass Cloudflare detection)
 	req.Header.Set("Accept", "application/json")
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Accept-Encoding", "gzip, deflate, br, zstd")
 	req.Header.Set("Accept-Language", "ru,en;q=0.9")
+	req.Header.Set("Accept-Encoding", "gzip, deflate, br, zstd")
+	req.Header.Set("Content-Type", "application/json")
 	// Use realistic browser User-Agent to match browser requests
 	req.Header.Set("User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 YaBrowser/25.12.0.0 Safari/537.36")
 	// Add Referer header - it helps bypass blocking (as seen in working browser requests)
 	req.Header.Set("Referer", "https://www.pinnacle.com/")
+	// Add Sec-CH-UA headers to mimic browser
+	req.Header.Set("Sec-CH-UA", `"Chromium";v="142", "YaBrowser";v="25.12", "Not_A Brand";v="99", "Yowser";v="2.5"`)
+	req.Header.Set("Sec-CH-UA-Mobile", "?0")
+	req.Header.Set("Sec-CH-UA-Platform", `"macOS"`)
 	// Note: Origin header may cause 401 errors, so we don't send it
 
 	// Pinnacle guest API expects these headers (captured from browser).
@@ -196,7 +201,7 @@ func (c *Client) getJSON(path string, out any) error {
 
 	// Log response headers for debugging (especially for blocked requests)
 	if resp.StatusCode != http.StatusOK || resp.Header.Get("Content-Type") != "application/json" {
-		fmt.Printf("Pinnacle API response: status=%d, content-type=%s, cf-ray=%s\n", 
+		fmt.Printf("Pinnacle API response: status=%d, content-type=%s, cf-ray=%s\n",
 			resp.StatusCode, resp.Header.Get("Content-Type"), resp.Header.Get("Cf-Ray"))
 	}
 
@@ -256,4 +261,3 @@ func readBodyMaybeGzip(resp *http.Response) ([]byte, error) {
 	}
 	return b, nil
 }
-

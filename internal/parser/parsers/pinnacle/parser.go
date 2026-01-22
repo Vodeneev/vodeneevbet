@@ -368,6 +368,17 @@ func (p *Parser) processAll(ctx context.Context) error {
 						logToFile(logMsg)
 					}
 					
+					// DEBUG: Log all periods found in markets
+					periodCounts := make(map[int]int)
+					for _, m := range liveMarkets {
+						if m.Status == "open" && !m.IsAlternate {
+							periodCounts[m.Period]++
+						}
+					}
+					logMsg = fmt.Sprintf("Pinnacle: DEBUG Live matchup ID %d - all periods found: %v (total markets: %d)\n", matchID, periodCounts, len(liveMarkets))
+					fmt.Print(logMsg)
+					logToFile(logMsg)
+					
 					// Filter to only open markets - for live matches, prefer Period -1 (current period live) over Period 0 (full match, may be pre-match odds)
 					// Period -1 = current period live odds, Period 0 = full match (may be pre-match for live matches)
 					filtered := make([]Market, 0, len(liveMarkets))
@@ -404,6 +415,17 @@ func (p *Parser) processAll(ctx context.Context) error {
 						logToFile(logMsg)
 						parentMarkets, err := p.client.GetRelatedStraightMarkets(*parentID)
 						if err == nil {
+							// DEBUG: Log all periods found in parent markets
+							parentPeriodCounts := make(map[int]int)
+							for _, m := range parentMarkets {
+								if m.Status == "open" && !m.IsAlternate {
+									parentPeriodCounts[m.Period]++
+								}
+							}
+							logMsg = fmt.Sprintf("Pinnacle: DEBUG ParentID %d - all periods found: %v (total markets: %d)\n", *parentID, parentPeriodCounts, len(parentMarkets))
+							fmt.Print(logMsg)
+							logToFile(logMsg)
+							
 							parentFiltered := make([]Market, 0, len(parentMarkets))
 							parentPeriod0Count := 0
 							parentPeriodMinus1Count := 0

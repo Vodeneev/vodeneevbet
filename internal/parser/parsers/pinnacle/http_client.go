@@ -366,6 +366,65 @@ func (c *Client) handleResponse(resp *http.Response, out any) error {
 		return err
 	}
 
+	// DEBUG: Log full response body for markets endpoints to understand what Pinnacle returns
+	if strings.Contains(resp.Request.URL.Path, "/markets/") {
+		// Try to parse as JSON array to log structure
+		var marketsArray []map[string]interface{}
+		if err := json.Unmarshal(body, &marketsArray); err == nil {
+			// Log summary of markets response
+			periodCounts := make(map[interface{}]int)
+			statusCounts := make(map[string]int)
+			typeCounts := make(map[string]int)
+			for _, m := range marketsArray {
+				if period, ok := m["period"]; ok {
+					periodCounts[period]++
+				}
+				if status, ok := m["status"].(string); ok {
+					statusCounts[status]++
+				}
+				if mtype, ok := m["type"].(string); ok {
+					typeCounts[mtype]++
+				}
+			}
+			fmt.Printf("Pinnacle DEBUG: %s - markets: %d total, periods: %v, statuses: %v, types: %v\n",
+				resp.Request.URL.Path, len(marketsArray), periodCounts, statusCounts, typeCounts)
+			
+			// Log first few markets in detail
+			if len(marketsArray) > 0 {
+				firstFew := len(marketsArray)
+				if firstFew > 3 {
+					firstFew = 3
+				}
+				for i := 0; i < firstFew; i++ {
+					marketJSON, _ := json.Marshal(marketsArray[i])
+					preview := string(marketJSON)
+					if len(preview) > 300 {
+						preview = preview[:300] + "..."
+					}
+					fmt.Printf("Pinnacle DEBUG: Market[%d] sample: %s\n", i, preview)
+				}
+			}
+		} else {
+			// If not array, log as object
+			var marketObj map[string]interface{}
+			if err := json.Unmarshal(body, &marketObj); err == nil {
+				marketJSON, _ := json.Marshal(marketObj)
+				preview := string(marketJSON)
+				if len(preview) > 500 {
+					preview = preview[:500] + "..."
+				}
+				fmt.Printf("Pinnacle DEBUG: %s - response object: %s\n", resp.Request.URL.Path, preview)
+			} else {
+				// Raw body if can't parse
+				preview := string(body)
+				if len(preview) > 1000 {
+					preview = preview[:1000] + "..."
+				}
+				fmt.Printf("Pinnacle DEBUG: %s - raw response (%d bytes): %s\n", resp.Request.URL.Path, len(body), preview)
+			}
+		}
+	}
+
 	if err := json.Unmarshal(body, out); err != nil {
 		// If unmarshal fails, log the body to help debug (might be HTML error page)
 		preview := string(body)

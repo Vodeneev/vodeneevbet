@@ -105,84 +105,6 @@ func (c *Client) GetSportStraightMarkets(sportID int64) ([]Market, error) {
 	return out, nil
 }
 
-// GetSportLiveMatchups fetches live matchups for a specific sport
-// Note: Live endpoint returns a different structure with parent data nested
-func (c *Client) GetSportLiveMatchups(sportID int64) ([]RelatedMatchup, error) {
-	// Live endpoint returns array of objects with nested parent structure
-	type LiveMatchupResponse struct {
-		ID       int64  `json:"id"`
-		ParentID *int64 `json:"parentId,omitempty"`
-		IsLive   bool   `json:"isLive"` // Only include matches that are actually live
-		Status   string `json:"status"` // "started" means match is in progress
-		Parent   *struct {
-			ID           int64         `json:"id"`
-			StartTime    string        `json:"startTime"`
-			Participants []Participant `json:"participants"`
-		} `json:"parent,omitempty"`
-		League struct {
-			Name  string `json:"name"`
-			Sport struct {
-				ID   int64  `json:"id"`
-				Name string `json:"name"`
-			} `json:"sport"`
-		} `json:"league"`
-		Participants []Participant `json:"participants,omitempty"`
-		StartTime    string        `json:"startTime,omitempty"`
-		Type         string        `json:"type,omitempty"`
-		Units        string        `json:"units,omitempty"`
-	}
-
-	var raw []LiveMatchupResponse
-	path := fmt.Sprintf("/0.1/sports/%d/matchups/live?withSpecials=false&brandId=0", sportID)
-	if err := c.getJSON(path, &raw); err != nil {
-		fmt.Printf("Pinnacle: GetSportLiveMatchups failed for sport %d: %v\n", sportID, err)
-		return nil, err
-	}
-
-	fmt.Printf("Pinnacle: GetSportLiveMatchups returned %d raw matchups for sport %d\n", len(raw), sportID)
-
-	// Convert to RelatedMatchup format, filtering only actually live matches
-	out := make([]RelatedMatchup, 0, len(raw))
-	liveCount := 0
-	for _, lm := range raw {
-		// Only include matches that are actually live (isLive=true)
-		// Status "started" is preferred, but we also accept other statuses if isLive=true
-		// This ensures we don't miss live matches due to status variations
-		if !lm.IsLive {
-			continue
-		}
-		liveCount++
-		// Prefer "started" status, but don't exclude if status is different (might be "live" or other)
-		// The key indicator is isLive=true
-
-		rm := RelatedMatchup{
-			ID:       lm.ID,
-			ParentID: lm.ParentID,
-			Type:     "matchup",
-			League:   lm.League,
-		}
-
-		// Use parent data if available, otherwise use root data
-		if lm.Parent != nil {
-			rm.StartTime = lm.Parent.StartTime
-			rm.Participants = lm.Parent.Participants
-		} else {
-			rm.StartTime = lm.StartTime
-			rm.Participants = lm.Participants
-		}
-
-		// Skip if no start time or participants
-		if rm.StartTime == "" || len(rm.Participants) == 0 {
-			continue
-		}
-
-		out = append(out, rm)
-	}
-
-	fmt.Printf("Pinnacle: GetSportLiveMatchups filtered to %d live matchups (from %d total, %d with isLive=true)\n", len(out), len(raw), liveCount)
-	return out, nil
-}
-
 func (c *Client) getJSON(path string, out any) error {
 	// Try proxies in order if available, fallback to direct connection
 	if len(c.proxyList) > 0 {
@@ -388,7 +310,7 @@ func (c *Client) handleResponse(resp *http.Response, out any) error {
 			}
 			fmt.Printf("Pinnacle DEBUG: %s - markets: %d total, periods: %v, statuses: %v, types: %v\n",
 				resp.Request.URL.Path, len(marketsArray), periodCounts, statusCounts, typeCounts)
-			
+
 			// Log first few markets in detail
 			if len(marketsArray) > 0 {
 				firstFew := len(marketsArray)

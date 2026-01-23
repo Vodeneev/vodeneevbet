@@ -140,8 +140,7 @@ func (p *Parser) processAll(ctx context.Context) error {
 	}
 
 	// Keep a modest window to avoid processing thousands of stale matchups.
-	// For regular matchups, only include future matches (upcoming).
-	// Live matches are handled separately via GetSportLiveMatchups which filters by isLive=true.
+	// Only include future matches (upcoming) - up to 48 hours in the future.
 	now := time.Now().UTC()
 	maxStart := now.Add(48 * time.Hour)
 	minStart := now // Only include matches that haven't started yet (for regular matchups)
@@ -158,51 +157,12 @@ func (p *Parser) processAll(ctx context.Context) error {
 			return err
 		}
 
-		// Get live matchups asynchronously - these are the ONLY source of truth for live matches
-		liveMatchupsCh := make(chan []RelatedMatchup, 1)
-		go func() {
-			logMsg := fmt.Sprintf("Pinnacle: Fetching live matchups from /0.1/sports/%d/matchups/live endpoint\n", sportID)
-			fmt.Print(logMsg)
-			logToFile(logMsg)
-			liveMatchups, err := p.client.GetSportLiveMatchups(sportID)
-			if err != nil {
-				logMsg = fmt.Sprintf("Pinnacle: Failed to fetch live matchups: %v\n", err)
-				fmt.Print(logMsg)
-				logToFile(logMsg)
-				liveMatchupsCh <- nil
-				return
-			}
-			logMsg = fmt.Sprintf("Pinnacle: Found %d live matchups from live endpoint\n", len(liveMatchups))
-			fmt.Print(logMsg)
-			logToFile(logMsg)
-			liveMatchupsCh <- liveMatchups
-		}()
-
 		markets, err := p.client.GetSportStraightMarkets(sportID)
 		if err != nil {
 			return err
 		}
 
-		// Wait for live matchups - process them separately with async market fetching
-		var liveMatchups []RelatedMatchup
-		select {
-		case liveMatchups = <-liveMatchupsCh:
-			// Live matchups will be processed separately below
-		case <-ctx.Done():
-			return ctx.Err()
-		}
-
-		// Track live matchup IDs to avoid processing them in regular flow
-		liveMatchupIDs := make(map[int64]bool)
-		for _, mu := range liveMatchups {
-			liveMatchupIDs[mu.ID] = true
-			if mu.ParentID != nil {
-				liveMatchupIDs[*mu.ParentID] = true
-			}
-		}
-
-		// Filter markets upfront.
-		// Allow Period 0 (full match) and Period -1 (live/current period) for live matches
+		// Filter markets upfront - only Period 0 (full match pre-match odds)
 		marketsByMatchup := map[int64][]Market{}
 		filteredStats := map[int64]map[string]int{} // matchupID -> reason -> count
 		for _, m := range markets {
@@ -211,7 +171,7 @@ func (p *Parser) processAll(ctx context.Context) error {
 				reason = "IsAlternate"
 			} else if m.Status != "open" {
 				reason = fmt.Sprintf("Status=%s", m.Status)
-			} else if m.Period != 0 && m.Period != -1 {
+			} else if m.Period != 0 {
 				reason = fmt.Sprintf("Period=%d", m.Period)
 			}
 			if reason != "" {
@@ -224,15 +184,10 @@ func (p *Parser) processAll(ctx context.Context) error {
 			marketsByMatchup[m.MatchupID] = append(marketsByMatchup[m.MatchupID], m)
 		}
 
-		// Group matchups by main matchup (parentId or self).
-		// Skip live matchups - they will be processed separately
+		// Group matchups by main matchup (parentId or self)
 		group := map[int64][]RelatedMatchup{}
 		filteredByTime := 0
 		for _, mu := range matchups {
-			// Skip if this is a live matchup - process separately
-			if liveMatchupIDs[mu.ID] || (mu.ParentID != nil && liveMatchupIDs[*mu.ParentID]) {
-				continue
-			}
 
 			st, err := time.Parse(time.RFC3339, mu.StartTime)
 			if err != nil {
@@ -240,9 +195,7 @@ func (p *Parser) processAll(ctx context.Context) error {
 			}
 			st = st.UTC()
 
-			// Include only matches that haven't started yet (up to 48 hours in the future).
-			// Live matches are handled separately via GetSportLiveMatchups which filters by isLive=true.
-			// This ensures we don't include already finished matches in the regular matchups list.
+			// Include only matches that haven't started yet (up to 48 hours in the future)
 			if st.Before(minStart) || st.After(maxStart) {
 				filteredByTime++
 				continue
@@ -262,27 +215,26 @@ func (p *Parser) processAll(ctx context.Context) error {
 			default:
 			}
 
-			// Collect markets for all related matchups.
+			// Collect markets for all related matchups
 			var relMarkets []Market
 			var alternateMarkets []Market // Fallback: alternate markets if no regular markets
 			for _, mu := range related {
 				relMarkets = append(relMarkets, marketsByMatchup[mu.ID]...)
 				// Also collect alternate markets as fallback
 				for _, m := range markets {
-					if m.MatchupID == mu.ID && m.IsAlternate && m.Status == "open" && (m.Period == 0 || m.Period == -1) {
+					if m.MatchupID == mu.ID && m.IsAlternate && m.Status == "open" && m.Period == 0 {
 						alternateMarkets = append(alternateMarkets, m)
 					}
 				}
 			}
 
-			// For live matchups, try to get markets directly if not found in general markets
+			// Try to get markets directly if not found in general markets
 			if len(relMarkets) == 0 && len(alternateMarkets) == 0 {
-				// Try to get markets directly for the main matchup (useful for live matches)
 				directMarkets, err := p.client.GetRelatedStraightMarkets(mainID)
 				if err == nil && len(directMarkets) > 0 {
-					// Filter to only open markets with Period 0 or -1
+					// Filter to only open markets with Period 0
 					for _, m := range directMarkets {
-						if m.Status == "open" && (m.Period == 0 || m.Period == -1) && !m.IsAlternate {
+						if m.Status == "open" && m.Period == 0 && !m.IsAlternate {
 							relMarkets = append(relMarkets, m)
 						}
 					}
@@ -305,234 +257,6 @@ func (p *Parser) processAll(ctx context.Context) error {
 			// Add match to in-memory store for fast API access (primary storage)
 			// YDB is not used - data is served directly from memory
 			health.AddMatch(m)
-		}
-
-		// Process live matchups separately - no time check, only presence in live endpoint matters
-		// Fetch markets asynchronously for each live matchup
-		if len(liveMatchups) > 0 {
-			var logMsg string
-			logMsg = fmt.Sprintf("Pinnacle: Processing %d live matchups separately (no time check, only from live endpoint)\n", len(liveMatchups))
-			fmt.Print(logMsg)
-			logToFile(logMsg)
-			// Group live matchups by main matchup (for building match structure)
-			// But fetch markets using the actual live matchup ID
-			liveGroup := map[int64][]RelatedMatchup{}
-			for _, mu := range liveMatchups {
-				mainID := mu.ID
-				if mu.ParentID != nil && *mu.ParentID > 0 {
-					mainID = *mu.ParentID
-				}
-				liveGroup[mainID] = append(liveGroup[mainID], mu)
-			}
-			logMsg = fmt.Sprintf("Pinnacle: Grouped into %d unique live match groups\n", len(liveGroup))
-			fmt.Print(logMsg)
-			logToFile(logMsg)
-
-			// Process each live matchup with async market fetching
-			type liveMatchResult struct {
-				mainID    int64
-				matchupID int64 // actual matchup ID used for fetching
-				related   []RelatedMatchup
-				markets   []Market
-				err       error
-			}
-			resultsCh := make(chan liveMatchResult, len(liveMatchups))
-
-			// Fetch markets asynchronously for each live matchup using its actual ID
-			for _, mu := range liveMatchups {
-				select {
-				case <-ctx.Done():
-					return ctx.Err()
-				default:
-				}
-
-				// For live matches, try both live matchup ID and parentID to find which has open markets
-				// We need to check which one actually returns open live markets with current odds
-				matchupID := mu.ID
-				// Determine mainID for grouping
-				mainID := matchupID
-				if mu.ParentID != nil && *mu.ParentID > 0 {
-					mainID = *mu.ParentID
-				}
-				related := liveGroup[mainID]
-
-				go func(mID int64, matchID int64, parentID *int64, rel []RelatedMatchup) {
-					// Try live matchup ID first
-					logMsg := fmt.Sprintf("Pinnacle: Trying to fetch markets for live matchup ID %d\n", matchID)
-					fmt.Print(logMsg)
-					logToFile(logMsg)
-					liveMarkets, err := p.client.GetRelatedStraightMarkets(matchID)
-					if err != nil {
-						logMsg = fmt.Sprintf("Pinnacle: Failed to fetch markets for live matchup %d: %v\n", matchID, err)
-						fmt.Print(logMsg)
-						logToFile(logMsg)
-					}
-					
-					// DEBUG: Log all periods found in markets
-					periodCounts := make(map[int]int)
-					for _, m := range liveMarkets {
-						if m.Status == "open" && !m.IsAlternate {
-							periodCounts[m.Period]++
-						}
-					}
-					logMsg = fmt.Sprintf("Pinnacle: DEBUG Live matchup ID %d - all periods found: %v (total markets: %d)\n", matchID, periodCounts, len(liveMarkets))
-					fmt.Print(logMsg)
-					logToFile(logMsg)
-					
-					// Filter to only open markets - for live matches, prefer Period -1 (current period live) over Period 0 (full match, may be pre-match odds)
-					// Period -1 = current period live odds, Period 0 = full match (may be pre-match for live matches)
-					filtered := make([]Market, 0, len(liveMarkets))
-					period0Count := 0
-					periodMinus1Count := 0
-					for _, m := range liveMarkets {
-						if m.Status == "open" && !m.IsAlternate {
-							if m.Period == -1 {
-								// Period -1 = current period live - this is what we want for live matches
-								filtered = append(filtered, m)
-								periodMinus1Count++
-							} else if m.Period == 0 {
-								period0Count++
-								// Only use Period 0 if no Period -1 markets found (fallback)
-							}
-						}
-					}
-					// If no Period -1 markets, fallback to Period 0
-					if len(filtered) == 0 && period0Count > 0 {
-						for _, m := range liveMarkets {
-							if m.Status == "open" && m.Period == 0 && !m.IsAlternate {
-								filtered = append(filtered, m)
-							}
-						}
-					}
-					logMsg = fmt.Sprintf("Pinnacle: Live matchup ID %d returned %d open markets (Period -1: %d, Period 0: %d, from %d total)\n", matchID, len(filtered), periodMinus1Count, period0Count, len(liveMarkets))
-					fmt.Print(logMsg)
-					logToFile(logMsg)
-					
-					// If no open markets from live matchup ID, try parentID
-					if len(filtered) == 0 && parentID != nil && *parentID > 0 {
-						logMsg = fmt.Sprintf("Pinnacle: No open markets from live matchup %d, trying parentID %d\n", matchID, *parentID)
-						fmt.Print(logMsg)
-						logToFile(logMsg)
-						parentMarkets, err := p.client.GetRelatedStraightMarkets(*parentID)
-						if err == nil {
-							// DEBUG: Log all periods found in parent markets
-							parentPeriodCounts := make(map[int]int)
-							for _, m := range parentMarkets {
-								if m.Status == "open" && !m.IsAlternate {
-									parentPeriodCounts[m.Period]++
-								}
-							}
-							logMsg = fmt.Sprintf("Pinnacle: DEBUG ParentID %d - all periods found: %v (total markets: %d)\n", *parentID, parentPeriodCounts, len(parentMarkets))
-							fmt.Print(logMsg)
-							logToFile(logMsg)
-							
-							parentFiltered := make([]Market, 0, len(parentMarkets))
-							parentPeriod0Count := 0
-							parentPeriodMinus1Count := 0
-							for _, m := range parentMarkets {
-								if m.Status == "open" && !m.IsAlternate {
-									if m.Period == -1 {
-										parentFiltered = append(parentFiltered, m)
-										parentPeriodMinus1Count++
-									} else if m.Period == 0 {
-										parentPeriod0Count++
-									}
-								}
-							}
-							// If no Period -1 markets, fallback to Period 0
-							if len(parentFiltered) == 0 && parentPeriod0Count > 0 {
-								for _, m := range parentMarkets {
-									if m.Status == "open" && m.Period == 0 && !m.IsAlternate {
-										parentFiltered = append(parentFiltered, m)
-									}
-								}
-							}
-							logMsg = fmt.Sprintf("Pinnacle: ParentID %d returned %d open markets (from %d total)\n", *parentID, len(parentFiltered), len(parentMarkets))
-							fmt.Print(logMsg)
-							logToFile(logMsg)
-							if len(parentFiltered) > 0 {
-								filtered = parentFiltered
-								logMsg = fmt.Sprintf("Pinnacle: Using parentID %d markets (has %d open markets vs 0 from live matchup %d)\n", *parentID, len(filtered), matchID)
-								fmt.Print(logMsg)
-								logToFile(logMsg)
-							}
-						}
-					}
-					
-					resultsCh <- liveMatchResult{mainID: mID, matchupID: matchID, related: rel, markets: filtered, err: nil}
-				}(mainID, matchupID, mu.ParentID, related)
-			}
-
-			// Collect results from async market fetches
-			// Group by match ID to avoid duplicate updates and use best matchup ID with markets
-			matchesByID := make(map[string]liveMatchResult) // key: match ID from buildMatchFromPinnacle
-			for i := 0; i < len(liveMatchups); i++ {
-				select {
-				case result := <-resultsCh:
-					if result.err != nil || len(result.markets) == 0 {
-						if result.err != nil {
-							logMsg = fmt.Sprintf("Pinnacle: Skipping live matchup %d (matchupID: %d): error=%v\n", result.mainID, result.matchupID, result.err)
-							fmt.Print(logMsg)
-							logToFile(logMsg)
-						} else {
-							logMsg = fmt.Sprintf("Pinnacle: Skipping live matchup %d (matchupID: %d): no open markets found\n", result.mainID, result.matchupID)
-							fmt.Print(logMsg)
-							logToFile(logMsg)
-						}
-						continue
-					}
-					// Build match to get its ID
-					m, err := buildMatchFromPinnacle(result.mainID, result.related, result.markets)
-					if err != nil || m == nil {
-						logMsg = fmt.Sprintf("Pinnacle: Failed to build match from live matchup %d (matchupID: %d): err=%v\n", result.mainID, result.matchupID, err)
-						fmt.Print(logMsg)
-						logToFile(logMsg)
-						continue
-					}
-					// Use match with most markets if we have multiple matchup IDs for same match
-					if existing, exists := matchesByID[m.ID]; exists {
-						if len(result.markets) > len(existing.markets) {
-							logMsg = fmt.Sprintf("Pinnacle: Replacing match %s: using matchupID %d (%d markets) instead of %d (%d markets)\n", m.Name, result.matchupID, len(result.markets), existing.matchupID, len(existing.markets))
-							fmt.Print(logMsg)
-							logToFile(logMsg)
-							matchesByID[m.ID] = result
-						} else {
-							logMsg = fmt.Sprintf("Pinnacle: Keeping existing match %s: matchupID %d has %d markets (new matchupID %d has %d)\n", m.Name, existing.matchupID, len(existing.markets), result.matchupID, len(result.markets))
-							fmt.Print(logMsg)
-							logToFile(logMsg)
-						}
-					} else {
-						matchesByID[m.ID] = result
-					}
-				case <-ctx.Done():
-					return ctx.Err()
-				}
-			}
-
-			// Add all unique matches to store
-			liveMatchesAdded := 0
-			for matchID, result := range matchesByID {
-				m, err := buildMatchFromPinnacle(result.mainID, result.related, result.markets)
-				if err != nil || m == nil {
-					logMsg = fmt.Sprintf("Pinnacle: Failed to build match %s from result: err=%v\n", matchID, err)
-					fmt.Print(logMsg)
-					logToFile(logMsg)
-					continue
-				}
-				// Add match to in-memory store - it will be available in /matches endpoint
-				health.AddMatch(m)
-				liveMatchesAdded++
-				logMsg = fmt.Sprintf("Pinnacle: Successfully added live match: %s (matchupID: %d, mainID: %d, %d markets)\n", m.Name, result.matchupID, result.mainID, len(result.markets))
-				fmt.Print(logMsg)
-				logToFile(logMsg)
-			}
-			logMsg = fmt.Sprintf("Pinnacle: Completed processing live matchups: %d unique matches added out of %d total matchup IDs\n", liveMatchesAdded, len(liveMatchups))
-			fmt.Print(logMsg)
-			logToFile(logMsg)
-		} else {
-			logMsg := "Pinnacle: No live matchups found in live endpoint\n"
-			fmt.Print(logMsg)
-			logToFile(logMsg)
 		}
 	}
 
@@ -662,13 +386,12 @@ func buildMatchFromPinnacle(matchupID int64, related []RelatedMatchup, markets [
 		return ev
 	}
 
-	// Period 0 only for now (full match), but allow Period -1 for live matches
+	// Period 0 only (full match pre-match odds)
 	marketsByMatchupID := make(map[int64][]Market)
 	alternateMarketsByMatchupID := make(map[int64][]Market) // Fallback for alternate markets
 	for _, mkt := range markets {
-		// Allow Period 0 (full match) and Period -1 (live/current period)
-		// Period -1 is used by Pinnacle for live matches
-		if (mkt.Period != 0 && mkt.Period != -1) || mkt.Status != "open" {
+		// Only Period 0 (full match pre-match)
+		if mkt.Period != 0 || mkt.Status != "open" {
 			continue
 		}
 		if mkt.IsAlternate {
@@ -686,8 +409,8 @@ func buildMatchFromPinnacle(matchupID int64, related []RelatedMatchup, markets [
 
 	// Process regular markets first
 	for _, mkt := range markets {
-		// Allow Period 0 (full match) and Period -1 (live/current period)
-		if (mkt.Period != 0 && mkt.Period != -1) || mkt.Status != "open" {
+		// Only Period 0 (full match pre-match)
+		if mkt.Period != 0 || mkt.Status != "open" {
 			continue
 		}
 		// Skip alternate markets for now - we'll use them as fallback
@@ -712,7 +435,7 @@ func buildMatchFromPinnacle(matchupID int64, related []RelatedMatchup, markets [
 	}
 	if !hasOutcomes {
 		for _, mkt := range markets {
-			if (mkt.Period != 0 && mkt.Period != -1) || mkt.Status != "open" {
+			if mkt.Period != 0 || mkt.Status != "open" {
 				continue
 			}
 			if !mkt.IsAlternate {

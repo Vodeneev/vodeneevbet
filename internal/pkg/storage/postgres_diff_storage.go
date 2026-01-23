@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"log"
 	"reflect"
+	"regexp"
+	"strings"
 	"time"
 
 	_ "github.com/lib/pq"
@@ -20,13 +22,77 @@ type PostgresDiffStorage struct {
 	db *sql.DB
 }
 
+// parseDSNForMultipleHosts parses DSN and tries each host if multiple hosts are specified
+// lib/pq doesn't support comma-separated hosts, so we need to try them one by one
+func parseDSNForMultipleHosts(dsn string) (string, error) {
+	// Check if DSN contains multiple hosts (comma-separated)
+	// Format: host=host1,host2 port=... or host=host1,host2,host3 port=...
+	
+	// Simple regex to find host parameter
+	hostPattern := `host=([^ ]+)`
+	re := regexp.MustCompile(hostPattern)
+	matches := re.FindStringSubmatch(dsn)
+	if len(matches) < 2 {
+		return dsn, nil // No host parameter found, return as is
+	}
+	
+	hostsStr := matches[1]
+	hosts := strings.Split(hostsStr, ",")
+	
+	// If only one host, return DSN as is
+	if len(hosts) <= 1 {
+		return dsn, nil
+	}
+	
+	// Multiple hosts found - try each one
+	var lastErr error
+	for _, host := range hosts {
+		host = strings.TrimSpace(host)
+		if host == "" {
+			continue
+		}
+		
+		// Replace host parameter with single host
+		singleHostDSN := re.ReplaceAllString(dsn, fmt.Sprintf("host=%s", host))
+		
+		// Try to connect
+		db, err := sql.Open("postgres", singleHostDSN)
+		if err != nil {
+			lastErr = fmt.Errorf("failed to open connection to %s: %w", host, err)
+			continue
+		}
+		
+		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+		err = db.PingContext(ctx)
+		cancel()
+		db.Close()
+		
+		if err == nil {
+			// This host works, return DSN with this host
+			log.Printf("PostgreSQL: successfully connected to host %s", host)
+			return singleHostDSN, nil
+		}
+		
+		lastErr = fmt.Errorf("failed to ping %s: %w", host, err)
+	}
+	
+	// All hosts failed
+	return "", fmt.Errorf("failed to connect to any PostgreSQL host: %w", lastErr)
+}
+
 // NewPostgresDiffStorage creates a new PostgreSQL storage for diffs
 func NewPostgresDiffStorage(cfg *config.PostgresConfig) (*PostgresDiffStorage, error) {
 	if cfg.DSN == "" {
 		return nil, fmt.Errorf("postgres DSN is required")
 	}
 
-	db, err := sql.Open("postgres", cfg.DSN)
+	// Handle multiple hosts in DSN
+	dsn, err := parseDSNForMultipleHosts(cfg.DSN)
+	if err != nil {
+		return nil, err
+	}
+
+	db, err := sql.Open("postgres", dsn)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open postgres connection: %w", err)
 	}

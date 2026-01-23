@@ -46,3 +46,19 @@ type ValueBetStorage interface {
 	// GetValueBetStats gets value bet statistics
 	GetValueBetStats(ctx context.Context) (interface{}, error)
 }
+
+// DiffBetStorage interface for working with diff bet data
+type DiffBetStorage interface {
+	// StoreDiffBet stores a DiffBet record
+	// Returns true if the record was newly inserted, false if it already existed
+	StoreDiffBet(ctx context.Context, diff interface{}) (bool, error)
+	
+	// IsNewDiffBet checks if a diff bet is new (not seen recently)
+	IsNewDiffBet(ctx context.Context, diff interface{}, withinMinutes int) (bool, error)
+	
+	// GetRecentDiffBets gets diff bets from the last N minutes
+	GetRecentDiffBets(ctx context.Context, withinMinutes int, minDiffPercent float64) ([]interface{}, error)
+	
+	// Close closes the database connection
+	Close() error
+}

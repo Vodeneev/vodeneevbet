@@ -71,6 +71,14 @@ type ValueCalculatorConfig struct {
 	Markets             []string `yaml:"markets"`
 	ReferenceBookmakers []string `yaml:"reference_bookmakers"`
 	ParserURL           string   `yaml:"parser_url"` // URL to parser's /matches endpoint
+	
+	// Async processing settings
+	AsyncEnabled        bool    `yaml:"async_enabled"`        // Enable async processing
+	AsyncInterval       string  `yaml:"async_interval"`        // Interval for async processing (e.g., "30s")
+	AlertThreshold10    float64 `yaml:"alert_threshold_10"`   // Alert threshold for 10% diffs
+	AlertThreshold20    float64 `yaml:"alert_threshold_20"`   // Alert threshold for 20% diffs
+	TelegramBotToken    string  `yaml:"telegram_bot_token"`  // Telegram bot token for notifications
+	TelegramChatID      int64   `yaml:"telegram_chat_id"`    // Telegram chat ID to send notifications
 }
 
 func Load(configPath string) (*Config, error) {

@@ -8,11 +8,13 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strconv"
 	"syscall"
 	"time"
 
 	"github.com/Vodeneev/vodeneevbet/internal/calculator/calculator"
 	"github.com/Vodeneev/vodeneevbet/internal/pkg/config"
+	"github.com/Vodeneev/vodeneevbet/internal/pkg/storage"
 )
 
 const (
@@ -49,7 +51,49 @@ func main() {
 	}
 	log.Printf("calculator: using parser URL %s", cfg.ValueCalculator.ParserURL)
 
-	valueCalculator := calculator.NewValueCalculator(&cfg.ValueCalculator)
+	// Override Telegram settings from environment if provided
+	if token := os.Getenv("TELEGRAM_BOT_TOKEN"); token != "" {
+		cfg.ValueCalculator.TelegramBotToken = token
+		log.Println("calculator: using Telegram bot token from environment")
+	}
+	if chatIDStr := os.Getenv("TELEGRAM_CHAT_ID"); chatIDStr != "" {
+		if chatID, err := strconv.ParseInt(chatIDStr, 10, 64); err == nil {
+			cfg.ValueCalculator.TelegramChatID = chatID
+			log.Printf("calculator: using Telegram chat ID from environment: %d", chatID)
+		}
+	}
+
+	// Initialize PostgreSQL storage for diffs if async is enabled
+	var diffStorage storage.DiffBetStorage
+	if cfg.ValueCalculator.AsyncEnabled {
+		// Allow DSN override via environment variable
+		postgresDSN := cfg.Postgres.DSN
+		if envDSN := os.Getenv("POSTGRES_DSN"); envDSN != "" {
+			postgresDSN = envDSN
+			log.Println("calculator: using PostgreSQL DSN from POSTGRES_DSN environment variable")
+		}
+		
+		if postgresDSN == "" {
+			log.Fatalf("calculator: postgres DSN is required when async is enabled. Set it in config or POSTGRES_DSN env var")
+		}
+		
+		log.Println("calculator: initializing PostgreSQL diff storage...")
+		pgConfig := cfg.Postgres
+		pgConfig.DSN = postgresDSN
+		pgStorage, err := storage.NewPostgresDiffStorage(&pgConfig)
+		if err != nil {
+			log.Fatalf("calculator: failed to initialize PostgreSQL storage: %v", err)
+		}
+		diffStorage = pgStorage
+		defer func() {
+			if err := pgStorage.Close(); err != nil {
+				log.Printf("calculator: error closing PostgreSQL storage: %v", err)
+			}
+		}()
+		log.Println("calculator: PostgreSQL diff storage initialized")
+	}
+
+	valueCalculator := calculator.NewValueCalculator(&cfg.ValueCalculator, diffStorage)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()

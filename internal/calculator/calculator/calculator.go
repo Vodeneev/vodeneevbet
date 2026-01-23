@@ -13,32 +13,153 @@ import (
 
 	"github.com/Vodeneev/vodeneevbet/internal/pkg/config"
 	"github.com/Vodeneev/vodeneevbet/internal/pkg/models"
+	"github.com/Vodeneev/vodeneevbet/internal/pkg/storage"
 )
 
 // ValueCalculator reads odds from HTTP endpoint and calculates top diffs between bookmakers.
 // Data is fetched on-demand from parser on each request.
+// Can also run asynchronously to process matches periodically and send alerts.
 type ValueCalculator struct {
-	httpClient *HTTPMatchesClient
-	cfg        *config.ValueCalculatorConfig
+	httpClient   *HTTPMatchesClient
+	cfg          *config.ValueCalculatorConfig
+	diffStorage  storage.DiffBetStorage
+	notifier     *TelegramNotifier
+	asyncTicker  *time.Ticker
 }
 
-func NewValueCalculator(cfg *config.ValueCalculatorConfig) *ValueCalculator {
+func NewValueCalculator(cfg *config.ValueCalculatorConfig, diffStorage storage.DiffBetStorage) *ValueCalculator {
 	var httpClient *HTTPMatchesClient
 	if cfg != nil && cfg.ParserURL != "" {
 		httpClient = NewHTTPMatchesClient(cfg.ParserURL)
 	}
 
+	var notifier *TelegramNotifier
+	if cfg != nil && cfg.AsyncEnabled && cfg.TelegramBotToken != "" && cfg.TelegramChatID != 0 {
+		notifier = NewTelegramNotifier(cfg.TelegramBotToken, cfg.TelegramChatID)
+	}
+
 	return &ValueCalculator{
-		httpClient: httpClient,
-		cfg:        cfg,
+		httpClient:  httpClient,
+		cfg:         cfg,
+		diffStorage: diffStorage,
+		notifier:    notifier,
 	}
 }
 
 func (c *ValueCalculator) Start(ctx context.Context) error {
-	// No background processing needed - data is fetched on-demand in handleTopDiffs
-	// Just wait for context cancellation
+	// Start async processing if enabled
+	if c.cfg != nil && c.cfg.AsyncEnabled {
+		interval, err := time.ParseDuration(c.cfg.AsyncInterval)
+		if err != nil {
+			interval = 30 * time.Second // Default to 30 seconds
+			log.Printf("calculator: invalid async_interval, using default 30s")
+		}
+		
+		log.Printf("calculator: starting async processing with interval %v", interval)
+		c.asyncTicker = time.NewTicker(interval)
+		
+		go c.runAsyncProcessing(ctx)
+	} else {
+		log.Println("calculator: async processing disabled, running in on-demand mode")
+	}
+
+	// Wait for context cancellation
 	<-ctx.Done()
+	
+	if c.asyncTicker != nil {
+		c.asyncTicker.Stop()
+	}
+	
 	return nil
+}
+
+// runAsyncProcessing runs the async processing loop
+func (c *ValueCalculator) runAsyncProcessing(ctx context.Context) {
+	// Run immediately on start
+	c.processMatchesAsync(ctx)
+	
+	for {
+		select {
+		case <-ctx.Done():
+			log.Println("calculator: stopping async processing")
+			return
+		case <-c.asyncTicker.C:
+			c.processMatchesAsync(ctx)
+		}
+	}
+}
+
+// processMatchesAsync processes matches asynchronously and sends alerts for new high-value diffs
+func (c *ValueCalculator) processMatchesAsync(ctx context.Context) {
+	if c.httpClient == nil {
+		log.Printf("calculator: async: parser URL not configured, skipping")
+		return
+	}
+
+	if c.diffStorage == nil {
+		log.Printf("calculator: async: diff storage not configured, skipping")
+		return
+	}
+
+	log.Println("calculator: async: fetching matches...")
+	
+	// Create context with timeout for the request
+	reqCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+
+	matches, err := c.httpClient.GetMatches(reqCtx)
+	if err != nil {
+		log.Printf("calculator: async: failed to fetch matches: %v", err)
+		return
+	}
+
+	log.Printf("calculator: async: fetched %d matches, calculating diffs...", len(matches))
+
+	// Calculate all diffs
+	diffs := computeTopDiffs(matches, 1000) // Get more diffs for async processing
+
+	log.Printf("calculator: async: calculated %d diffs, storing and checking for alerts...", len(diffs))
+
+	// Store diffs and check for new high-value ones
+	alertCount10 := 0
+	alertCount20 := 0
+	
+	for _, diff := range diffs {
+		// Store the diff (pass as interface{} to match interface)
+		isNew, err := c.diffStorage.StoreDiffBet(ctx, &diff)
+		if err != nil {
+			log.Printf("calculator: async: failed to store diff: %v", err)
+			continue
+		}
+
+		// Check if it's new and above threshold
+		if !isNew {
+			continue // Skip if already exists
+		}
+
+		// Check thresholds and send alerts
+		if c.cfg.AlertThreshold20 > 0 && diff.DiffPercent >= c.cfg.AlertThreshold20 {
+			if c.notifier != nil {
+				if err := c.notifier.SendDiffAlert(ctx, &diff, 20); err != nil {
+					log.Printf("calculator: async: failed to send 20%% alert: %v", err)
+				} else {
+					alertCount20++
+					log.Printf("calculator: async: sent 20%% alert for %s (%.2f%%)", diff.MatchName, diff.DiffPercent)
+				}
+			}
+		} else if c.cfg.AlertThreshold10 > 0 && diff.DiffPercent >= c.cfg.AlertThreshold10 {
+			if c.notifier != nil {
+				if err := c.notifier.SendDiffAlert(ctx, &diff, 10); err != nil {
+					log.Printf("calculator: async: failed to send 10%% alert: %v", err)
+				} else {
+					alertCount10++
+					log.Printf("calculator: async: sent 10%% alert for %s (%.2f%%)", diff.MatchName, diff.DiffPercent)
+				}
+			}
+		}
+	}
+
+	log.Printf("calculator: async: processing complete. Sent %d alerts (10%% threshold) and %d alerts (20%% threshold)", alertCount10, alertCount20)
 }
 
 // RegisterHTTP registers calculator endpoints onto mux.

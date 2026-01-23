@@ -17,6 +17,7 @@ require (
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/jonboulle/clockwork v0.5.0 // indirect
 	github.com/kr/pretty v0.3.1 // indirect
+	github.com/lib/pq v1.10.9 // indirect
 	github.com/yandex-cloud/go-genproto v0.0.0-20211115083454-9ca41db5ed9e // indirect
 	github.com/ydb-platform/ydb-go-genproto v0.0.0-20250911135631-b3beddd517d9 // indirect
 	golang.org/x/net v0.35.0 // indirect

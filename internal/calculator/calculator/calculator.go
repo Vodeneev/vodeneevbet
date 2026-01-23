@@ -101,6 +101,20 @@ func (c *ValueCalculator) processMatchesAsync(ctx context.Context) {
 		return
 	}
 
+	alertThreshold := 0.0
+	if c.cfg != nil {
+		// Preferred single threshold
+		if c.cfg.AlertThreshold > 0 {
+			alertThreshold = c.cfg.AlertThreshold
+		} else if c.cfg.AlertThreshold20 > 0 {
+			// Backward compatibility
+			alertThreshold = c.cfg.AlertThreshold20
+		} else if c.cfg.AlertThreshold10 > 0 {
+			// Backward compatibility
+			alertThreshold = c.cfg.AlertThreshold10
+		}
+	}
+
 	log.Println("calculator: async: fetching matches...")
 	
 	// Create context with timeout for the request
@@ -121,8 +135,7 @@ func (c *ValueCalculator) processMatchesAsync(ctx context.Context) {
 	log.Printf("calculator: async: calculated %d diffs, storing and checking for alerts...", len(diffs))
 
 	// Store diffs and check for new high-value ones
-	alertCount10 := 0
-	alertCount20 := 0
+	alertCount := 0
 	
 	for _, diff := range diffs {
 		// Store the diff (pass as interface{} to match interface)
@@ -137,29 +150,19 @@ func (c *ValueCalculator) processMatchesAsync(ctx context.Context) {
 			continue // Skip if already exists
 		}
 
-		// Check thresholds and send alerts
-		if c.cfg.AlertThreshold20 > 0 && diff.DiffPercent >= c.cfg.AlertThreshold20 {
-			if c.notifier != nil {
-				if err := c.notifier.SendDiffAlert(ctx, &diff, 20); err != nil {
-					log.Printf("calculator: async: failed to send 20%% alert: %v", err)
-				} else {
-					alertCount20++
-					log.Printf("calculator: async: sent 20%% alert for %s (%.2f%%)", diff.MatchName, diff.DiffPercent)
-				}
-			}
-		} else if c.cfg.AlertThreshold10 > 0 && diff.DiffPercent >= c.cfg.AlertThreshold10 {
-			if c.notifier != nil {
-				if err := c.notifier.SendDiffAlert(ctx, &diff, 10); err != nil {
-					log.Printf("calculator: async: failed to send 10%% alert: %v", err)
-				} else {
-					alertCount10++
-					log.Printf("calculator: async: sent 10%% alert for %s (%.2f%%)", diff.MatchName, diff.DiffPercent)
-				}
+		// Send Telegram alerts only for diffs strictly above threshold
+		if alertThreshold > 0 && diff.DiffPercent > alertThreshold && c.notifier != nil {
+			thresholdInt := int(math.Round(alertThreshold))
+			if err := c.notifier.SendDiffAlert(ctx, &diff, thresholdInt); err != nil {
+				log.Printf("calculator: async: failed to send %.0f%% alert: %v", alertThreshold, err)
+			} else {
+				alertCount++
+				log.Printf("calculator: async: sent %.0f%% alert for %s (%.2f%%)", alertThreshold, diff.MatchName, diff.DiffPercent)
 			}
 		}
 	}
 
-	log.Printf("calculator: async: processing complete. Sent %d alerts (10%% threshold) and %d alerts (20%% threshold)", alertCount10, alertCount20)
+	log.Printf("calculator: async: processing complete. Sent %d alerts (>%.0f%% threshold)", alertCount, alertThreshold)
 }
 
 // RegisterHTTP registers calculator endpoints onto mux.

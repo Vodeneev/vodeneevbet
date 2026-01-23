@@ -104,7 +104,9 @@ value_calculator:
   # Async processing settings
   async_enabled: true              # Enable asynchronous processing
   async_interval: 30s              # Interval for async processing (every 30 seconds)
-  alert_threshold_10: 10.0         # Alert threshold for 10% diffs
-  alert_threshold_20: 20.0         # Alert threshold for 20% diffs
+  alert_threshold: 30.0            # Send Telegram alerts only for diffs >= 30%
+  # Deprecated (kept for backward compatibility; not used when alert_threshold is set):
+  alert_threshold_10: 0.0
+  alert_threshold_20: 0.0
   telegram_bot_token: ""          # Telegram bot token (set via TELEGRAM_BOT_TOKEN env var)
   telegram_chat_id: 0              # Telegram chat ID to send notifications (set via TELEGRAM_CHAT_ID env var)

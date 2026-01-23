@@ -58,7 +58,8 @@ func main() {
 	}
 
 	// Выводим результаты по категориям
-	fmt.Println("=== Анализ отфильтрованных матчей ===\n")
+	fmt.Println("=== Анализ отфильтрованных матчей ===")
+	fmt.Println()
 
 	total := 0
 	for reason, matches := range categories {

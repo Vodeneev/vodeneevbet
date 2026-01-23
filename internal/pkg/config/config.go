@@ -75,6 +75,7 @@ type ValueCalculatorConfig struct {
 	// Async processing settings
 	AsyncEnabled        bool    `yaml:"async_enabled"`        // Enable async processing
 	AsyncInterval       string  `yaml:"async_interval"`        // Interval for async processing (e.g., "30s")
+	AlertThreshold      float64 `yaml:"alert_threshold"`       // Single alert threshold in percent (preferred)
 	AlertThreshold10    float64 `yaml:"alert_threshold_10"`   // Alert threshold for 10% diffs
 	AlertThreshold20    float64 `yaml:"alert_threshold_20"`   // Alert threshold for 20% diffs
 	TelegramBotToken    string  `yaml:"telegram_bot_token"`  // Telegram bot token for notifications

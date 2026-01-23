@@ -15,8 +15,10 @@ host=<host1>,<host2> port=6432 user=<username> password=<password> dbname=<dbnam
 
 **Пример для вашего кластера:**
 ```
-host=rc1a-fec715cq0rept3kd.mdb.yandexcloud.net,rc1a-h8tc88gfbg9v7anh.mdb.yandexcloud.net port=6432 user=vodeneevbet password=your_secure_password dbname=db sslmode=require target_session_attrs=read-write
+host=rc1a-fec715cq0rept3kd.mdb.yandexcloud.net,rc1a-h8tc88gfbg9v7anh.mdb.yandexcloud.net port=6432 user=vodeneevm password=your_secure_password dbname=db sslmode=require target_session_attrs=read-write
 ```
+
+**⚠️ Важно:** Пользователь должен быть `vodeneevm` (не `vodeneevbet`!)
 
 **Важно:**
 - Указывайте все хосты через запятую для отказоустойчивости
@@ -42,10 +44,33 @@ host=rc1a-fec715cq0rept3kd.mdb.yandexcloud.net,rc1a-h8tc88gfbg9v7anh.mdb.yandexc
 
 ID чата, куда будут отправляться уведомления.
 
-**Как получить:**
+**Как получить (выберите один способ):**
+
+**Способ 1: Через @userinfobot (для личных чатов) - самый простой**
 1. Откройте [@userinfobot](https://t.me/userinfobot) в Telegram
-2. Бот покажет ваш Chat ID (число, например: `123456789`)
-3. Или создайте группу и добавьте [@RawDataBot](https://t.me/RawDataBot) - он покажет ID группы
+2. Отправьте `/start`
+3. Бот покажет ваш Chat ID (число, например: `123456789`)
+
+**Способ 2: Через @RawDataBot (для групп)**
+1. Создайте группу или откройте существующую
+2. Добавьте [@RawDataBot](https://t.me/RawDataBot) в группу
+3. Отправьте любое сообщение в группу
+4. Бот ответит JSON с данными - найдите `chat.id` (это и есть Chat ID группы)
+
+**Способ 3: Через @getidsbot**
+1. Откройте [@getidsbot](https://t.me/getidsbot) в Telegram
+2. Отправьте `/start`
+3. Бот покажет ваш Chat ID
+
+**Способ 4: Через вашего бота (если уже запущен)**
+1. Напишите вашему боту любое сообщение (например, `/start`)
+2. Проверьте логи бота - там будет Chat ID из входящего сообщения
+3. Или временно добавьте логирование в код бота для вывода Chat ID
+
+**Примечание:** 
+- Для личных чатов используйте ваш User ID (получите через @userinfobot)
+- Для групп используйте Group ID (получите через @RawDataBot)
+- Chat ID - это число (может быть отрицательным для групп)
 
 ## Настройка секретов в GitHub
 
@@ -53,19 +78,27 @@ ID чата, куда будут отправляться уведомления
 
 1. Откройте ваш репозиторий на GitHub
 2. Перейдите в **Settings** → **Secrets and variables** → **Actions**
-3. Нажмите **New repository secret**
-4. Добавьте каждый секрет:
+3. Если секрет уже существует:
+   - Найдите нужный секрет в списке (например, `POSTGRES_DSN`)
+   - Нажмите на него, затем нажмите **Update** (или **Edit**)
+   - Вставьте новое значение
+   - Нажмите **Update secret**
+4. Если секрета нет:
+   - Нажмите **New repository secret**
+   - Добавьте каждый секрет:
 
-   - **Name**: `POSTGRES_DSN`
-   - **Secret**: `host=rc1a-fec715cq0rept3kd.mdb.yandexcloud.net,rc1a-h8tc88gfbg9v7anh.mdb.yandexcloud.net port=6432 user=vodeneevbet password=your_password dbname=db sslmode=require target_session_attrs=read-write`
+     - **Name**: `POSTGRES_DSN`
+     - **Secret**: `host=rc1a-fec715cq0rept3kd.mdb.yandexcloud.net,rc1a-h8tc88gfbg9v7anh.mdb.yandexcloud.net port=6432 user=vodeneevm password=your_password dbname=db sslmode=require target_session_attrs=read-write`
+     
+     ⚠️ **Важно:** Используйте пользователя `vodeneevm` (не `vodeneevbet`!)
 
-   - **Name**: `TELEGRAM_BOT_TOKEN`
-   - **Secret**: `123456789:ABCdefGHIjklMNOpqrsTUVwxyz`
+     - **Name**: `TELEGRAM_BOT_TOKEN`
+     - **Secret**: `123456789:ABCdefGHIjklMNOpqrsTUVwxyz`
 
-   - **Name**: `TELEGRAM_CHAT_ID`
-   - **Secret**: `123456789`
+     - **Name**: `TELEGRAM_CHAT_ID`
+     - **Secret**: `123456789`
 
-5. Нажмите **Add secret**
+   - Нажмите **Add secret**
 
 ### Через GitHub CLI:
 
@@ -77,8 +110,8 @@ ID чата, куда будут отправляться уведомления
 # Авторизуйтесь
 gh auth login
 
-# Добавьте секреты
-gh secret set POSTGRES_DSN --body "host=rc1a-fec715cq0rept3kd.mdb.yandexcloud.net,rc1a-h8tc88gfbg9v7anh.mdb.yandexcloud.net port=6432 user=vodeneevbet password=your_password dbname=db sslmode=require target_session_attrs=read-write"
+# Добавьте или обновите секреты (команда set обновит существующий секрет)
+gh secret set POSTGRES_DSN --body "host=rc1a-fec715cq0rept3kd.mdb.yandexcloud.net,rc1a-h8tc88gfbg9v7anh.mdb.yandexcloud.net port=6432 user=vodeneevm password=your_password dbname=db sslmode=require target_session_attrs=read-write"
 gh secret set TELEGRAM_BOT_TOKEN --body "123456789:ABCdefGHIjklMNOpqrsTUVwxyz"
 gh secret set TELEGRAM_CHAT_ID --body "123456789"
 ```

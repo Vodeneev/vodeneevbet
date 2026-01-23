@@ -178,7 +178,9 @@ func handleMessage(bot *tgbotapi.BotAPI, message *tgbotapi.Message, config BotCo
 		command := strings.ToLower(parts[0])
 
 		switch command {
-		case "/start", "/help":
+		case "/start":
+			startAsyncProcessing(bot, message.Chat.ID, config)
+		case "/help":
 			sendHelpMessage(bot, message.Chat.ID)
 		case "/top":
 			limit := 5
@@ -204,6 +206,8 @@ func handleMessage(bot *tgbotapi.BotAPI, message *tgbotapi.Message, config BotCo
 				}
 			}
 			fetchAndSendDiffs(bot, message.Chat.ID, config, limit, "upcoming")
+		case "/stop":
+			stopAsyncProcessing(bot, message.Chat.ID, config)
 		default:
 			msg := tgbotapi.NewMessage(message.Chat.ID, "Unknown command. Use /help to see available commands.")
 			if _, err := bot.Send(msg); err != nil {
@@ -251,6 +255,10 @@ func sendHelpMessage(bot *tgbotapi.BotAPI, chatID int64) {
 	helpText := `🤖 *Value Bet Calculator Bot*
 
 *Available Commands:*
+
+/start - Start/resume asynchronous diff processing
+
+/stop - Stop asynchronous diff processing
 
 /top [limit] - Get top value bet differences
   Example: /top 10
@@ -467,6 +475,154 @@ func escapeMarkdown(text string) string {
 		"!", "\\!",
 	)
 	return replacer.Replace(text)
+}
+
+func startAsyncProcessing(bot *tgbotapi.BotAPI, chatID int64, config BotConfig) {
+	// Show "typing..." indicator
+	typing := tgbotapi.NewChatAction(chatID, tgbotapi.ChatTyping)
+	if _, err := bot.Request(typing); err != nil {
+		log.Printf("Failed to send typing indicator to chat %d: %v", chatID, err)
+	}
+
+	// Build URL
+	url := fmt.Sprintf("%s/async/start", config.CalculatorURL)
+
+	// Send POST request to start async processing
+	log.Printf("Starting async processing via %s", url)
+	client := &http.Client{Timeout: 10 * time.Second}
+	req, err := http.NewRequest("POST", url, nil)
+	if err != nil {
+		log.Printf("Failed to create request: %v", err)
+		msg := tgbotapi.NewMessage(chatID, fmt.Sprintf("❌ Error: Failed to create request: %v", err))
+		if _, sendErr := bot.Send(msg); sendErr != nil {
+			log.Printf("Failed to send error message to chat %d: %v", chatID, sendErr)
+		}
+		return
+	}
+
+	resp, err := client.Do(req)
+	if err != nil {
+		log.Printf("Failed to start async processing: %v", err)
+		msg := tgbotapi.NewMessage(chatID, fmt.Sprintf("❌ Error: Failed to connect to calculator service: %v", err))
+		if _, sendErr := bot.Send(msg); sendErr != nil {
+			log.Printf("Failed to send error message to chat %d: %v", chatID, sendErr)
+		}
+		return
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		log.Printf("Calculator returned status %d", resp.StatusCode)
+		var errorResp map[string]string
+		if err := json.NewDecoder(resp.Body).Decode(&errorResp); err == nil {
+			msg := tgbotapi.NewMessage(chatID, fmt.Sprintf("❌ Error: %s", errorResp["error"]))
+			if _, sendErr := bot.Send(msg); sendErr != nil {
+				log.Printf("Failed to send error message to chat %d: %v", chatID, sendErr)
+			}
+		} else {
+			msg := tgbotapi.NewMessage(chatID, fmt.Sprintf("❌ Error: Calculator service returned status %d", resp.StatusCode))
+			if _, sendErr := bot.Send(msg); sendErr != nil {
+				log.Printf("Failed to send error message to chat %d: %v", chatID, sendErr)
+			}
+		}
+		return
+	}
+
+	var result map[string]string
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		log.Printf("Failed to parse calculator response: %v", err)
+		msg := tgbotapi.NewMessage(chatID, fmt.Sprintf("❌ Error: Failed to parse response: %v", err))
+		if _, sendErr := bot.Send(msg); sendErr != nil {
+			log.Printf("Failed to send error message to chat %d: %v", chatID, sendErr)
+		}
+		return
+	}
+
+	// Send success message
+	statusMsg := "✅ " + result["message"]
+	if result["status"] == "already_running" {
+		statusMsg = "ℹ️ " + result["message"]
+	}
+	msg := tgbotapi.NewMessage(chatID, statusMsg)
+	if _, err := bot.Send(msg); err != nil {
+		log.Printf("Failed to send start confirmation to chat %d: %v", chatID, err)
+	} else {
+		log.Printf("Successfully started async processing via bot")
+	}
+}
+
+func stopAsyncProcessing(bot *tgbotapi.BotAPI, chatID int64, config BotConfig) {
+	// Show "typing..." indicator
+	typing := tgbotapi.NewChatAction(chatID, tgbotapi.ChatTyping)
+	if _, err := bot.Request(typing); err != nil {
+		log.Printf("Failed to send typing indicator to chat %d: %v", chatID, err)
+	}
+
+	// Build URL
+	url := fmt.Sprintf("%s/async/stop", config.CalculatorURL)
+
+	// Send POST request to stop async processing
+	log.Printf("Stopping async processing via %s", url)
+	client := &http.Client{Timeout: 10 * time.Second}
+	req, err := http.NewRequest("POST", url, nil)
+	if err != nil {
+		log.Printf("Failed to create request: %v", err)
+		msg := tgbotapi.NewMessage(chatID, fmt.Sprintf("❌ Error: Failed to create request: %v", err))
+		if _, sendErr := bot.Send(msg); sendErr != nil {
+			log.Printf("Failed to send error message to chat %d: %v", chatID, sendErr)
+		}
+		return
+	}
+
+	resp, err := client.Do(req)
+	if err != nil {
+		log.Printf("Failed to stop async processing: %v", err)
+		msg := tgbotapi.NewMessage(chatID, fmt.Sprintf("❌ Error: Failed to connect to calculator service: %v", err))
+		if _, sendErr := bot.Send(msg); sendErr != nil {
+			log.Printf("Failed to send error message to chat %d: %v", chatID, sendErr)
+		}
+		return
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		log.Printf("Calculator returned status %d", resp.StatusCode)
+		var errorResp map[string]string
+		if err := json.NewDecoder(resp.Body).Decode(&errorResp); err == nil {
+			msg := tgbotapi.NewMessage(chatID, fmt.Sprintf("❌ Error: %s", errorResp["error"]))
+			if _, sendErr := bot.Send(msg); sendErr != nil {
+				log.Printf("Failed to send error message to chat %d: %v", chatID, sendErr)
+			}
+		} else {
+			msg := tgbotapi.NewMessage(chatID, fmt.Sprintf("❌ Error: Calculator service returned status %d", resp.StatusCode))
+			if _, sendErr := bot.Send(msg); sendErr != nil {
+				log.Printf("Failed to send error message to chat %d: %v", chatID, sendErr)
+			}
+		}
+		return
+	}
+
+	var result map[string]string
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		log.Printf("Failed to parse calculator response: %v", err)
+		msg := tgbotapi.NewMessage(chatID, fmt.Sprintf("❌ Error: Failed to parse response: %v", err))
+		if _, sendErr := bot.Send(msg); sendErr != nil {
+			log.Printf("Failed to send error message to chat %d: %v", chatID, sendErr)
+		}
+		return
+	}
+
+	// Send success message
+	statusMsg := "✅ " + result["message"]
+	if result["status"] == "already_stopped" {
+		statusMsg = "ℹ️ " + result["message"]
+	}
+	msg := tgbotapi.NewMessage(chatID, statusMsg)
+	if _, err := bot.Send(msg); err != nil {
+		log.Printf("Failed to send stop confirmation to chat %d: %v", chatID, err)
+	} else {
+		log.Printf("Successfully stopped async processing via bot")
+	}
 }
 
 // DiffBet represents a value bet difference (matches the calculator response)

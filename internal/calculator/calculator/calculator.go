@@ -3,12 +3,14 @@ package calculator
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"log"
 	"math"
 	"net/http"
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/Vodeneev/vodeneevbet/internal/pkg/config"
@@ -20,11 +22,15 @@ import (
 // Data is fetched on-demand from parser on each request.
 // Can also run asynchronously to process matches periodically and send alerts.
 type ValueCalculator struct {
-	httpClient   *HTTPMatchesClient
-	cfg          *config.ValueCalculatorConfig
-	diffStorage  storage.DiffBetStorage
-	notifier     *TelegramNotifier
-	asyncTicker  *time.Ticker
+	httpClient    *HTTPMatchesClient
+	cfg           *config.ValueCalculatorConfig
+	diffStorage   storage.DiffBetStorage
+	notifier      *TelegramNotifier
+	asyncTicker   *time.Ticker
+	asyncMu       sync.RWMutex
+	asyncStopped  bool
+	asyncCtx      context.Context
+	asyncCancel   context.CancelFunc
 }
 
 func NewValueCalculator(cfg *config.ValueCalculatorConfig, diffStorage storage.DiffBetStorage) *ValueCalculator {
@@ -49,16 +55,11 @@ func NewValueCalculator(cfg *config.ValueCalculatorConfig, diffStorage storage.D
 func (c *ValueCalculator) Start(ctx context.Context) error {
 	// Start async processing if enabled
 	if c.cfg != nil && c.cfg.AsyncEnabled {
-		interval, err := time.ParseDuration(c.cfg.AsyncInterval)
-		if err != nil {
-			interval = 30 * time.Second // Default to 30 seconds
-			log.Printf("calculator: invalid async_interval, using default 30s")
-		}
+		c.asyncMu.Lock()
+		c.asyncCtx, c.asyncCancel = context.WithCancel(ctx)
+		c.asyncMu.Unlock()
 		
-		log.Printf("calculator: starting async processing with interval %v", interval)
-		c.asyncTicker = time.NewTicker(interval)
-		
-		go c.runAsyncProcessing(ctx)
+		c.StartAsync()
 	} else {
 		log.Println("calculator: async processing disabled, running in on-demand mode")
 	}
@@ -66,9 +67,49 @@ func (c *ValueCalculator) Start(ctx context.Context) error {
 	// Wait for context cancellation
 	<-ctx.Done()
 	
+	c.StopAsync()
+	
+	return nil
+}
+
+// StartAsync starts or restarts the asynchronous processing
+func (c *ValueCalculator) StartAsync() error {
+	c.asyncMu.Lock()
+	defer c.asyncMu.Unlock()
+	
+	if c.cfg == nil || !c.cfg.AsyncEnabled {
+		return fmt.Errorf("async processing is not enabled in config")
+	}
+	
+	// If already running, don't restart
+	if c.asyncTicker != nil && !c.asyncStopped {
+		log.Println("calculator: async processing is already running")
+		return nil
+	}
+	
+	// Cancel old context if exists
+	if c.asyncCancel != nil {
+		c.asyncCancel()
+	}
+	
+	// Create new context for restart
+	c.asyncCtx, c.asyncCancel = context.WithCancel(context.Background())
+	
+	interval, err := time.ParseDuration(c.cfg.AsyncInterval)
+	if err != nil {
+		interval = 30 * time.Second // Default to 30 seconds
+		log.Printf("calculator: invalid async_interval, using default 30s")
+	}
+	
+	// Reset stopped flag and create new ticker
+	c.asyncStopped = false
 	if c.asyncTicker != nil {
 		c.asyncTicker.Stop()
 	}
+	c.asyncTicker = time.NewTicker(interval)
+	
+	log.Printf("calculator: starting async processing with interval %v", interval)
+	go c.runAsyncProcessing(c.asyncCtx)
 	
 	return nil
 }
@@ -79,11 +120,29 @@ func (c *ValueCalculator) runAsyncProcessing(ctx context.Context) {
 	c.processMatchesAsync(ctx)
 	
 	for {
+		// Check if async processing was stopped
+		c.asyncMu.RLock()
+		stopped := c.asyncStopped
+		c.asyncMu.RUnlock()
+		
+		if stopped {
+			log.Println("calculator: async processing stopped by user")
+			return
+		}
+		
 		select {
 		case <-ctx.Done():
 			log.Println("calculator: stopping async processing")
 			return
 		case <-c.asyncTicker.C:
+			// Check again before processing
+			c.asyncMu.RLock()
+			stopped = c.asyncStopped
+			c.asyncMu.RUnlock()
+			if stopped {
+				log.Println("calculator: async processing stopped by user")
+				return
+			}
 			c.processMatchesAsync(ctx)
 		}
 	}
@@ -165,10 +224,34 @@ func (c *ValueCalculator) processMatchesAsync(ctx context.Context) {
 	log.Printf("calculator: async: processing complete. Sent %d alerts (>%.0f%% threshold)", alertCount, alertThreshold)
 }
 
+// StopAsync stops the asynchronous processing
+func (c *ValueCalculator) StopAsync() {
+	c.asyncMu.Lock()
+	defer c.asyncMu.Unlock()
+	
+	if !c.asyncStopped && c.asyncTicker != nil {
+		c.asyncStopped = true
+		c.asyncTicker.Stop()
+		if c.asyncCancel != nil {
+			c.asyncCancel()
+		}
+		log.Println("calculator: async processing stopped")
+	}
+}
+
+// IsAsyncRunning returns true if async processing is currently running
+func (c *ValueCalculator) IsAsyncRunning() bool {
+	c.asyncMu.RLock()
+	defer c.asyncMu.RUnlock()
+	return c.asyncTicker != nil && !c.asyncStopped
+}
+
 // RegisterHTTP registers calculator endpoints onto mux.
 func (c *ValueCalculator) RegisterHTTP(mux *http.ServeMux) {
 	mux.HandleFunc("/diffs/top", c.handleTopDiffs)
 	mux.HandleFunc("/diffs/status", c.handleStatus)
+	mux.HandleFunc("/async/stop", c.handleStopAsync)
+	mux.HandleFunc("/async/start", c.handleStartAsync)
 }
 
 func (c *ValueCalculator) handleTopDiffs(w http.ResponseWriter, r *http.Request) {
@@ -265,6 +348,7 @@ func (c *ValueCalculator) handleStatus(w http.ResponseWriter, r *http.Request) {
 		"status":            "ok",
 		"parser_configured": c.httpClient != nil,
 		"mode":              "on-demand",
+		"async_running":     c.IsAsyncRunning(),
 	}
 	if c.httpClient == nil {
 		status["error"] = "parser URL is not configured"
@@ -272,6 +356,78 @@ func (c *ValueCalculator) handleStatus(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(status)
+}
+
+func (c *ValueCalculator) handleStopAsync(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		_ = json.NewEncoder(w).Encode(map[string]string{"error": "method not allowed, use POST"})
+		return
+	}
+
+	c.asyncMu.RLock()
+	wasRunning := c.asyncTicker != nil && !c.asyncStopped
+	c.asyncMu.RUnlock()
+
+	if !wasRunning {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_ = json.NewEncoder(w).Encode(map[string]string{
+			"status":  "already_stopped",
+			"message": "Async processing is not running",
+		})
+		return
+	}
+
+	c.StopAsync()
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	_ = json.NewEncoder(w).Encode(map[string]string{
+		"status":  "stopped",
+		"message": "Async processing stopped successfully",
+	})
+}
+
+func (c *ValueCalculator) handleStartAsync(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		_ = json.NewEncoder(w).Encode(map[string]string{"error": "method not allowed, use POST"})
+		return
+	}
+
+	c.asyncMu.RLock()
+	wasRunning := c.asyncTicker != nil && !c.asyncStopped
+	c.asyncMu.RUnlock()
+
+	if wasRunning {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_ = json.NewEncoder(w).Encode(map[string]string{
+			"status":  "already_running",
+			"message": "Async processing is already running",
+		})
+		return
+	}
+
+	if err := c.StartAsync(); err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		_ = json.NewEncoder(w).Encode(map[string]string{
+			"error":   "failed to start async processing",
+			"message": err.Error(),
+		})
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	_ = json.NewEncoder(w).Encode(map[string]string{
+		"status":  "started",
+		"message": "Async processing started successfully",
+	})
 }
 
 func computeTopDiffs(matches []models.Match, keepTop int) []DiffBet {

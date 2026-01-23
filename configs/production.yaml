@@ -29,7 +29,7 @@ ydb:
 # dsn: "host=<host1>,<host2> port=6432 user=<username> password=<password> dbname=<dbname> sslmode=require target_session_attrs=read-write"
 # 
 # Example for production (set via POSTGRES_DSN env var or GitHub Secrets):
-# dsn: "host=rc1a-fec715cq0rept3kd.mdb.yandexcloud.net,rc1a-h8tc88gfbg9v7anh.mdb.yandexcloud.net port=6432 user=vodeneevbet password=<your_password> dbname=db sslmode=require target_session_attrs=read-write"
+# dsn: "host=rc1a-fec715cq0rept3kd.mdb.yandexcloud.net,rc1a-h8tc88gfbg9v7anh.mdb.yandexcloud.net port=6432 user=vodeneevm password=<your_password> dbname=db sslmode=require target_session_attrs=read-write"
 # 
 # For local development (docker-compose):
 postgres:

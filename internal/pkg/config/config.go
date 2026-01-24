@@ -74,17 +74,18 @@ type Pinnacle888Config struct {
 }
 
 type ValueCalculatorConfig struct {
-	ReferenceMethod     string   `yaml:"reference_method"`
-	MinValuePercent     float64  `yaml:"min_value_percent"`
-	MaxRiskPercent      float64  `yaml:"max_risk_percent"`
-	MinStake            int      `yaml:"min_stake"`
-	MaxStake            int      `yaml:"max_stake"`
-	CheckInterval       string   `yaml:"check_interval"`
-	TestInterval        string   `yaml:"test_interval"`
-	Sports              []string `yaml:"sports"`
-	Markets             []string `yaml:"markets"`
-	ReferenceBookmakers []string `yaml:"reference_bookmakers"`
-	ParserURL           string   `yaml:"parser_url"` // URL to parser's /matches endpoint
+	ReferenceMethod     string            `yaml:"reference_method"`      // "diff" or "value_bet"
+	MinValuePercent     float64           `yaml:"min_value_percent"`    // Minimum value percent for value bets (default: 5.0)
+	MaxRiskPercent      float64           `yaml:"max_risk_percent"`
+	MinStake            int               `yaml:"min_stake"`
+	MaxStake            int               `yaml:"max_stake"`
+	CheckInterval       string            `yaml:"check_interval"`
+	TestInterval        string            `yaml:"test_interval"`
+	Sports              []string          `yaml:"sports"`
+	Markets             []string          `yaml:"markets"`
+	ReferenceBookmakers []string          `yaml:"reference_bookmakers"` // Reference bookmakers for fair probability calculation
+	BookmakerWeights    map[string]float64 `yaml:"bookmaker_weights"`    // Optional: weights for reference bookmakers (default: 1.0 for all)
+	ParserURL           string            `yaml:"parser_url"`            // URL to parser's /matches endpoint
 	
 	// Async processing settings
 	AsyncEnabled        bool    `yaml:"async_enabled"`        // Enable async processing

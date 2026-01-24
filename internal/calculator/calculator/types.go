@@ -26,3 +26,30 @@ type DiffBet struct {
 	CalculatedAt time.Time `json:"calculated_at"`
 }
 
+// ValueBet represents a value bet found using weighted average of reference bookmakers.
+type ValueBet struct {
+	MatchGroupKey string    `json:"match_group_key"`
+	MatchName     string    `json:"match_name"`
+	StartTime     time.Time `json:"start_time"`
+	Sport         string    `json:"sport"`
+
+	EventType   string `json:"event_type"`   // e.g. main_match, corners
+	OutcomeType string `json:"outcome_type"` // e.g. total_over, home_win
+	Parameter   string `json:"parameter"`   // e.g. 2.5, +1.5
+	BetKey      string `json:"bet_key"`      // eventType|outcomeType|parameter
+
+	// Reference data (средневзвешенное от референсных контор)
+	ReferenceBookmakers []string  `json:"reference_bookmakers"` // какие конторы использовались
+	ReferenceOdds       []float64 `json:"reference_odds"`       // их коэффициенты
+	FairOdd             float64   `json:"fair_odd"`              // справедливый коэффициент (1 / avg_probability)
+	FairProbability     float64   `json:"fair_probability"`      // справедливая вероятность (средневзвешенная)
+
+	// Value bet data
+	Bookmaker    string  `json:"bookmaker"`     // контора с валуем
+	BookmakerOdd float64 `json:"bookmaker_odd"` // её коэффициент
+	ValuePercent float64 `json:"value_percent"`  // процент валуя: (bookmaker_odd / fair_odd - 1) * 100
+	ExpectedValue float64 `json:"expected_value"` // математическое ожидание: (bookmaker_odd * fair_probability) - 1
+
+	CalculatedAt time.Time `json:"calculated_at"`
+}
+

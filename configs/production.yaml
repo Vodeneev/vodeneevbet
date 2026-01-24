@@ -113,7 +113,23 @@ value_calculator:
   markets: ["1x2", "total", "handicap"]  # Main markets
   
   # Top-5 bookmakers for reference (excluding common APIs)
+  # Note: For value bets calculation, we use ALL bookmakers with weighted average
+  # reference_bookmakers is kept for backward compatibility
   reference_bookmakers: ["pinnacle", "betfair", "sbobet", "bet365", "williamhill"]
+  
+  # Bookmaker weights for weighted average calculation (optional)
+  # Higher weight = more influence on fair probability calculation
+  # Default: 1.0 for all bookmakers if not specified
+  bookmaker_weights:
+    pinnacle: 1.0      # Reference bookmaker - maximum weight
+    betfair: 0.95
+    sbobet: 0.9
+    bet365: 0.85
+    williamhill: 0.8
+    pinnacle888: 0.7   # New bookmaker - lower weight
+  
+  # Minimum value percent to show value bets (default: 5.0)
+  min_value_percent: 5.0
   
   # Async processing settings
   async_enabled: true              # Enable asynchronous processing

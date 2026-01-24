@@ -299,6 +299,7 @@ func (c *ValueCalculator) IsAsyncRunning() bool {
 // RegisterHTTP registers calculator endpoints onto mux.
 func (c *ValueCalculator) RegisterHTTP(mux *http.ServeMux) {
 	mux.HandleFunc("/diffs/top", c.handleTopDiffs)
+	mux.HandleFunc("/value-bets/top", c.handleTopValueBets)
 	mux.HandleFunc("/diffs/status", c.handleStatus)
 	mux.HandleFunc("/async/stop", c.handleStopAsync)
 	mux.HandleFunc("/async/start", c.handleStartAsync)
@@ -389,6 +390,103 @@ func (c *ValueCalculator) handleTopDiffs(w http.ResponseWriter, r *http.Request)
 		_ = json.NewEncoder(w).Encode(diffs[:limit])
 	} else {
 		_ = json.NewEncoder(w).Encode([]DiffBet{})
+	}
+}
+
+func (c *ValueCalculator) handleTopValueBets(w http.ResponseWriter, r *http.Request) {
+	limit := 5
+	if v := r.URL.Query().Get("limit"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+			if n > 50 {
+				n = 50
+			}
+			limit = n
+		}
+	}
+
+	// Filter by match status: "live" (started), "upcoming" (not started), or empty (all)
+	statusFilter := r.URL.Query().Get("status")
+
+	// Fetch fresh data from parser on each request
+	var valueBets []ValueBet
+	if c.httpClient == nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusServiceUnavailable)
+		_ = json.NewEncoder(w).Encode(map[string]string{"error": "parser URL is not configured"})
+		return
+	}
+
+	// Get bookmaker weights from config (optional - defaults to 1.0 for all)
+	// Note: reference_bookmakers is now optional - we use ALL bookmakers with weighted average
+	var bookmakerWeights map[string]float64
+	if c.cfg != nil && c.cfg.BookmakerWeights != nil {
+		bookmakerWeights = c.cfg.BookmakerWeights
+	}
+
+	// referenceBookmakers is kept for backward compatibility but not used in calculation
+	// We use ALL bookmakers now
+	referenceBookmakers := []string{} // Not used anymore, but kept for function signature
+
+	minValuePercent := 5.0 // Default
+	if c.cfg != nil && c.cfg.MinValuePercent > 0 {
+		minValuePercent = c.cfg.MinValuePercent
+	}
+
+	// Create context with timeout for the request
+	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
+	defer cancel()
+
+	matches, err := c.httpClient.GetMatches(ctx)
+	if err != nil {
+		log.Printf("calculator: failed to load matches in handleTopValueBets: %v", err)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadGateway)
+		_ = json.NewEncoder(w).Encode(map[string]string{"error": "failed to fetch matches from parser", "details": err.Error()})
+		return
+	}
+
+	// Calculate value bets using weighted average
+	valueBets = computeValueBets(matches, referenceBookmakers, bookmakerWeights, minValuePercent, 100)
+
+	// Filter by status if specified
+	now := time.Now().UTC()
+	maxLiveAge := 3 * time.Hour
+	if statusFilter != "" {
+		filtered := make([]ValueBet, 0, len(valueBets))
+		for _, vb := range valueBets {
+			hasStarted := !vb.StartTime.IsZero() && (vb.StartTime.Before(now) || vb.StartTime.Equal(now))
+			notTooOld := !vb.StartTime.IsZero() && now.Sub(vb.StartTime) <= maxLiveAge
+			isLive := hasStarted && notTooOld
+			switch statusFilter {
+			case "live":
+				if isLive {
+					filtered = append(filtered, vb)
+				}
+			case "upcoming":
+				if !hasStarted {
+					filtered = append(filtered, vb)
+				}
+			default:
+				filtered = append(filtered, vb)
+			}
+		}
+		valueBets = filtered
+	}
+
+	// Re-sort after filtering
+	sort.Slice(valueBets, func(i, j int) bool {
+		return valueBets[i].ValuePercent > valueBets[j].ValuePercent
+	})
+
+	if limit > len(valueBets) {
+		limit = len(valueBets)
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	if len(valueBets) > 0 {
+		_ = json.NewEncoder(w).Encode(valueBets[:limit])
+	} else {
+		_ = json.NewEncoder(w).Encode([]ValueBet{})
 	}
 }
 
@@ -686,4 +784,198 @@ func splitTeamsFromName(name string) (string, string, bool) {
 
 func isFinitePositiveOdd(v float64) bool {
 	return v > 1.000001 && !math.IsInf(v, 0) && !math.IsNaN(v)
+}
+
+// computeValueBets calculates value bets using weighted average of ALL bookmakers.
+// For each bet, it calculates fair probability from all bookmakers (weighted average),
+// then finds value bets where bookmaker odds are higher than fair odds.
+func computeValueBets(matches []models.Match, referenceBookmakers []string, bookmakerWeights map[string]float64, minValuePercent float64, keepTop int) []ValueBet {
+	if keepTop <= 0 {
+		keepTop = 100
+	}
+	if minValuePercent <= 0 {
+		minValuePercent = 5.0 // Default: 5% minimum value
+	}
+
+	// Default weight is 1.0 if not specified
+	getWeight := func(bookmaker string) float64 {
+		if bookmakerWeights != nil {
+			if w, ok := bookmakerWeights[strings.ToLower(bookmaker)]; ok && w > 0 {
+				return w
+			}
+		}
+		return 1.0 // Default weight
+	}
+
+	now := time.Now()
+
+	// matchGroupKey -> betKey -> bookmaker -> odd
+	type betMap map[string]map[string]float64
+	groups := map[string]betMap{}
+
+	// Metadata for group
+	type groupMeta struct {
+		name      string
+		startTime time.Time
+		sport     string
+	}
+	meta := map[string]groupMeta{}
+
+	// Collect all odds
+	for i := range matches {
+		m := matches[i]
+		gk := matchGroupKey(m)
+		if gk == "" {
+			continue
+		}
+		if _, ok := meta[gk]; !ok {
+			meta[gk] = groupMeta{
+				name:      strings.TrimSpace(m.HomeTeam) + " vs " + strings.TrimSpace(m.AwayTeam),
+				startTime: m.StartTime,
+				sport:     m.Sport,
+			}
+		}
+		if _, ok := groups[gk]; !ok {
+			groups[gk] = betMap{}
+		}
+
+		for _, ev := range m.Events {
+			for _, out := range ev.Outcomes {
+				bk := strings.TrimSpace(out.Bookmaker)
+				if bk == "" {
+					bk = strings.TrimSpace(ev.Bookmaker)
+				}
+				if bk == "" {
+					bk = strings.TrimSpace(m.Bookmaker)
+				}
+				if bk == "" {
+					continue
+				}
+
+				odd := out.Odds
+				if !isFinitePositiveOdd(odd) {
+					continue
+				}
+
+				eventType := strings.TrimSpace(ev.EventType)
+				outcomeType := strings.TrimSpace(out.OutcomeType)
+				param := strings.TrimSpace(out.Parameter)
+				if eventType == "" || outcomeType == "" {
+					continue
+				}
+
+				betKey := eventType + "|" + outcomeType + "|" + param
+				if _, ok := groups[gk][betKey]; !ok {
+					groups[gk][betKey] = map[string]float64{}
+				}
+
+				// Keep best (max) odd per bookmaker+bet
+				bkLower := strings.ToLower(bk)
+				if prev, ok := groups[gk][betKey][bkLower]; !ok || odd > prev {
+					groups[gk][betKey][bkLower] = odd
+				}
+			}
+		}
+	}
+
+		var valueBets []ValueBet
+
+	// For each match group and bet
+	for gk, bets := range groups {
+		gm := meta[gk]
+		for betKey, byBook := range bets {
+			// Need at least 2 bookmakers to calculate fair probability
+			if len(byBook) < 2 {
+				continue
+			}
+
+			// Calculate fair probability using weighted average of ALL bookmakers
+			// Convert odds to probabilities: prob = 1 / odd
+			var totalWeightedProb float64
+			var totalWeight float64
+			var allBookmakers []string
+			var allOdds []float64
+
+			for bk, odd := range byBook {
+				prob := 1.0 / odd
+				weight := getWeight(bk)
+				totalWeightedProb += prob * weight
+				totalWeight += weight
+				allBookmakers = append(allBookmakers, bk)
+				allOdds = append(allOdds, odd)
+			}
+
+			if totalWeight <= 0 {
+				continue
+			}
+
+			// Fair probability (weighted average from all bookmakers)
+			fairProb := totalWeightedProb / totalWeight
+			if fairProb <= 0 || fairProb >= 1 {
+				continue // Invalid probability
+			}
+
+			// Fair odd
+			fairOdd := 1.0 / fairProb
+
+			// Find value bets: compare each bookmaker with fair odd
+			for i, bk := range allBookmakers {
+				odd := allOdds[i]
+
+				// Calculate value: (bookmaker_odd / fair_odd - 1) * 100
+				valuePercent := (odd/fairOdd - 1.0) * 100.0
+
+				// Only include if value is positive and above threshold
+				if valuePercent < minValuePercent {
+					continue
+				}
+
+				// Calculate expected value: (bookmaker_odd * fair_probability) - 1
+				expectedValue := (odd * fairProb) - 1.0
+
+				parts := strings.SplitN(betKey, "|", 3)
+				evType, outType, param := "", "", ""
+				if len(parts) >= 1 {
+					evType = parts[0]
+				}
+				if len(parts) >= 2 {
+					outType = parts[1]
+				}
+				if len(parts) >= 3 {
+					param = parts[2]
+				}
+
+				valueBets = append(valueBets, ValueBet{
+					MatchGroupKey:       gk,
+					MatchName:           gm.name,
+					StartTime:           gm.startTime,
+					Sport:               gm.sport,
+					EventType:           evType,
+					OutcomeType:         outType,
+					Parameter:           param,
+					BetKey:              betKey,
+					ReferenceBookmakers: allBookmakers, // Все конторы, участвовавшие в расчете
+					ReferenceOdds:       allOdds,       // Все коэффициенты
+					FairOdd:             fairOdd,
+					FairProbability:     fairProb,
+					Bookmaker:           bk,
+					BookmakerOdd:        odd,
+					ValuePercent:        valuePercent,
+					ExpectedValue:       expectedValue,
+					CalculatedAt:        now,
+				})
+			}
+		}
+	}
+
+	// Sort by value percent (descending)
+	sort.Slice(valueBets, func(i, j int) bool {
+		return valueBets[i].ValuePercent > valueBets[j].ValuePercent
+	})
+
+	if len(valueBets) > keepTop {
+		valueBets = valueBets[:keepTop]
+	}
+
+	return valueBets
 }

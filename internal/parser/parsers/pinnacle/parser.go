@@ -198,6 +198,9 @@ func (p *Parser) processAll(ctx context.Context) error {
 			// Include only matches that haven't started yet (up to 48 hours in the future)
 			// Strictly exclude live matches: if startTime is in the past or equal to now, skip it
 			if !st.After(now) || st.After(maxStart) {
+				if !st.After(now) {
+					logToFile(fmt.Sprintf("Filtered live match: %s (start: %s, now: %s)\n", mu.ID, st.Format(time.RFC3339), now.Format(time.RFC3339)))
+				}
 				filteredByTime++
 				continue
 			}
@@ -262,6 +265,7 @@ func (p *Parser) processAll(ctx context.Context) error {
 				checkNow := time.Now().UTC()
 				if !matchStartTime.After(checkNow) {
 					// Match has already started, skip it
+					logToFile(fmt.Sprintf("Double-check filtered live match: %s (start: %s, now: %s)\n", m.ID, matchStartTime.Format(time.RFC3339), checkNow.Format(time.RFC3339)))
 					continue
 				}
 			}
@@ -587,14 +591,10 @@ func appendMarketOutcomes(ev *models.Event, m Market) {
 			switch pr.Designation {
 			case "home":
 				// Use Points directly - API returns the actual handicap value with correct sign
-				handicapValue := *pr.Points
-				logToFile(fmt.Sprintf("SPREAD home: Points=%.2f -> handicap=%s, odds=%.2f\n", *pr.Points, formatSignedLine(handicapValue), odds))
-				ev.Outcomes = append(ev.Outcomes, newOutcome(ev.ID, "handicap_home", formatSignedLine(handicapValue), odds))
+				ev.Outcomes = append(ev.Outcomes, newOutcome(ev.ID, "handicap_home", formatSignedLine(*pr.Points), odds))
 			case "away":
 				// Use Points directly - API returns the actual handicap value with correct sign
-				handicapValue := *pr.Points
-				logToFile(fmt.Sprintf("SPREAD away: Points=%.2f -> handicap=%s, odds=%.2f\n", *pr.Points, formatSignedLine(handicapValue), odds))
-				ev.Outcomes = append(ev.Outcomes, newOutcome(ev.ID, "handicap_away", formatSignedLine(handicapValue), odds))
+				ev.Outcomes = append(ev.Outcomes, newOutcome(ev.ID, "handicap_away", formatSignedLine(*pr.Points), odds))
 			}
 		}
 	}

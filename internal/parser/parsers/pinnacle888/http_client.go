@@ -226,8 +226,9 @@ func (c *Client) GetLiveEvents(liveEventsURL string, sportID int64) ([]byte, err
 	if q.Get("mk") == "" {
 		q.Set("mk", "2")
 	}
+	// Use English locale to match Fonbet team names for proper match merging
 	if q.Get("locale") == "" {
-		q.Set("locale", "ru_RU")
+		q.Set("locale", "en_US")
 	}
 	u.RawQuery = q.Encode()
 
@@ -237,8 +238,9 @@ func (c *Client) GetLiveEvents(liveEventsURL string, sportID int64) ([]byte, err
 	}
 
 	// Set headers for live events API
+	// Use English language to match Fonbet team names for proper match merging
 	req.Header.Set("Accept", "application/json, text/plain, */*")
-	req.Header.Set("Accept-Language", "ru,en;q=0.9")
+	req.Header.Set("Accept-Language", "en,en-US;q=0.9")
 	req.Header.Set("Accept-Encoding", "gzip, deflate, br, zstd")
 	req.Header.Set("User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 YaBrowser/25.12.0.0 Safari/537.36")
 	req.Header.Set("Referer", u.Scheme+"://"+u.Host+"/ru/compact/sports/soccer")
@@ -311,7 +313,8 @@ func (c *Client) GetLineEvents(lineEventsURL string, sportID int64) ([]byte, err
 	queryParams.Set("sp", fmt.Sprintf("%d", sportID))
 	queryParams.Set("tm", "0") // Time = 0 (all, including future)
 	queryParams.Set("v", "0")
-	queryParams.Set("locale", "ru_RU")
+	// Use English locale to match Fonbet team names for proper match merging
+	queryParams.Set("locale", "en_US")
 	queryParams.Set("_", fmt.Sprintf("%d", time.Now().UnixMilli())) // Timestamp
 	queryParams.Set("withCredentials", "true")
 
@@ -322,11 +325,12 @@ func (c *Client) GetLineEvents(lineEventsURL string, sportID int64) ([]byte, err
 	req.URL.RawQuery = queryParams.Encode()
 
 	// Set headers matching the user's request
+	// Use English language to match Fonbet team names for proper match merging
 	req.Header.Set("Accept", "application/json, text/plain, */*")
-	req.Header.Set("Accept-Language", "ru,en;q=0.9")
+	req.Header.Set("Accept-Language", "en,en-US;q=0.9")
 	req.Header.Set("Accept-Encoding", "gzip, deflate, br, zstd")
 	req.Header.Set("User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 YaBrowser/25.12.0.0 Safari/537.36")
-	req.Header.Set("Referer", u.Scheme+"://"+u.Host+"/ru/compact/sports/soccer")
+	req.Header.Set("Referer", u.Scheme+"://"+u.Host+"/en/compact/sports/soccer")
 	req.Header.Set("Sec-CH-UA", `"Chromium";v="142", "YaBrowser";v="25.12", "Not_A Brand";v="99", "Yowser";v="2.5"`)
 	req.Header.Set("Sec-CH-UA-Mobile", "?0")
 	req.Header.Set("Sec-CH-UA-Platform", `"macOS"`)
@@ -336,7 +340,8 @@ func (c *Client) GetLineEvents(lineEventsURL string, sportID int64) ([]byte, err
 	req.Header.Set("Priority", "u=1, i")
 
 	// Set custom headers from the user's request
-	req.Header.Set("X-App-Data", "dpVXz=ZDfaFZUP9;pctag=4e95f421-8ffd-447b-ae41-0c5e9334131c;directusToken=TwEdnphtyxsfMpXoJkCkWaPsL2KJJ3lo;BrowserSessionId=be6e0f48-80cb-433d-bbe5-979963d02332;PCTR=1927013371756;_og=QQ%3D%3D;_ulp=TDV6YVJod0xqREFDUVBXc05McXBSb2k0dDRVbXdvcm04aUxHOFlUcEZ6ZEN5M2xRWUtFeHo2TW5LUHR5MDNPZWVqa041Nk1ySFlyWG1DaXVXRjY5REE9PXxmNjY4NjBmODNiZTJmMzYyMmYzMjEzYzhhNGMxMWQyYg%3D%3D;custid=id%3DVODENEEVM%26login%3D202601240529%26roundTrip%3D202601240529%26hash%3D6F4625A408B4E0F6D47D091593F63240;_userDefaultView=COMPACT;__prefs=W251bGwsMiwxLDAsMSxudWxsLGZhbHNlLDAuMDAwMCxmYWxzZSx0cnVlLCJfM0xJTkVTIiwwLG51bGwsdHJ1ZSx0cnVlLGZhbHNlLGZhbHNlLG51bGwsbnVsbCx0cnVlXQ%3D%3D;lang=ru_RU")
+	// Use English language to match Fonbet team names for proper match merging
+	req.Header.Set("X-App-Data", "dpVXz=ZDfaFZUP9;pctag=4e95f421-8ffd-447b-ae41-0c5e9334131c;directusToken=TwEdnphtyxsfMpXoJkCkWaPsL2KJJ3lo;BrowserSessionId=be6e0f48-80cb-433d-bbe5-979963d02332;PCTR=1927013371756;_og=QQ%3D%3D;_ulp=TDV6YVJod0xqREFDUVBXc05McXBSb2k0dDRVbXdvcm04aUxHOFlUcEZ6ZEN5M2xRWUtFeHo2TW5LUHR5MDNPZWVqa041Nk1ySFlyWG1DaXVXRjY5REE9PXxmNjY4NjBmODNiZTJmMzYyMmYzMjEzYzhhNGMxMWQyYg%3D%3D;custid=id%3DVODENEEVM%26login%3D202601240529%26roundTrip%3D202601240529%26hash%3D6F4625A408B4E0F6D47D091593F63240;_userDefaultView=COMPACT;__prefs=W251bGwsMiwxLDAsMSxudWxsLGZhbHNlLDAuMDAwMCxmYWxzZSx0cnVlLCJfM0xJTkVTIiwwLG51bGwsdHJ1ZSx0cnVlLGZhbHNlLGZhbHNlLG51bGwsbnVsbCx0cnVlXQ%3D%3D;lang=en_US")
 	req.Header.Set("X-Browser-Session-Id", "be6e0f48-80cb-433d-bbe5-979963d02332")
 	req.Header.Set("X-Custid", "id=VODENEEVM&login=202601240529&roundTrip=202601240529&hash=6F4625A408B4E0F6D47D091593F63240")
 	req.Header.Set("X-Lcu", "AAAABAAAAAADp14LAAABm--NRf1Voab-5stXVfI97CwfIEPwzgOEc2vB4liSJu0qgueg9A==")
@@ -344,7 +349,8 @@ func (c *Client) GetLineEvents(lineEventsURL string, sportID int64) ([]byte, err
 	req.Header.Set("X-U", "AAAABAAAAAADp14LAAABm--NRf1Voab-5stXVfI97CwfIEPwzgOEc2vB4liSJu0qgueg9A==")
 
 	// Set cookie header
-	req.Header.Set("Cookie", "dpVXz=ZDfaFZUP9; _sig=Wcy1Nemd5TkRrM05HVTBOak5tTVRnM1pROnNCaXZyN0VkNzBJMUV3cHByZXpjd3hVT3c6LTU0MzQwMzEwMTo3NjkyNDY4MDg6Mi4xMS4wOllwVUxCcGlpQ3c%3D; _apt=YpULBpiiCw; pctag=4e95f421-8ffd-447b-ae41-0c5e9334131c; skin=pa; PCTR=1927013371756; u=AAAABAAAAAADp14LAAABm--NRf1Voab-5stXVfI97CwfIEPwzgOEc2vB4liSJu0qgueg9A==; lcu=AAAABAAAAAADp14LAAABm--NRf1Voab-5stXVfI97CwfIEPwzgOEc2vB4liSJu0qgueg9A==; custid=id=VODENEEVM&login=202601240529&roundTrip=202601240529&hash=6F4625A408B4E0F6D47D091593F63240; BrowserSessionId=be6e0f48-80cb-433d-bbe5-979963d02332; _og=QQ==; _ulp=TDV6YVJod0xqREFDUVBXc05McXBSb2k0dDRVbXdvcm04aUxHOFlUcEZ6ZEN5M2xRWUtFeHo2TW5LUHR5MDNPZWVqa041Nk1ySFlyWG1DaXVXRjY5REE9PXxmNjY4NjBmODNiZTJmMzYyMmYzMjEzYzhhNGMxMWQyYg==; uoc=450f4a9c12b96e79968ebfa6b0fe147e; _userDefaultView=COMPACT; SLID=-331989785; auth=true; __prefs=W251bGwsMiwxLDAsMSxudWxsLGZhbHNlLDAuMDAwMCxmYWxzZSx0cnVlLCJfM0xJTkVTIiwwLG51bGwsdHJ1ZSx0cnVlLGZhbHNlLGZhbHNlLG51bGwsbnVsbCx0cnVlXQ==; _ga=GA1.1.914965420.1769246973; _lastView=eyJ2b2RlbmVldm0iOiJDT01QQUNUIn0%3D; displayMessPopUp=true; _ga_5PLZ6DPTZ0=GS2.1.s1769246972$o1$g1$t1769247050$j60$l0$h0; lang=ru_RU")
+	// Use English language to match Fonbet team names for proper match merging
+	req.Header.Set("Cookie", "dpVXz=ZDfaFZUP9; _sig=Wcy1Nemd5TkRrM05HVTBOak5tTVRnM1pROnNCaXZyN0VkNzBJMUV3cHByZXpjd3hVT3c6LTU0MzQwMzEwMTo3NjkyNDY4MDg6Mi4xMS4wOllwVUxCcGlpQ3c%3D; _apt=YpULBpiiCw; pctag=4e95f421-8ffd-447b-ae41-0c5e9334131c; skin=pa; PCTR=1927013371756; u=AAAABAAAAAADp14LAAABm--NRf1Voab-5stXVfI97CwfIEPwzgOEc2vB4liSJu0qgueg9A==; lcu=AAAABAAAAAADp14LAAABm--NRf1Voab-5stXVfI97CwfIEPwzgOEc2vB4liSJu0qgueg9A==; custid=id=VODENEEVM&login=202601240529&roundTrip=202601240529&hash=6F4625A408B4E0F6D47D091593F63240; BrowserSessionId=be6e0f48-80cb-433d-bbe5-979963d02332; _og=QQ==; _ulp=TDV6YVJod0xqREFDUVBXc05McXBSb2k0dDRVbXdvcm04aUxHOFlUcEZ6ZEN5M2xRWUtFeHo2TW5LUHR5MDNPZWVqa041Nk1ySFlyWG1DaXVXRjY5REE9PXxmNjY4NjBmODNiZTJmMzYyMmYzMjEzYzhhNGMxMWQyYg==; uoc=450f4a9c12b96e79968ebfa6b0fe147e; _userDefaultView=COMPACT; SLID=-331989785; auth=true; __prefs=W251bGwsMiwxLDAsMSxudWxsLGZhbHNlLDAuMDAwMCxmYWxzZSx0cnVlLCJfM0xJTkVTIiwwLG51bGwsdHJ1ZSx0cnVlLGZhbHNlLGZhbHNlLG51bGwsbnVsbCx0cnVlXQ==; _ga=GA1.1.914965420.1769246973; _lastView=eyJ2b2RlbmVldm0iOiJDT01QQUNUIn0%3D; displayMessPopUp=true; _ga_5PLZ6DPTZ0=GS2.1.s1769246972$o1$g1$t1769247050$j60$l0$h0; lang=en_US")
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
@@ -512,8 +518,9 @@ func (c *Client) getJSONWithProxyRetry(path string, out any) error {
 
 func (c *Client) setHeaders(req *http.Request) {
 	// Set headers in the same order as browser (may help bypass Cloudflare detection)
+	// Use English language to match Fonbet team names for proper match merging
 	req.Header.Set("Accept", "application/json")
-	req.Header.Set("Accept-Language", "ru,en;q=0.9")
+	req.Header.Set("Accept-Language", "en,en-US;q=0.9")
 	req.Header.Set("Accept-Encoding", "gzip, deflate, br, zstd")
 	req.Header.Set("Content-Type", "application/json")
 	// Use realistic browser User-Agent to match browser requests

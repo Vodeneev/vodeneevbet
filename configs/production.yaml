@@ -80,6 +80,20 @@ parser:
       - "http://auiefusb:nw4x77i8vjje@23.26.71.145:5628"     # USA, Dallas
       - "http://auiefusb:nw4x77i8vjje@23.27.208.120:5830"   # USA, Orem
 
+  # Pinnacle888 guest API with mirror URL support
+  pinnacle888:
+    base_url: ""       # Optional: direct base URL (if mirror_url is not provided)
+    mirror_url: "https://bit.ly/pinnacle_mirror"  # Mirror URL to resolve actual baseURL
+    live_events_url: "https://www.quietthunder61.xyz/sports-service/sv/compact/events"  # URL for live events (compact format)
+    api_key: ""        # can be set via ENV PINNACLE888_API_KEY
+    device_uuid: ""    # can be set via ENV PINNACLE888_DEVICE_UUID
+    matchup_ids: []    # example: [1621112306, 1621112308]
+    include_live: false  # Include live matches (default: false)
+    # Proxy list for bypassing Cloudflare blocking
+    # Client will try proxies in order until one works
+    # Format: http://user:pass@ip:port or http://ip:port
+    proxy_list: []    # Can reuse pinnacle proxy_list if needed
+
 value_calculator:
   # Value Bet settings
   reference_method: "average_top5"  # "pinnacle" or "average_top5"

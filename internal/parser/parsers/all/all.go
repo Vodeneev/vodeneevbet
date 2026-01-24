@@ -8,4 +8,5 @@ package all
 import (
 	_ "github.com/Vodeneev/vodeneevbet/internal/parser/parsers/fonbet"
 	_ "github.com/Vodeneev/vodeneevbet/internal/parser/parsers/pinnacle"
+	_ "github.com/Vodeneev/vodeneevbet/internal/parser/parsers/pinnacle888"
 )

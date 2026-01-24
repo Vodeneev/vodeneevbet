@@ -42,6 +42,7 @@ type ParserConfig struct {
 	Headers        map[string]string `yaml:"headers"`
 	Fonbet         FonbetConfig      `yaml:"fonbet"`
 	Pinnacle       PinnacleConfig    `yaml:"pinnacle"`
+	Pinnacle888    Pinnacle888Config `yaml:"pinnacle888"`
 }
 
 type FonbetConfig struct {
@@ -57,6 +58,19 @@ type PinnacleConfig struct {
 	DeviceUUID string   `yaml:"device_uuid"`
 	MatchupIDs []int64  `yaml:"matchup_ids"`
 	ProxyList  []string `yaml:"proxy_list"` // List of proxies to try in order
+}
+
+type Pinnacle888Config struct {
+	BaseURL         string   `yaml:"base_url"`
+	MirrorURL       string   `yaml:"mirror_url"`        // Mirror URL to resolve actual baseURL
+	LiveEventsURL   string   `yaml:"live_events_url"`   // URL for live events (compact format)
+	LineEventsURL   string   `yaml:"line_events_url"`   // URL for pre-match/line events (compact format)
+	APIKey          string   `yaml:"api_key"`
+	DeviceUUID      string   `yaml:"device_uuid"`
+	MatchupIDs      []int64  `yaml:"matchup_ids"`
+	ProxyList       []string `yaml:"proxy_list"`       // List of proxies to try in order
+	IncludeLive     bool     `yaml:"include_live"`      // Include live matches (default: false)
+	IncludePrematch bool     `yaml:"include_prematch"`  // Include pre-match/line matches (default: false)
 }
 
 type ValueCalculatorConfig struct {

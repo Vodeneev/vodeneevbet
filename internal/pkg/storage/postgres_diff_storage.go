@@ -397,6 +397,17 @@ func (s *PostgresDiffStorage) GetLastDiffBet(ctx context.Context, matchGroupKey,
 	return diffPercent, calculatedAt, nil
 }
 
+// CleanDiffBets removes all records from diff_bets table
+func (s *PostgresDiffStorage) CleanDiffBets(ctx context.Context) error {
+	query := `DELETE FROM diff_bets`
+	_, err := s.db.ExecContext(ctx, query)
+	if err != nil {
+		return fmt.Errorf("failed to clean diff_bets table: %w", err)
+	}
+	log.Println("PostgreSQL: cleaned diff_bets table")
+	return nil
+}
+
 // Close closes the database connection
 func (s *PostgresDiffStorage) Close() error {
 	return s.db.Close()

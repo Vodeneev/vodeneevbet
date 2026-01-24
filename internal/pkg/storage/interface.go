@@ -65,6 +65,10 @@ type DiffBetStorage interface {
 	// Returns the diff_percent and calculated_at, or (0, zero time, nil) if not found
 	GetLastDiffBet(ctx context.Context, matchGroupKey, betKey string, excludeCalculatedAt time.Time) (diffPercent float64, calculatedAt time.Time, err error)
 	
+	// CleanDiffBets removes all records from diff_bets table
+	// Useful for clearing old data on service restart
+	CleanDiffBets(ctx context.Context) error
+	
 	// Close closes the database connection
 	Close() error
 }

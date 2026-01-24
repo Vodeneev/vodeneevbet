@@ -91,6 +91,17 @@ func main() {
 			}
 		}()
 		log.Println("calculator: PostgreSQL diff storage initialized")
+		
+		// Clean diff_bets table on startup to prevent stale data from blocking alerts
+		log.Println("calculator: cleaning diff_bets table on startup...")
+		cleanCtx, cleanCancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cleanCancel()
+		if err := pgStorage.CleanDiffBets(cleanCtx); err != nil {
+			log.Printf("calculator: warning: failed to clean diff_bets table: %v", err)
+			// Don't fail startup if cleanup fails, but log warning
+		} else {
+			log.Println("calculator: diff_bets table cleaned successfully")
+		}
 	}
 
 	valueCalculator := calculator.NewValueCalculator(&cfg.ValueCalculator, diffStorage)

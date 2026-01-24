@@ -573,7 +573,12 @@ func appendMarketOutcomes(ev *models.Event, m Market) {
 			}
 		}
 	case "spread":
-		// In Pinnacle spread points are symmetric: home is typically -points, away is +points.
+		// In Pinnacle spread market:
+		// Based on investigation: API returns Points with the actual handicap value
+		// - For home: If UI shows -1.0, API likely returns Points=-1.0 (use directly)
+		// - For away: If UI shows +1.0, API likely returns Points=1.0 (use directly)
+		// Previous code was doing -(*pr.Points) for home, which would invert -1.0 to +1.0 (wrong!)
+		// Fix: Use Points directly for both home and away
 		for _, pr := range m.Prices {
 			if pr.Points == nil {
 				continue
@@ -581,9 +586,15 @@ func appendMarketOutcomes(ev *models.Event, m Market) {
 			odds := americanToDecimal(pr.Price)
 			switch pr.Designation {
 			case "home":
-				ev.Outcomes = append(ev.Outcomes, newOutcome(ev.ID, "handicap_home", formatSignedLine(-*pr.Points), odds))
+				// Use Points directly - API returns the actual handicap value with correct sign
+				handicapValue := *pr.Points
+				logToFile(fmt.Sprintf("SPREAD home: Points=%.2f -> handicap=%s, odds=%.2f\n", *pr.Points, formatSignedLine(handicapValue), odds))
+				ev.Outcomes = append(ev.Outcomes, newOutcome(ev.ID, "handicap_home", formatSignedLine(handicapValue), odds))
 			case "away":
-				ev.Outcomes = append(ev.Outcomes, newOutcome(ev.ID, "handicap_away", formatSignedLine(+*pr.Points), odds))
+				// Use Points directly - API returns the actual handicap value with correct sign
+				handicapValue := *pr.Points
+				logToFile(fmt.Sprintf("SPREAD away: Points=%.2f -> handicap=%s, odds=%.2f\n", *pr.Points, formatSignedLine(handicapValue), odds))
+				ev.Outcomes = append(ev.Outcomes, newOutcome(ev.ID, "handicap_away", formatSignedLine(handicapValue), odds))
 			}
 		}
 	}

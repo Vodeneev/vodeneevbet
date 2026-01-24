@@ -89,7 +89,7 @@ parser:
     api_key: ""        # can be set via ENV PINNACLE888_API_KEY
     device_uuid: ""    # can be set via ENV PINNACLE888_DEVICE_UUID
     matchup_ids: []    # example: [1621112306, 1621112308]
-    include_live: false  # Include live matches (default: false)
+    include_live: true  # Include live matches (default: false)
     include_prematch: true  # Include pre-match/line matches (default: false)
     # Proxy list for bypassing Cloudflare blocking
     # Client will try proxies in order until one works

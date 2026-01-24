@@ -354,6 +354,49 @@ func (s *PostgresDiffStorage) GetRecentDiffBets(ctx context.Context, withinMinut
 	return diffs, nil
 }
 
+// GetLastDiffBet gets the most recent diff bet for a specific match+bet combination
+// Excludes diffs with calculated_at equal to excludeCalculatedAt (to avoid getting the current diff)
+// Returns the diff_percent and calculated_at, or (0, zero time, nil) if not found
+func (s *PostgresDiffStorage) GetLastDiffBet(ctx context.Context, matchGroupKey, betKey string, excludeCalculatedAt time.Time) (float64, time.Time, error) {
+	var query string
+	var err error
+	var diffPercent float64
+	var calculatedAt time.Time
+	
+	if excludeCalculatedAt.IsZero() {
+		// No exclusion - get the most recent
+		query = `
+		SELECT diff_percent, calculated_at
+		FROM diff_bets
+		WHERE match_group_key = $1 AND bet_key = $2
+		ORDER BY calculated_at DESC
+		LIMIT 1
+		`
+		err = s.db.QueryRowContext(ctx, query, matchGroupKey, betKey).Scan(&diffPercent, &calculatedAt)
+	} else {
+		// Exclude the current diff
+		query = `
+		SELECT diff_percent, calculated_at
+		FROM diff_bets
+		WHERE match_group_key = $1 AND bet_key = $2
+		  AND calculated_at != $3
+		ORDER BY calculated_at DESC
+		LIMIT 1
+		`
+		err = s.db.QueryRowContext(ctx, query, matchGroupKey, betKey, excludeCalculatedAt).Scan(&diffPercent, &calculatedAt)
+	}
+	
+	if err == sql.ErrNoRows {
+		// No previous diff found - this is a new diff
+		return 0, time.Time{}, nil
+	}
+	if err != nil {
+		return 0, time.Time{}, fmt.Errorf("failed to get last diff bet: %w", err)
+	}
+	
+	return diffPercent, calculatedAt, nil
+}
+
 // Close closes the database connection
 func (s *PostgresDiffStorage) Close() error {
 	return s.db.Close()

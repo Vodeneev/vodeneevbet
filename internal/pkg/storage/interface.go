@@ -2,6 +2,7 @@ package storage
 
 import (
 	"context"
+	"time"
 	"github.com/Vodeneev/vodeneevbet/internal/pkg/models"
 )
 
@@ -58,6 +59,11 @@ type DiffBetStorage interface {
 	
 	// GetRecentDiffBets gets diff bets from the last N minutes
 	GetRecentDiffBets(ctx context.Context, withinMinutes int, minDiffPercent float64) ([]interface{}, error)
+	
+	// GetLastDiffBet gets the most recent diff bet for a specific match+bet combination
+	// Excludes diffs with calculated_at equal to excludeCalculatedAt (to avoid getting the current diff)
+	// Returns the diff_percent and calculated_at, or (0, zero time, nil) if not found
+	GetLastDiffBet(ctx context.Context, matchGroupKey, betKey string, excludeCalculatedAt time.Time) (diffPercent float64, calculatedAt time.Time, err error)
 	
 	// Close closes the database connection
 	Close() error

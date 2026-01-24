@@ -195,22 +195,72 @@ func (c *ValueCalculator) processMatchesAsync(ctx context.Context) {
 
 	// Store diffs and check for new high-value ones
 	alertCount := 0
+	// Time window to prevent duplicate alerts
+	// This prevents sending the same alert repeatedly for unchanged diffs
+	alertCooldownMinutes := 60 // Default: 60 minutes
+	if c.cfg != nil && c.cfg.AlertCooldownMinutes > 0 {
+		alertCooldownMinutes = c.cfg.AlertCooldownMinutes
+	}
+	// Minimum increase in diff_percent to send alert again even if already sent recently
+	alertMinIncrease := 5.0 // Default: 5% increase
+	if c.cfg != nil && c.cfg.AlertMinIncrease > 0 {
+		alertMinIncrease = c.cfg.AlertMinIncrease
+	}
 	
 	for _, diff := range diffs {
+		// Check if we should send an alert for this diff
+		shouldSendAlert := false
+		if alertThreshold > 0 && diff.DiffPercent > alertThreshold && c.notifier != nil {
+			// Get the last diff for this match+bet combination (excluding current one)
+			lastDiffPercent, lastCalculatedAt, err := c.diffStorage.GetLastDiffBet(ctx, diff.MatchGroupKey, diff.BetKey, diff.CalculatedAt)
+			if err != nil {
+				log.Printf("calculator: async: failed to get last diff: %v", err)
+				// Continue anyway - better to send duplicate than miss an alert
+				shouldSendAlert = true
+			} else if lastDiffPercent == 0 || lastCalculatedAt.IsZero() {
+				// No previous diff found - this is a new diff, send alert
+				shouldSendAlert = true
+			} else if lastDiffPercent < alertThreshold {
+				// Previous diff was below threshold, so no alert was sent
+				// This is the first time diff exceeds threshold, send alert
+				shouldSendAlert = true
+				log.Printf("calculator: async: diff crossed threshold for %s (%.2f%% -> %.2f%%), sending alert", 
+					diff.MatchName, lastDiffPercent, diff.DiffPercent)
+			} else {
+				// Previous diff was also above threshold - check if alert was sent recently
+				timeSinceLastAlert := time.Since(lastCalculatedAt)
+				if timeSinceLastAlert > time.Duration(alertCooldownMinutes)*time.Minute {
+					// Last alert was sent more than cooldown minutes ago, send alert
+					shouldSendAlert = true
+					log.Printf("calculator: async: cooldown expired for %s (%.2f%%), sending alert", diff.MatchName, diff.DiffPercent)
+				} else {
+					// Last alert was sent recently - check if diff increased significantly
+					diffIncrease := diff.DiffPercent - lastDiffPercent
+					if diffIncrease >= alertMinIncrease {
+						// Diff increased significantly, send alert again
+						shouldSendAlert = true
+						log.Printf("calculator: async: diff increased significantly for %s (%.2f%% -> %.2f%%, +%.2f%%), sending alert", 
+							diff.MatchName, lastDiffPercent, diff.DiffPercent, diffIncrease)
+					} else {
+						// Diff didn't increase significantly, skip
+						log.Printf("calculator: async: skipping duplicate alert for %s (%.2f%% -> %.2f%%, +%.2f%%) - already sent %.0f minutes ago, increase %.2f%% < %.2f%%", 
+							diff.MatchName, lastDiffPercent, diff.DiffPercent, diffIncrease, 
+							timeSinceLastAlert.Minutes(), diffIncrease, alertMinIncrease)
+					}
+				}
+			}
+		}
+
 		// Store the diff (pass as interface{} to match interface)
-		isNew, err := c.diffStorage.StoreDiffBet(ctx, &diff)
+		// We store all diffs, not just ones we alert on
+		_, err := c.diffStorage.StoreDiffBet(ctx, &diff)
 		if err != nil {
 			log.Printf("calculator: async: failed to store diff: %v", err)
-			continue
+			// Continue even if storage fails
 		}
 
-		// Check if it's new and above threshold
-		if !isNew {
-			continue // Skip if already exists
-		}
-
-		// Send Telegram alerts only for diffs strictly above threshold
-		if alertThreshold > 0 && diff.DiffPercent > alertThreshold && c.notifier != nil {
+		// Send Telegram alert if needed
+		if shouldSendAlert {
 			thresholdInt := int(math.Round(alertThreshold))
 			if err := c.notifier.SendDiffAlert(ctx, &diff, thresholdInt); err != nil {
 				log.Printf("calculator: async: failed to send %.0f%% alert: %v", alertThreshold, err)

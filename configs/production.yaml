@@ -97,7 +97,6 @@ parser:
 value_calculator:
   # Value Bet settings
   reference_method: "average_top5"  # "pinnacle" or "average_top5"
-  min_value_percent: 15.0           # Minimum difference in percent
   max_risk_percent: 5.0            # Maximum risk
   min_stake: 1000                  # Minimum stake
   max_stake: 50000                 # Maximum stake

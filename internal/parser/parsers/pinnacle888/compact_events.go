@@ -146,11 +146,14 @@ func buildMatchFromCompactEvent(leagueName string, eventData interface{}, isLive
 	startTime := time.Unix(int64(startTimeMs)/1000, 0).UTC()
 	now := time.Now().UTC()
 
-	// For pre-match events: skip if in the past or finished
+	// For pre-match events: skip if in the past
+	// Status values: 0 = finished, 1 = live, 9 = upcoming/pre-match, 37 = upcoming with markets
 	if !isLiveEvent {
-		if startTime.Before(now) || int(status) != 0 {
-			return nil // Skip past or finished pre-match events
+		if startTime.Before(now) {
+			return nil // Skip past events
 		}
+		// Include pre-match events (status 9 or 37 typically means upcoming)
+		// Don't filter by status for pre-match - include all future events
 	} else {
 		// For live events: only include if actually live (status == 1)
 		if int(status) != 1 {

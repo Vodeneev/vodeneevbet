@@ -388,6 +388,17 @@ func (p *Parser) processLineMatches(ctx context.Context) ([]*models.Match, error
 		return nil, fmt.Errorf("get line events: %w", err)
 	}
 
+	// Log response preview for debugging
+	if len(data) > 0 {
+		previewLen := 200
+		if len(data) < previewLen {
+			previewLen = len(data)
+		}
+		fmt.Printf("Pinnacle888: Line events response preview (%d bytes): %s\n", len(data), string(data[:previewLen]))
+	} else {
+		fmt.Printf("Pinnacle888: Line events response is empty\n")
+	}
+
 	// Parse compact events format (only pre-match events)
 	matches, err := parseCompactEvents(data, false, true)
 	if err != nil {

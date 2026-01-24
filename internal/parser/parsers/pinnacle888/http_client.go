@@ -201,24 +201,10 @@ func (c *Client) GetLiveEvents(liveEventsURL string, sportID int64) ([]byte, err
 		return nil, fmt.Errorf("live_events_url not configured")
 	}
 
-	// Resolve URL through mirror if available
-	// If mirror_url is configured and resolved, use resolved base URL + path from config
-	// Otherwise, use URL from config as-is
+	// For compact events API, always use URL from config as-is
+	// Don't use mirror URL resolution as it may return HTML instead of JSON
 	var finalURL string
-	resolvedBase := c.getResolvedBaseURL()
-	if resolvedBase != "" && c.mirrorURL != "" {
-		// We have a resolved mirror - extract path from config URL and use resolved base
-		configURL, err := url.Parse(liveEventsURL)
-		if err != nil {
-			return nil, fmt.Errorf("parse live_events_url: %w", err)
-		}
-		// Use resolved base URL with path from config
-		resolvedBase = strings.TrimSuffix(resolvedBase, "/")
-		finalURL = resolvedBase + configURL.Path
-	} else {
-		// No mirror or not resolved - use URL from config as-is
-		finalURL = liveEventsURL
-	}
+	finalURL = liveEventsURL
 
 	// Build URL with parameters
 	u, err := url.Parse(finalURL)
@@ -285,24 +271,10 @@ func (c *Client) GetLineEvents(lineEventsURL string, sportID int64) ([]byte, err
 		return nil, fmt.Errorf("line_events_url not configured")
 	}
 
-	// Resolve URL through mirror if available
-	// If mirror_url is configured and resolved, use resolved base URL + path from config
-	// Otherwise, use URL from config as-is
+	// For compact events API, always use URL from config as-is
+	// Don't use mirror URL resolution as it may return HTML instead of JSON
 	var finalURL string
-	resolvedBase := c.getResolvedBaseURL()
-	if resolvedBase != "" && c.mirrorURL != "" {
-		// We have a resolved mirror - extract path from config URL and use resolved base
-		configURL, err := url.Parse(lineEventsURL)
-		if err != nil {
-			return nil, fmt.Errorf("parse line_events_url: %w", err)
-		}
-		// Use resolved base URL with path from config
-		resolvedBase = strings.TrimSuffix(resolvedBase, "/")
-		finalURL = resolvedBase + configURL.Path
-	} else {
-		// No mirror or not resolved - use URL from config as-is
-		finalURL = lineEventsURL
-	}
+	finalURL = lineEventsURL
 
 	// Build URL with parameters
 	u, err := url.Parse(finalURL)
@@ -382,12 +354,26 @@ func (c *Client) GetLineEvents(lineEventsURL string, sportID int64) ([]byte, err
 
 	if resp.StatusCode != http.StatusOK {
 		b, _ := io.ReadAll(resp.Body)
+		previewLen := 500
+		if len(b) < previewLen {
+			previewLen = len(b)
+		}
+		fmt.Printf("Pinnacle888: Line events API returned status %d, body preview: %s\n", resp.StatusCode, string(b[:previewLen]))
 		return nil, fmt.Errorf("unexpected status %d: %s", resp.StatusCode, string(b))
 	}
 
 	body, err := readBodyMaybeGzip(resp)
 	if err != nil {
 		return nil, err
+	}
+
+	// Log response preview for debugging
+	if len(body) > 0 {
+		previewLen := 200
+		if len(body) < previewLen {
+			previewLen = len(body)
+		}
+		fmt.Printf("Pinnacle888: Line events API response (%d bytes), preview: %s\n", len(body), string(body[:previewLen]))
 	}
 
 	return body, nil

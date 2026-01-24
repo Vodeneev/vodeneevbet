@@ -161,10 +161,10 @@ func buildMatchFromCompactEvent(leagueName string, eventData interface{}, isLive
 		}
 	}
 
-	// Parse markets if available (event[7] contains markets as map)
+	// Parse markets if available (event[8] contains markets as map)
 	var marketsData interface{}
-	if len(event) > 7 {
-		marketsData = event[7]
+	if len(event) > 8 {
+		marketsData = event[8]
 	}
 
 	// Build match

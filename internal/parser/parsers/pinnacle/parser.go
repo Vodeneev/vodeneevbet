@@ -141,9 +141,9 @@ func (p *Parser) processAll(ctx context.Context) error {
 
 	// Keep a modest window to avoid processing thousands of stale matchups.
 	// Only include future matches (upcoming) - up to 48 hours in the future.
+	// Strictly exclude live matches (matches that have already started).
 	now := time.Now().UTC()
 	maxStart := now.Add(48 * time.Hour)
-	minStart := now // Only include matches that haven't started yet (for regular matchups)
 
 	for _, sportName := range targetSportNames {
 		sportID, ok := nameToID[sportName]
@@ -196,7 +196,8 @@ func (p *Parser) processAll(ctx context.Context) error {
 			st = st.UTC()
 
 			// Include only matches that haven't started yet (up to 48 hours in the future)
-			if st.Before(minStart) || st.After(maxStart) {
+			// Strictly exclude live matches: if startTime is in the past or equal to now, skip it
+			if !st.After(now) || st.After(maxStart) {
 				filteredByTime++
 				continue
 			}
@@ -254,6 +255,17 @@ func (p *Parser) processAll(ctx context.Context) error {
 				continue
 			}
 
+			// Double-check: do not add live matches (matches that have already started)
+			// This is a safety check in case the time filter above missed something
+			if !m.StartTime.IsZero() {
+				matchStartTime := m.StartTime.UTC()
+				checkNow := time.Now().UTC()
+				if !matchStartTime.After(checkNow) {
+					// Match has already started, skip it
+					continue
+				}
+			}
+
 			// Add match to in-memory store for fast API access (primary storage)
 			// YDB is not used - data is served directly from memory
 			health.AddMatch(m)
@@ -280,6 +292,16 @@ func (p *Parser) processMatchup(ctx context.Context, matchupID int64) error {
 	}
 	if m == nil {
 		return nil
+	}
+
+	// Do not add live matches (matches that have already started)
+	if !m.StartTime.IsZero() {
+		matchStartTime := m.StartTime.UTC()
+		checkNow := time.Now().UTC()
+		if !matchStartTime.After(checkNow) {
+			// Match has already started, skip it
+			return nil
+		}
 	}
 
 	// Add match to in-memory store for fast API access (primary storage)

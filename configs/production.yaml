@@ -40,7 +40,7 @@ postgres:
 parser:
   # Production parser management
   # Empty array [] = run all registered parsers
-  enabled_parsers: ["fonbet", "pinnacle"]
+  enabled_parsers: ["fonbet", "pinnacle", "pinnacle888"]
   
   interval: 15s  # Parsing interval (reduced for faster live match updates)
   user_agent: "ValueBetBot/1.0 (https://github.com/Vodeneev/vodeneevbet)"
@@ -85,10 +85,12 @@ parser:
     base_url: ""       # Optional: direct base URL (if mirror_url is not provided)
     mirror_url: "https://bit.ly/pinnacle_mirror"  # Mirror URL to resolve actual baseURL
     live_events_url: "https://www.quietthunder61.xyz/sports-service/sv/compact/events"  # URL for live events (compact format)
+    line_events_url: "https://www.quietthunder61.xyz/sports-service/sv/compact/events"  # URL for pre-match/line events (compact format)
     api_key: ""        # can be set via ENV PINNACLE888_API_KEY
     device_uuid: ""    # can be set via ENV PINNACLE888_DEVICE_UUID
     matchup_ids: []    # example: [1621112306, 1621112308]
     include_live: false  # Include live matches (default: false)
+    include_prematch: true  # Include pre-match/line matches (default: false)
     # Proxy list for bypassing Cloudflare blocking
     # Client will try proxies in order until one works
     # Format: http://user:pass@ip:port or http://ip:port

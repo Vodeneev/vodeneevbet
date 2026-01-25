@@ -381,9 +381,13 @@ func fetchAndSendDiffs(bot *tgbotapi.BotAPI, chatID int64, config BotConfig, lim
 		} else if status == "upcoming" {
 			statusText = " upcoming"
 		}
-		msg := tgbotapi.NewMessage(chatID, fmt.Sprintf("📊 No%s value bets found.", statusText))
+		msgText := fmt.Sprintf("📊 No%s value bets found.", statusText)
+		log.Printf("Sending empty result message to chat %d: %s", chatID, msgText)
+		msg := tgbotapi.NewMessage(chatID, msgText)
 		if _, sendErr := bot.Send(msg); sendErr != nil {
 			log.Printf("Failed to send empty result message to chat %d: %v", chatID, sendErr)
+		} else {
+			log.Printf("Successfully sent empty result message to chat %d", chatID)
 		}
 		return
 	}
@@ -460,13 +464,17 @@ func fetchAndSendDiffs(bot *tgbotapi.BotAPI, chatID int64, config BotConfig, lim
 
 	// Send remaining message
 	if builder.Len() > len(header) {
-		msg := tgbotapi.NewMessage(chatID, builder.String())
+		msgText := builder.String()
+		log.Printf("Sending value bets message to chat %d (%d chars, %d value bets)", chatID, len(msgText), len(valueBets))
+		msg := tgbotapi.NewMessage(chatID, msgText)
 		msg.ParseMode = tgbotapi.ModeMarkdown
 		if _, err := bot.Send(msg); err != nil {
 			log.Printf("Failed to send final message to chat %d: %v", chatID, err)
 		} else {
-			log.Printf("Successfully sent value bets to chat %d", chatID)
+			log.Printf("Successfully sent value bets to chat %d (%d value bets)", chatID, len(valueBets))
 		}
+	} else {
+		log.Printf("Message builder is empty or only contains header, not sending message to chat %d", chatID)
 	}
 }
 

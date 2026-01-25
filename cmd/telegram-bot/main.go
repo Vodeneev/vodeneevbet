@@ -1,10 +1,12 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"flag"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"os"
@@ -316,8 +318,10 @@ func fetchAndSendDiffs(bot *tgbotapi.BotAPI, chatID int64, config BotConfig, lim
 
 	if resp.StatusCode != http.StatusOK {
 		log.Printf("Calculator returned status %d", resp.StatusCode)
+		bodyBytes, _ := io.ReadAll(resp.Body)
+		log.Printf("Calculator error response body: %s", string(bodyBytes))
 		var errorResp map[string]string
-		if err := json.NewDecoder(resp.Body).Decode(&errorResp); err == nil {
+		if err := json.NewDecoder(bytes.NewReader(bodyBytes)).Decode(&errorResp); err == nil {
 			msg := tgbotapi.NewMessage(chatID, fmt.Sprintf("❌ Error: %s", errorResp["error"]))
 			if _, sendErr := bot.Send(msg); sendErr != nil {
 				log.Printf("Failed to send error message to chat %d: %v", chatID, sendErr)
@@ -331,9 +335,30 @@ func fetchAndSendDiffs(bot *tgbotapi.BotAPI, chatID int64, config BotConfig, lim
 		return
 	}
 
+	// Read response body for debugging
+	bodyBytes, err := io.ReadAll(resp.Body)
+	if err != nil {
+		log.Printf("Failed to read calculator response body: %v", err)
+		msg := tgbotapi.NewMessage(chatID, fmt.Sprintf("❌ Error: Failed to read response: %v", err))
+		if _, sendErr := bot.Send(msg); sendErr != nil {
+			log.Printf("Failed to send error message to chat %d: %v", chatID, sendErr)
+		}
+		return
+	}
+
+	previewLen := 200
+	if len(bodyBytes) < previewLen {
+		previewLen = len(bodyBytes)
+	}
+	log.Printf("Calculator response body length: %d bytes, preview: %s", len(bodyBytes), string(bodyBytes[:previewLen]))
+
 	var valueBets []ValueBet
-	if err := json.NewDecoder(resp.Body).Decode(&valueBets); err != nil {
-		log.Printf("Failed to parse calculator response: %v", err)
+	if err := json.NewDecoder(bytes.NewReader(bodyBytes)).Decode(&valueBets); err != nil {
+		previewLen := 500
+		if len(bodyBytes) < previewLen {
+			previewLen = len(bodyBytes)
+		}
+		log.Printf("Failed to parse calculator response: %v, body: %s", err, string(bodyBytes[:previewLen]))
 		msg := tgbotapi.NewMessage(chatID, fmt.Sprintf("❌ Error: Failed to parse response: %v", err))
 		if _, sendErr := bot.Send(msg); sendErr != nil {
 			log.Printf("Failed to send error message to chat %d: %v", chatID, sendErr)
@@ -342,6 +367,12 @@ func fetchAndSendDiffs(bot *tgbotapi.BotAPI, chatID int64, config BotConfig, lim
 	}
 
 	log.Printf("Received %d value bets from calculator", len(valueBets))
+	
+	// Debug: log first value bet structure if available
+	if len(valueBets) > 0 {
+		log.Printf("First value bet: MatchName=%s, Bookmaker=%s, AllBookmakerOdds=%v", 
+			valueBets[0].MatchName, valueBets[0].Bookmaker, valueBets[0].AllBookmakerOdds)
+	}
 
 	if len(valueBets) == 0 {
 		statusText := ""

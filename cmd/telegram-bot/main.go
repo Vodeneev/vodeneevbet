@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"sort"
 	"strconv"
 	"strings"
 	"syscall"
@@ -293,8 +294,8 @@ func fetchAndSendDiffs(bot *tgbotapi.BotAPI, chatID int64, config BotConfig, lim
 		log.Printf("Failed to send typing indicator to chat %d: %v", chatID, err)
 	}
 
-	// Build URL
-	url := fmt.Sprintf("%s/diffs/top?limit=%d", config.CalculatorURL, limit)
+	// Build URL - use value-bets endpoint instead of diffs
+	url := fmt.Sprintf("%s/value-bets/top?limit=%d", config.CalculatorURL, limit)
 	if status != "" {
 		url += "&status=" + status
 	}
@@ -330,8 +331,8 @@ func fetchAndSendDiffs(bot *tgbotapi.BotAPI, chatID int64, config BotConfig, lim
 		return
 	}
 
-	var diffs []DiffBet
-	if err := json.NewDecoder(resp.Body).Decode(&diffs); err != nil {
+	var valueBets []ValueBet
+	if err := json.NewDecoder(resp.Body).Decode(&valueBets); err != nil {
 		log.Printf("Failed to parse calculator response: %v", err)
 		msg := tgbotapi.NewMessage(chatID, fmt.Sprintf("❌ Error: Failed to parse response: %v", err))
 		if _, sendErr := bot.Send(msg); sendErr != nil {
@@ -340,16 +341,16 @@ func fetchAndSendDiffs(bot *tgbotapi.BotAPI, chatID int64, config BotConfig, lim
 		return
 	}
 
-	log.Printf("Received %d diffs from calculator", len(diffs))
+	log.Printf("Received %d value bets from calculator", len(valueBets))
 
-	if len(diffs) == 0 {
+	if len(valueBets) == 0 {
 		statusText := ""
 		if status == "live" {
 			statusText = " live"
 		} else if status == "upcoming" {
 			statusText = " upcoming"
 		}
-		msg := tgbotapi.NewMessage(chatID, fmt.Sprintf("📊 No%s value bet differences found.", statusText))
+		msg := tgbotapi.NewMessage(chatID, fmt.Sprintf("📊 No%s value bets found.", statusText))
 		if _, sendErr := bot.Send(msg); sendErr != nil {
 			log.Printf("Failed to send empty result message to chat %d: %v", chatID, sendErr)
 		}
@@ -360,12 +361,12 @@ func fetchAndSendDiffs(bot *tgbotapi.BotAPI, chatID int64, config BotConfig, lim
 	// Telegram has a message length limit of 4096 characters
 	// Split into multiple messages if needed
 	var builder strings.Builder
-	// Use limit instead of len(diffs) for header, but show actual count
-	actualCount := len(diffs)
+	// Use limit instead of len(valueBets) for header, but show actual count
+	actualCount := len(valueBets)
 	if actualCount > limit {
 		actualCount = limit
 	}
-	header := fmt.Sprintf("📊 *Top %d Value Bet Differences", actualCount)
+	header := fmt.Sprintf("📊 *Top %d Value Bets", actualCount)
 	if status == "live" {
 		header += " (Live)"
 	} else if status == "upcoming" {
@@ -375,24 +376,39 @@ func fetchAndSendDiffs(bot *tgbotapi.BotAPI, chatID int64, config BotConfig, lim
 
 	builder.WriteString(header)
 
-	for i, diff := range diffs {
+	for i, vb := range valueBets {
 		if i >= limit {
 			break
 		}
 
 		// Format event type and outcome
-		eventStr := formatEventType(diff.EventType)
-		outcomeStr := formatOutcomeType(diff.OutcomeType)
+		eventStr := formatEventType(vb.EventType)
+		outcomeStr := formatOutcomeType(vb.OutcomeType)
 		betInfo := fmt.Sprintf("%s | %s", eventStr, outcomeStr)
-		if diff.Parameter != "" {
-			betInfo += fmt.Sprintf(" (%s)", diff.Parameter)
+		if vb.Parameter != "" {
+			betInfo += fmt.Sprintf(" (%s)", vb.Parameter)
 		}
 
-		entry := fmt.Sprintf("*%d. %s*\n", i+1, escapeMarkdown(diff.MatchName))
+		entry := fmt.Sprintf("*%d. %s*\n", i+1, escapeMarkdown(vb.MatchName))
 		entry += fmt.Sprintf("⚽ %s\n", betInfo)
-		entry += fmt.Sprintf("📈 Difference: *%.2f%%* (%.2f)\n", diff.DiffPercent, diff.DiffAbs)
-		entry += fmt.Sprintf("💰 %s: %.2f | %s: %.2f\n", diff.MinBookmaker, diff.MinOdd, diff.MaxBookmaker, diff.MaxOdd)
-		entry += fmt.Sprintf("🕐 Start: %s\n", formatTime(diff.StartTime))
+		entry += fmt.Sprintf("💰 Value: *%.2f%%* | Expected: %.4f\n", vb.ValuePercent, vb.ExpectedValue)
+		entry += fmt.Sprintf("🎯 %s: *%.2f*\n", vb.Bookmaker, vb.BookmakerOdd)
+		entry += fmt.Sprintf("📊 Fair odd: %.2f (prob: %.2f%%)\n", vb.FairOdd, vb.FairProbability*100)
+		
+		// Show all bookmaker odds
+		if len(vb.AllBookmakerOdds) > 0 {
+			entry += "📈 All odds: "
+			var oddsParts []string
+			for bk, odd := range vb.AllBookmakerOdds {
+				oddsParts = append(oddsParts, fmt.Sprintf("%s: %.2f", bk, odd))
+			}
+			// Sort for consistent output
+			sort.Strings(oddsParts)
+			entry += strings.Join(oddsParts, " | ")
+			entry += "\n"
+		}
+		
+		entry += fmt.Sprintf("🕐 Start: %s\n", formatTime(vb.StartTime))
 		entry += "\n"
 
 		// Check if adding this entry would exceed message limit
@@ -418,7 +434,7 @@ func fetchAndSendDiffs(bot *tgbotapi.BotAPI, chatID int64, config BotConfig, lim
 		if _, err := bot.Send(msg); err != nil {
 			log.Printf("Failed to send final message to chat %d: %v", chatID, err)
 		} else {
-			log.Printf("Successfully sent diffs to chat %d", chatID)
+			log.Printf("Successfully sent value bets to chat %d", chatID)
 		}
 	}
 }
@@ -625,22 +641,22 @@ func stopAsyncProcessing(bot *tgbotapi.BotAPI, chatID int64, config BotConfig) {
 	}
 }
 
-// DiffBet represents a value bet difference (matches the calculator response)
-type DiffBet struct {
-	MatchGroupKey string    `json:"match_group_key"`
-	MatchName     string    `json:"match_name"`
-	StartTime     time.Time `json:"start_time"`
-	Sport         string    `json:"sport"`
-	EventType     string    `json:"event_type"`
-	OutcomeType   string    `json:"outcome_type"`
-	Parameter     string    `json:"parameter"`
-	BetKey        string    `json:"bet_key"`
-	Bookmakers    int       `json:"bookmakers"`
-	MinBookmaker  string    `json:"min_bookmaker"`
-	MinOdd        float64   `json:"min_odd"`
-	MaxBookmaker  string    `json:"max_bookmaker"`
-	MaxOdd        float64   `json:"max_odd"`
-	DiffAbs       float64   `json:"diff_abs"`
-	DiffPercent   float64   `json:"diff_percent"`
-	CalculatedAt  time.Time `json:"calculated_at"`
+// ValueBet represents a value bet (matches the calculator response)
+type ValueBet struct {
+	MatchGroupKey    string             `json:"match_group_key"`
+	MatchName        string             `json:"match_name"`
+	StartTime        time.Time          `json:"start_time"`
+	Sport            string             `json:"sport"`
+	EventType        string             `json:"event_type"`
+	OutcomeType      string             `json:"outcome_type"`
+	Parameter        string             `json:"parameter"`
+	BetKey           string             `json:"bet_key"`
+	AllBookmakerOdds map[string]float64 `json:"all_bookmaker_odds"`
+	FairOdd          float64            `json:"fair_odd"`
+	FairProbability  float64            `json:"fair_probability"`
+	Bookmaker        string             `json:"bookmaker"`
+	BookmakerOdd     float64            `json:"bookmaker_odd"`
+	ValuePercent     float64            `json:"value_percent"`
+	ExpectedValue    float64            `json:"expected_value"`
+	CalculatedAt     time.Time          `json:"calculated_at"`
 }

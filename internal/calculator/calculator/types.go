@@ -38,11 +38,10 @@ type ValueBet struct {
 	Parameter   string `json:"parameter"`   // e.g. 2.5, +1.5
 	BetKey      string `json:"bet_key"`      // eventType|outcomeType|parameter
 
-	// Reference data (средневзвешенное от референсных контор)
-	ReferenceBookmakers []string  `json:"reference_bookmakers"` // какие конторы использовались
-	ReferenceOdds       []float64 `json:"reference_odds"`       // их коэффициенты
-	FairOdd             float64   `json:"fair_odd"`              // справедливый коэффициент (1 / avg_probability)
-	FairProbability     float64   `json:"fair_probability"`      // справедливая вероятность (средневзвешенная)
+	// Reference data (средневзвешенное от всех контор)
+	AllBookmakerOdds map[string]float64 `json:"all_bookmaker_odds"` // все коэффициенты от всех контор для этого исхода
+	FairOdd          float64            `json:"fair_odd"`            // справедливый коэффициент (1 / avg_probability)
+	FairProbability  float64            `json:"fair_probability"`   // справедливая вероятность (средневзвешенная)
 
 	// Value bet data
 	Bookmaker    string  `json:"bookmaker"`     // контора с валуем

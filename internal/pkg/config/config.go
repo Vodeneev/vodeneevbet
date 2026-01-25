@@ -83,7 +83,6 @@ type ValueCalculatorConfig struct {
 	TestInterval        string            `yaml:"test_interval"`
 	Sports              []string          `yaml:"sports"`
 	Markets             []string          `yaml:"markets"`
-	ReferenceBookmakers []string          `yaml:"reference_bookmakers"` // Reference bookmakers for fair probability calculation
 	BookmakerWeights    map[string]float64 `yaml:"bookmaker_weights"`    // Optional: weights for reference bookmakers (default: 1.0 for all)
 	ParserURL           string            `yaml:"parser_url"`            // URL to parser's /matches endpoint
 	

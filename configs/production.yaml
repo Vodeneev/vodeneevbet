@@ -113,10 +113,7 @@ value_calculator:
   sports: ["football"]             # Football only
   markets: ["1x2", "total", "handicap"]  # Main markets
   
-  # Top-5 bookmakers for reference (excluding common APIs)
   # Note: For value bets calculation, we use ALL bookmakers with weighted average
-  # reference_bookmakers is kept for backward compatibility
-  reference_bookmakers: ["pinnacle", "betfair", "sbobet", "bet365", "williamhill"]
   
   # Bookmaker weights for weighted average calculation (optional)
   # Higher weight = more influence on fair probability calculation

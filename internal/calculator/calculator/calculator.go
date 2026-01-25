@@ -417,15 +417,11 @@ func (c *ValueCalculator) handleTopValueBets(w http.ResponseWriter, r *http.Requ
 	}
 
 	// Get bookmaker weights from config (optional - defaults to 1.0 for all)
-	// Note: reference_bookmakers is now optional - we use ALL bookmakers with weighted average
+	// We use ALL bookmakers with weighted average
 	var bookmakerWeights map[string]float64
 	if c.cfg != nil && c.cfg.BookmakerWeights != nil {
 		bookmakerWeights = c.cfg.BookmakerWeights
 	}
-
-	// referenceBookmakers is kept for backward compatibility but not used in calculation
-	// We use ALL bookmakers now
-	referenceBookmakers := []string{} // Not used anymore, but kept for function signature
 
 	minValuePercent := 5.0 // Default
 	if c.cfg != nil && c.cfg.MinValuePercent > 0 {
@@ -446,7 +442,7 @@ func (c *ValueCalculator) handleTopValueBets(w http.ResponseWriter, r *http.Requ
 	}
 
 	// Calculate value bets using weighted average
-	valueBets = computeValueBets(matches, referenceBookmakers, bookmakerWeights, minValuePercent, 100)
+	valueBets = computeValueBets(matches, bookmakerWeights, minValuePercent, 100)
 
 	// Filter by status if specified
 	now := time.Now().UTC()
@@ -789,7 +785,7 @@ func isFinitePositiveOdd(v float64) bool {
 // computeValueBets calculates value bets using weighted average of ALL bookmakers.
 // For each bet, it calculates fair probability from all bookmakers (weighted average),
 // then finds value bets where bookmaker odds are higher than fair odds.
-func computeValueBets(matches []models.Match, referenceBookmakers []string, bookmakerWeights map[string]float64, minValuePercent float64, keepTop int) []ValueBet {
+func computeValueBets(matches []models.Match, bookmakerWeights map[string]float64, minValuePercent float64, keepTop int) []ValueBet {
 	if keepTop <= 0 {
 		keepTop = 100
 	}
@@ -945,24 +941,29 @@ func computeValueBets(matches []models.Match, referenceBookmakers []string, book
 					param = parts[2]
 				}
 
+				// Create map of all bookmaker odds for this outcome
+				allOddsMap := make(map[string]float64)
+				for i, b := range allBookmakers {
+					allOddsMap[b] = allOdds[i]
+				}
+
 				valueBets = append(valueBets, ValueBet{
-					MatchGroupKey:       gk,
-					MatchName:           gm.name,
-					StartTime:           gm.startTime,
-					Sport:               gm.sport,
-					EventType:           evType,
-					OutcomeType:         outType,
-					Parameter:           param,
-					BetKey:              betKey,
-					ReferenceBookmakers: allBookmakers, // Все конторы, участвовавшие в расчете
-					ReferenceOdds:       allOdds,       // Все коэффициенты
-					FairOdd:             fairOdd,
-					FairProbability:     fairProb,
-					Bookmaker:           bk,
-					BookmakerOdd:        odd,
-					ValuePercent:        valuePercent,
-					ExpectedValue:       expectedValue,
-					CalculatedAt:        now,
+					MatchGroupKey:      gk,
+					MatchName:          gm.name,
+					StartTime:          gm.startTime,
+					Sport:              gm.sport,
+					EventType:          evType,
+					OutcomeType:        outType,
+					Parameter:          param,
+					BetKey:             betKey,
+					AllBookmakerOdds:   allOddsMap, // Все коэффициенты от всех контор для этого исхода
+					FairOdd:            fairOdd,
+					FairProbability:    fairProb,
+					Bookmaker:          bk,
+					BookmakerOdd:       odd,
+					ValuePercent:       valuePercent,
+					ExpectedValue:      expectedValue,
+					CalculatedAt:       now,
 				})
 			}
 		}

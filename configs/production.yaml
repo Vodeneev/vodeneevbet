@@ -84,8 +84,8 @@ parser:
   pinnacle888:
     base_url: ""       # Optional: direct base URL (if mirror_url is not provided)
     mirror_url: "https://bit.ly/pinnacle_mirror"  # Mirror URL to resolve actual baseURL
-    live_events_url: "https://www.quietthunder61.xyz/sports-service/sv/compact/events"  # URL for live events (compact format)
-    line_events_url: "https://www.quietthunder61.xyz/sports-service/sv/compact/events"  # URL for pre-match/line events (compact format)
+    live_events_url: "https://www.frozensunset88.xyz/sports-service/sv/compact/events"  # URL for live events (compact format)
+    line_events_url: "https://www.frozensunset88.xyz/sports-service/sv/compact/events"  # URL for pre-match/line events (compact format)
     api_key: ""        # can be set via ENV PINNACLE888_API_KEY
     device_uuid: ""    # can be set via ENV PINNACLE888_DEVICE_UUID
     matchup_ids: []    # example: [1621112306, 1621112308]

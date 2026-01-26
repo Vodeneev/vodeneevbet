@@ -74,7 +74,7 @@ if (( $(echo "$CURL_TIME_NUM > 2.0" | bc -l 2>/dev/null || echo "0") )); then
     echo "     → Рассмотрите использование меньшего limit"
 elif (( $(echo "$CURL_TIME_NUM > 1.0" | bc -l 2>/dev/null || echo "0") )); then
     echo "  ⚠️  WARNING: Запрос занял больше 1 секунды (${CURL_TIME}s)"
-    echo "     → Проверьте производительность YDB"
+    echo "     → Проверьте производительность парсера и доступность API"
 else
     echo "  ✅ Время выполнения в норме (${CURL_TIME}s)"
 fi

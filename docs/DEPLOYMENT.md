@@ -181,6 +181,6 @@ Workflow `.github/workflows/deploy.yml`:
 ## Безопасность
 
 - SSH ключи должны быть защищены
-- Service account ключи для YDB не должны попадать в git
+- Service account ключи и пароли не должны попадать в git
 - Используйте `.gitignore` для исключения чувствительных файлов
 - Регулярно обновляйте зависимости: `go mod tidy`

@@ -24,10 +24,6 @@ check_parser() {
     # Извлекаем ключевые метрики
     SUCCESS_RATE=$(echo "$METRICS" | jq -r '.per_match.success_rate')
     AVG_STORE_TIME=$(echo "$METRICS" | jq -r '.per_match.avg_store_time')
-    YDB_WRITE_PERCENT=$(echo "$METRICS" | jq -r '.timing.ydb_write_percent')
-    EVENTS_BATCH_SUCCESS=$(echo "$METRICS" | jq -r '.ydb_operations.events_batch.success_rate // "N/A"')
-    MATCH_SUCCESS=$(echo "$METRICS" | jq -r '.ydb_operations.match.success_rate // "N/A"')
-    EVENTS_BATCH_AVG_TIME=$(echo "$METRICS" | jq -r '.ydb_operations.events_batch.avg_time // "N/A"')
     TOTAL_MATCHES=$(echo "$METRICS" | jq -r '.overall.total_matches')
     TOTAL_RUNS=$(echo "$METRICS" | jq -r '.overall.total_runs')
     
@@ -39,22 +35,7 @@ check_parser() {
     echo "⏱️  Производительность:"
     echo "  Success Rate: ${SUCCESS_RATE}%"
     echo "  Avg Store Time: $AVG_STORE_TIME"
-    echo "  YDB Write %: ${YDB_WRITE_PERCENT}%"
-    if [ "$EVENTS_BATCH_AVG_TIME" != "N/A" ]; then
-        echo "  Events Batch Avg Time: $EVENTS_BATCH_AVG_TIME"
-    fi
     echo ""
-    
-    if [ "$EVENTS_BATCH_SUCCESS" != "N/A" ] || [ "$MATCH_SUCCESS" != "N/A" ]; then
-        echo "✅ Успешность операций:"
-        if [ "$EVENTS_BATCH_SUCCESS" != "N/A" ]; then
-            echo "  Events Batch Success: ${EVENTS_BATCH_SUCCESS}%"
-        fi
-        if [ "$MATCH_SUCCESS" != "N/A" ]; then
-            echo "  Match Success: ${MATCH_SUCCESS}%"
-        fi
-        echo ""
-    fi
 
     # Проверка проблем
     echo "🔍 Анализ:"
@@ -70,15 +51,6 @@ check_parser() {
         echo "  ✅ Success rate в норме (${SUCCESS_RATE}%)"
     fi
     
-    # Проверка YDB write percent
-    if (( $(echo "$YDB_WRITE_PERCENT > 80" | bc -l 2>/dev/null || echo "0") )); then
-        echo "  ⚠️  WARNING: YDB write занимает больше 80% времени (${YDB_WRITE_PERCENT}%)"
-        echo "     → Проверьте логи на ResourceExhausted ошибки"
-        ISSUES=$((ISSUES + 1))
-    else
-        echo "  ✅ YDB write процент в норме (${YDB_WRITE_PERCENT}%)"
-    fi
-    
     # Проверка avg store time (нужно парсить строку типа "1.971628948s")
     STORE_TIME_SEC=$(echo "$AVG_STORE_TIME" | sed 's/[^0-9.]//g' | head -c 10)
     if (( $(echo "$STORE_TIME_SEC > 0.5" | bc -l 2>/dev/null || echo "0") )); then
@@ -89,27 +61,6 @@ check_parser() {
         echo "  ✅ Среднее время записи в норме (${AVG_STORE_TIME})"
     fi
     
-    # Проверка events batch success (только если доступно)
-    if [ "$EVENTS_BATCH_SUCCESS" != "N/A" ]; then
-        if (( $(echo "$EVENTS_BATCH_SUCCESS < 95" | bc -l 2>/dev/null || echo "0") )); then
-            echo "  ⚠️  WARNING: Events batch success rate ниже 95% (${EVENTS_BATCH_SUCCESS}%)"
-            echo "     → Проверьте логи на ошибки bulk операций"
-            ISSUES=$((ISSUES + 1))
-        else
-            echo "  ✅ Events batch success в норме (${EVENTS_BATCH_SUCCESS}%)"
-        fi
-    fi
-    
-    # Проверка match success (только если доступно)
-    if [ "$MATCH_SUCCESS" != "N/A" ]; then
-        if (( $(echo "$MATCH_SUCCESS < 95" | bc -l 2>/dev/null || echo "0") )); then
-            echo "  ⚠️  WARNING: Match success rate ниже 95% (${MATCH_SUCCESS}%)"
-            echo "     → Много матчей не сохраняются успешно, проверьте логи"
-            ISSUES=$((ISSUES + 1))
-        else
-            echo "  ✅ Match success в норме (${MATCH_SUCCESS}%)"
-        fi
-    fi
     
     echo ""
     if [ $ISSUES -eq 0 ]; then
@@ -120,8 +71,8 @@ check_parser() {
         echo "Рекомендации:"
         PARSER_LOWER=$(echo "$PARSER_NAME" | tr '[:upper:]' '[:lower:]')
         echo "1. Проверьте логи: docker logs vodeneevbet-parser-${PARSER_LOWER} --tail 100"
-        echo "2. Ищите ошибки: grep -E 'ResourceExhausted|⚠️|❌' в логах"
-        echo "3. Проверьте использование bulk операций: grep 'Bulk insert' в логах"
+        echo "2. Ищите ошибки: grep -E '⚠️|❌' в логах"
+        echo "3. Проверьте производительность парсера и доступность API"
     fi
     
     echo ""

@@ -12,6 +12,7 @@ type Config struct {
 	Postgres        PostgresConfig        `yaml:"postgres"`
 	Parser          ParserConfig          `yaml:"parser"`
 	ValueCalculator ValueCalculatorConfig `yaml:"value_calculator"`
+	Health          HealthConfig          `yaml:"health"`
 }
 
 type PostgresConfig struct {
@@ -71,6 +72,10 @@ type ValueCalculatorConfig struct {
 	AlertMinIncrease    float64 `yaml:"alert_min_increase"`   // Minimum diff_percent increase to send alert again (default: 5.0)
 	TelegramBotToken    string  `yaml:"telegram_bot_token"`  // Telegram bot token for notifications
 	TelegramChatID      int64   `yaml:"telegram_chat_id"`    // Telegram chat ID to send notifications
+}
+
+type HealthConfig struct {
+	ReadHeaderTimeout time.Duration `yaml:"read_header_timeout"` // HTTP server read header timeout (default: 5s)
 }
 
 func Load(configPath string) (*Config, error) {

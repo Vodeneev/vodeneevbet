@@ -54,6 +54,10 @@ parser:
     # Format: http://user:pass@ip:port or http://ip:port
     proxy_list: []    # Can reuse pinnacle proxy_list if needed
 
+health:
+  # HTTP server settings
+  read_header_timeout: 5s  # Timeout for reading HTTP headers (default: 5s)
+
 value_calculator:
   # Data source: use parser's /matches endpoint
   parser_url: "http://158.160.197.172/parser"  # URL to parser service (e.g. "http://parser:8080" in Docker)

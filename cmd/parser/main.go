@@ -75,7 +75,8 @@ func run() error {
 	}
 	health.RegisterParsers(interfaceParsers)
 
-	health.Run(ctx, cfg.healthAddr, "parser", nil)
+	// Use read_header_timeout from config (defaults to 5s in config if not specified)
+	health.Run(ctx, cfg.healthAddr, "parser", nil, appConfig.Health.ReadHeaderTimeout)
 
 	log.Println("Starting parsers...")
 	return runParsers(ctx, ps)

@@ -195,21 +195,21 @@ func (c *Client) GetSportStraightMarkets(sportID int64) ([]Market, error) {
 	return out, nil
 }
 
-// GetLiveEvents gets live events in compact format from the live events endpoint
-func (c *Client) GetLiveEvents(liveEventsURL string, sportID int64) ([]byte, error) {
-	if liveEventsURL == "" {
-		return nil, fmt.Errorf("live_events_url not configured")
+// GetLiveEvents gets live events in compact format from the events endpoint
+func (c *Client) GetLiveEvents(eventsURL string, sportID int64) ([]byte, error) {
+	if eventsURL == "" {
+		return nil, fmt.Errorf("events_url not configured")
 	}
 
 	// For compact events API, always use URL from config as-is
 	// Don't use mirror URL resolution as it may return HTML instead of JSON
 	var finalURL string
-	finalURL = liveEventsURL
+	finalURL = eventsURL
 
 	// Build URL with parameters
 	u, err := url.Parse(finalURL)
 	if err != nil {
-		return nil, fmt.Errorf("parse final live_events_url: %w", err)
+		return nil, fmt.Errorf("parse final events_url: %w", err)
 	}
 
 	// Add sport parameter if not present
@@ -267,21 +267,21 @@ func (c *Client) GetLiveEvents(liveEventsURL string, sportID int64) ([]byte, err
 	return body, nil
 }
 
-// GetLineEvents gets pre-match/line events in compact format from the line events endpoint
-func (c *Client) GetLineEvents(lineEventsURL string, sportID int64) ([]byte, error) {
-	if lineEventsURL == "" {
-		return nil, fmt.Errorf("line_events_url not configured")
+// GetLineEvents gets pre-match/line events in compact format from the events endpoint
+func (c *Client) GetLineEvents(eventsURL string, sportID int64) ([]byte, error) {
+	if eventsURL == "" {
+		return nil, fmt.Errorf("events_url not configured")
 	}
 
 	// For compact events API, always use URL from config as-is
 	// Don't use mirror URL resolution as it may return HTML instead of JSON
 	var finalURL string
-	finalURL = lineEventsURL
+	finalURL = eventsURL
 
 	// Build URL with parameters
 	u, err := url.Parse(finalURL)
 	if err != nil {
-		return nil, fmt.Errorf("parse final line_events_url: %w", err)
+		return nil, fmt.Errorf("parse final events_url: %w", err)
 	}
 
 	// Set query parameters based on the user's request

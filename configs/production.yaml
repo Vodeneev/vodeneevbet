@@ -1,13 +1,8 @@
-# Main production configuration
-# Manage active parsers via enabled_parsers
-# For individual containers use --parser flag (fonbet/pinnacle)
-
 parser:
   # Production parser management
   # Empty array [] = run all registered parsers
   enabled_parsers: ["fonbet", "pinnacle", "pinnacle888"]
   
-  interval: 15s  # Parsing interval (reduced for faster live match updates)
   user_agent: "ValueBetBot/1.0 (https://github.com/Vodeneev/vodeneevbet)"
   timeout: 120s
   headers:
@@ -20,11 +15,10 @@ parser:
   # Fonbet API settings
   fonbet:
     base_url: "https://line55w.bk6bba-resources.com/events/list"
-    lang: "en"  # Use English to match Pinnacle team names for proper match merging
+    lang: "en"
     version: "60312723953"
-    test_limit: 0  # Event limit for testing (0 = no limit)
 
-  # Pinnacle guest API (do not commit real keys)
+  # Pinnacle guest API
   pinnacle:
     base_url: "https://guest.api.arcadia.pinnacle.com"
     api_key: ""        # can be set via ENV PINNACLE_API_KEY
@@ -49,8 +43,7 @@ parser:
   pinnacle888:
     base_url: ""       # Optional: direct base URL (if mirror_url is not provided)
     mirror_url: "https://bit.ly/pinnacle_mirror"  # Mirror URL to resolve actual baseURL
-    live_events_url: "https://www.frozensunset88.xyz/sports-service/sv/compact/events"  # URL for live events (compact format)
-    line_events_url: "https://www.frozensunset88.xyz/sports-service/sv/compact/events"  # URL for pre-match/line events (compact format)
+    events_url: "https://www.frozensunset88.xyz/sports-service/sv/compact/events"  # URL for events (compact format, same endpoint for live and pre-match, different query parameters)
     api_key: ""        # can be set via ENV PINNACLE888_API_KEY
     device_uuid: ""    # can be set via ENV PINNACLE888_DEVICE_UUID
     matchup_ids: []    # example: [1621112306, 1621112308]

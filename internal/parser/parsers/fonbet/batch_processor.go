@@ -21,7 +21,6 @@ type BatchProcessor struct {
 	matchBuilder interfaces.MatchBuilder
 	batchSize    int
 	workers      int
-	testLimit    int
 	// Динамические параметры
 	avgBatchTime    time.Duration
 	targetBatchTime time.Duration
@@ -35,7 +34,6 @@ func NewBatchProcessor(
 	eventFetcher interfaces.EventFetcher,
 	oddsParser interfaces.OddsParser,
 	matchBuilder interfaces.MatchBuilder,
-	testLimit int,
 ) interfaces.EventProcessor {
 	return &BatchProcessor{
 		storage:      storage,
@@ -44,7 +42,6 @@ func NewBatchProcessor(
 		matchBuilder: matchBuilder,
 		batchSize:    100, // Увеличен начальный размер батча для лучшей производительности
 		workers:      5,   // Увеличено количество воркеров (bulk операции более эффективны)
-		testLimit:    testLimit,
 		// Динамические параметры
 		avgBatchTime:    0,
 		targetBatchTime: 3 * time.Second, // Увеличено целевое время батча (bulk операции быстрее)
@@ -227,11 +224,6 @@ func (p *BatchProcessor) processMatchesInBatches(
 	}
 
 	fmt.Printf("🔍 Filtered out %d matches (invalid teams/name)\n", filteredCount)
-
-	if p.testLimit > 0 && len(matches) > p.testLimit {
-		fmt.Printf("🧪 Test limit enabled: processing first %d matches (out of %d)\n", p.testLimit, len(matches))
-		matches = matches[:p.testLimit]
-	}
 
 	fmt.Printf("🔄 Processing %d matches in batches of %d with %d workers\n",
 		len(matches), p.batchSize, p.workers)

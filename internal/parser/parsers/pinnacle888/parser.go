@@ -90,7 +90,7 @@ func (p *Parser) runOnce(ctx context.Context) error {
 	var liveErr, prematchErr error
 
 	// Fetch live matches asynchronously
-	if p.cfg.Parser.Pinnacle888.IncludeLive && p.cfg.Parser.Pinnacle888.LiveEventsURL != "" {
+	if p.cfg.Parser.Pinnacle888.IncludeLive && p.cfg.Parser.Pinnacle888.EventsURL != "" {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
@@ -105,7 +105,7 @@ func (p *Parser) runOnce(ctx context.Context) error {
 	}
 
 	// Fetch pre-match matches asynchronously
-	if p.cfg.Parser.Pinnacle888.IncludePrematch && p.cfg.Parser.Pinnacle888.LineEventsURL != "" {
+	if p.cfg.Parser.Pinnacle888.IncludePrematch && p.cfg.Parser.Pinnacle888.EventsURL != "" {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
@@ -359,7 +359,7 @@ func (p *Parser) processLiveMatches(ctx context.Context) ([]*models.Match, error
 	sportID := int64(29)
 
 	// Get live events data
-	data, err := p.client.GetLiveEvents(p.cfg.Parser.Pinnacle888.LiveEventsURL, sportID)
+	data, err := p.client.GetLiveEvents(p.cfg.Parser.Pinnacle888.EventsURL, sportID)
 	if err != nil {
 		return nil, fmt.Errorf("get live events: %w", err)
 	}
@@ -381,7 +381,7 @@ func (p *Parser) processLineMatches(ctx context.Context) ([]*models.Match, error
 	sportID := int64(29)
 
 	// Get pre-match events data
-	data, err := p.client.GetLineEvents(p.cfg.Parser.Pinnacle888.LineEventsURL, sportID)
+	data, err := p.client.GetLineEvents(p.cfg.Parser.Pinnacle888.EventsURL, sportID)
 	if err != nil {
 		return nil, fmt.Errorf("get line events: %w", err)
 	}

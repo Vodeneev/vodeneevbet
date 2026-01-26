@@ -30,10 +30,9 @@ type ParserConfig struct {
 }
 
 type FonbetConfig struct {
-	BaseURL   string `yaml:"base_url"`
-	Lang      string `yaml:"lang"`
-	Version   string `yaml:"version"`
-	TestLimit int    `yaml:"test_limit"`
+	BaseURL string `yaml:"base_url"`
+	Lang    string `yaml:"lang"`
+	Version string `yaml:"version"`
 }
 
 type PinnacleConfig struct {
@@ -47,8 +46,7 @@ type PinnacleConfig struct {
 type Pinnacle888Config struct {
 	BaseURL         string   `yaml:"base_url"`
 	MirrorURL       string   `yaml:"mirror_url"`        // Mirror URL to resolve actual baseURL
-	LiveEventsURL   string   `yaml:"live_events_url"`   // URL for live events (compact format)
-	LineEventsURL   string   `yaml:"line_events_url"`   // URL for pre-match/line events (compact format)
+	EventsURL       string   `yaml:"events_url"`        // URL for events (compact format, same endpoint for live and pre-match)
 	APIKey          string   `yaml:"api_key"`
 	DeviceUUID      string   `yaml:"device_uuid"`
 	MatchupIDs      []int64  `yaml:"matchup_ids"`

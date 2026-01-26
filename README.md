@@ -172,7 +172,6 @@ parser:
   fonbet:
     base_url: "https://line55w.bk6bba-resources.com/events/list"
     lang: "ru"
-    test_limit: 0  # 0 = без лимита
   
   pinnacle:
     base_url: "https://guest.api.arcadia.pinnacle.com"

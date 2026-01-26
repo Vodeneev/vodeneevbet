@@ -25,7 +25,7 @@ func NewParser(config *config.Config) *Parser {
 	eventFetcher := NewEventFetcher(config)
 	oddsParser := NewOddsParser()
 	matchBuilder := NewMatchBuilder("Fonbet")
-	eventProcessor := NewBatchProcessor(nil, eventFetcher, oddsParser, matchBuilder, config.Parser.Fonbet.TestLimit)
+	eventProcessor := NewBatchProcessor(nil, eventFetcher, oddsParser, matchBuilder)
 	
 	return &Parser{
 		eventFetcher:   eventFetcher,

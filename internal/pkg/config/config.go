@@ -56,15 +56,8 @@ type Pinnacle888Config struct {
 }
 
 type ValueCalculatorConfig struct {
-	ReferenceMethod     string            `yaml:"reference_method"`      // "diff" or "value_bet"
 	MinValuePercent     float64           `yaml:"min_value_percent"`    // Minimum value percent for value bets (default: 5.0)
-	MaxRiskPercent      float64           `yaml:"max_risk_percent"`
-	MinStake            int               `yaml:"min_stake"`
-	MaxStake            int               `yaml:"max_stake"`
-	CheckInterval       string            `yaml:"check_interval"`
-	TestInterval        string            `yaml:"test_interval"`
-	Sports              []string          `yaml:"sports"`
-	Markets             []string          `yaml:"markets"`
+	Sports              []string          `yaml:"sports"`               // Sports to parse (used by parsers)
 	BookmakerWeights    map[string]float64 `yaml:"bookmaker_weights"`    // Optional: weights for reference bookmakers (default: 1.0 for all)
 	ParserURL           string            `yaml:"parser_url"`            // URL to parser's /matches endpoint
 	
@@ -72,8 +65,8 @@ type ValueCalculatorConfig struct {
 	AsyncEnabled        bool    `yaml:"async_enabled"`        // Enable async processing
 	AsyncInterval       string  `yaml:"async_interval"`        // Interval for async processing (e.g., "30s")
 	AlertThreshold      float64 `yaml:"alert_threshold"`       // Single alert threshold in percent (preferred)
-	AlertThreshold10    float64 `yaml:"alert_threshold_10"`   // Alert threshold for 10% diffs
-	AlertThreshold20    float64 `yaml:"alert_threshold_20"`   // Alert threshold for 20% diffs
+	AlertThreshold10    float64 `yaml:"alert_threshold_10"`   // Alert threshold for 10% diffs (backward compatibility)
+	AlertThreshold20    float64 `yaml:"alert_threshold_20"`   // Alert threshold for 20% diffs (backward compatibility)
 	AlertCooldownMinutes int    `yaml:"alert_cooldown_minutes"` // Minutes to wait before sending duplicate alerts for same diff (default: 60)
 	AlertMinIncrease    float64 `yaml:"alert_min_increase"`   // Minimum diff_percent increase to send alert again (default: 5.0)
 	TelegramBotToken    string  `yaml:"telegram_bot_token"`  // Telegram bot token for notifications

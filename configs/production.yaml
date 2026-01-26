@@ -55,20 +55,11 @@ parser:
     proxy_list: []    # Can reuse pinnacle proxy_list if needed
 
 value_calculator:
-  # Value Bet settings
-  reference_method: "average_top5"  # "pinnacle" or "average_top5"
-  max_risk_percent: 5.0            # Maximum risk
-  min_stake: 1000                  # Minimum stake
-  max_stake: 50000                 # Maximum stake
-  check_interval: 5m               # Check interval
-  test_interval: 30s               # Test interval
-  
   # Data source: use parser's /matches endpoint
   parser_url: "http://158.160.197.172/parser"  # URL to parser service (e.g. "http://parser:8080" in Docker)
   
-  # Filters
-  sports: ["football"]             # Football only
-  markets: ["1x2", "total", "handicap"]  # Main markets
+  # Filters for parsers
+  sports: ["football"]             # Sports to parse (used by parsers, not calculator)
   
   # Note: For value bets calculation, we use ALL bookmakers with weighted average
   
@@ -90,8 +81,5 @@ value_calculator:
   async_enabled: true              # Enable asynchronous processing
   async_interval: 30s              # Interval for async processing (every 30 seconds)
   alert_threshold: 30.0            # Send Telegram alerts only for diffs >= 30%
-  # Deprecated (kept for backward compatibility; not used when alert_threshold is set):
-  alert_threshold_10: 0.0
-  alert_threshold_20: 0.0
   telegram_bot_token: ""          # Telegram bot token (set via TELEGRAM_BOT_TOKEN env var)
   telegram_chat_id: 0              # Telegram chat ID to send notifications (set via TELEGRAM_CHAT_ID env var)

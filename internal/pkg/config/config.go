@@ -2,32 +2,16 @@ package config
 
 import (
 	"fmt"
-	"path/filepath"
-	"time"
-
 	"os"
+	"time"
 
 	"gopkg.in/yaml.v3"
 )
 
 type Config struct {
-	YDB             YDBConfig             `yaml:"ydb"`
 	Postgres        PostgresConfig        `yaml:"postgres"`
 	Parser          ParserConfig          `yaml:"parser"`
 	ValueCalculator ValueCalculatorConfig `yaml:"value_calculator"`
-}
-
-type YDBConfig struct {
-	Endpoint              string    `yaml:"endpoint"`
-	Database              string    `yaml:"database"`
-	ServiceAccountKeyFile string    `yaml:"service_account_key_file"`
-	TTL                   TTLConfig `yaml:"ttl"`
-}
-
-type TTLConfig struct {
-	Enabled     bool          `yaml:"enabled"`
-	ExpireAfter time.Duration `yaml:"expire_after"`
-	AutoSetup   bool          `yaml:"auto_setup"`
 }
 
 type PostgresConfig struct {
@@ -107,13 +91,6 @@ func Load(configPath string) (*Config, error) {
 	var config Config
 	if err := yaml.Unmarshal(data, &config); err != nil {
 		return nil, fmt.Errorf("failed to parse config file: %w", err)
-	}
-
-	// Resolve relative paths inside config against the config file directory,
-	// not against the current working directory.
-	if config.YDB.ServiceAccountKeyFile != "" && !filepath.IsAbs(config.YDB.ServiceAccountKeyFile) {
-		baseDir := filepath.Dir(configPath)
-		config.YDB.ServiceAccountKeyFile = filepath.Clean(filepath.Join(baseDir, config.YDB.ServiceAccountKeyFile))
 	}
 
 	return &config, nil

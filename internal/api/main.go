@@ -5,22 +5,30 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
+	"net/url"
+	"strings"
+	"time"
 
 	"github.com/Vodeneev/vodeneevbet/internal/pkg/config"
-	"github.com/Vodeneev/vodeneevbet/internal/pkg/storage"
+	"github.com/Vodeneev/vodeneevbet/internal/pkg/models"
 )
 
 type APIServer struct {
-	ydbClient *storage.YDBClient
-	config    *config.Config
+	parserURL  string
+	httpClient *http.Client
+	config     *config.Config
 }
 
-func NewAPIServer(ydbClient *storage.YDBClient, config *config.Config) *APIServer {
+func NewAPIServer(parserURL string, config *config.Config) *APIServer {
 	return &APIServer{
-		ydbClient: ydbClient,
-		config:    config,
+		parserURL: parserURL,
+		httpClient: &http.Client{
+			Timeout: 30 * time.Second,
+		},
+		config: config,
 	}
 }
 
@@ -54,10 +62,9 @@ func (s *APIServer) handleOdds(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 
-	// Get real data from YDB
-	matches, err := s.ydbClient.GetAllMatches(context.Background())
+	matches, err := s.fetchMatchesFromParser(r.Context())
 	if err != nil {
-		http.Error(w, "Failed to get matches from database", http.StatusInternalServerError)
+		http.Error(w, fmt.Sprintf("Failed to get matches from parser: %v", err), http.StatusInternalServerError)
 		return
 	}
 
@@ -68,19 +75,65 @@ func (s *APIServer) handleMatches(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 
-	// Get real data from YDB
-	matches, err := s.ydbClient.GetAllMatches(context.Background())
+	matches, err := s.fetchMatchesFromParser(r.Context())
 	if err != nil {
-		http.Error(w, "Failed to get matches from database", http.StatusInternalServerError)
+		http.Error(w, fmt.Sprintf("Failed to get matches from parser: %v", err), http.StatusInternalServerError)
 		return
 	}
 
 	json.NewEncoder(w).Encode(matches)
 }
 
+func (s *APIServer) fetchMatchesFromParser(ctx context.Context) ([]models.Match, error) {
+	if s.parserURL == "" {
+		return nil, fmt.Errorf("parser URL is not configured")
+	}
+
+	baseURL := strings.TrimSuffix(s.parserURL, "/")
+	u, err := url.Parse(baseURL + "/matches")
+	if err != nil {
+		return nil, fmt.Errorf("invalid parser URL: %w", err)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, "GET", u.String(), nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+
+	req.Header.Set("Accept", "application/json")
+
+	resp, err := s.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch matches: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("unexpected status code %d: %s", resp.StatusCode, string(body))
+	}
+
+	var matchesResp struct {
+		Matches []models.Match `json:"matches"`
+		Meta    struct {
+			Count    int    `json:"count"`
+			Duration string `json:"duration"`
+			Source   string `json:"source"`
+		} `json:"meta"`
+	}
+
+	if err := json.NewDecoder(resp.Body).Decode(&matchesResp); err != nil {
+		return nil, fmt.Errorf("failed to decode response: %w", err)
+	}
+
+	return matchesResp.Matches, nil
+}
+
 func main() {
 	var configPath string
+	var parserURL string
 	flag.StringVar(&configPath, "config", "../../configs/production.yaml", "Path to config file")
+	flag.StringVar(&parserURL, "parser-url", "", "URL to parser service (e.g. http://localhost:8080)")
 	flag.Parse()
 
 	// Load config
@@ -89,14 +142,16 @@ func main() {
 		log.Fatalf("Failed to load config: %v", err)
 	}
 
-	// Create YDB client
-	ydbClient, err := storage.NewYDBClient(&cfg.YDB)
-	if err != nil {
-		log.Fatalf("Failed to connect to YDB: %v", err)
+	// Use parser URL from flag, config, or default
+	if parserURL == "" {
+		parserURL = cfg.ValueCalculator.ParserURL
 	}
-	defer ydbClient.Close()
+	if parserURL == "" {
+		parserURL = "http://localhost:8080"
+		log.Printf("Using default parser URL: %s", parserURL)
+	}
 
 	// Create and start API server
-	server := NewAPIServer(ydbClient, cfg)
+	server := NewAPIServer(parserURL, cfg)
 	log.Fatal(server.Start())
 }

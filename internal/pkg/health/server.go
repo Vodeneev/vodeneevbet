@@ -234,7 +234,7 @@ func Run(ctx context.Context, addr string, service string, storage interfaces.St
 		}
 	})
 
-	// Add /matches endpoint - reads from in-memory store (faster than YDB)
+	// Add /matches endpoint - reads from in-memory store
 	mux.HandleFunc("/matches", func(w http.ResponseWriter, r *http.Request) {
 		handleMatches(w, r)
 	})
@@ -292,7 +292,7 @@ func handleMatches(w http.ResponseWriter, r *http.Request) {
 	// Add performance headers
 	w.Header().Set("X-Query-Duration", duration.String())
 	w.Header().Set("X-Matches-Count", fmt.Sprintf("%d", matchCount))
-	w.Header().Set("X-Source", "memory") // Indicate data comes from memory, not YDB
+		w.Header().Set("X-Source", "memory") // Indicate data comes from memory
 
 	log.Printf("✅ Retrieved %d matches from memory in %v", matchCount, duration)
 
@@ -301,7 +301,7 @@ func handleMatches(w http.ResponseWriter, r *http.Request) {
 		"meta": map[string]interface{}{
 			"count":    matchCount,
 			"duration": duration.String(),
-			"source":   "memory", // Data comes from in-memory store, not YDB
+			"source":   "memory", // Data comes from in-memory store
 		},
 	}); err != nil {
 		log.Printf("❌ Failed to encode matches: %v", err)

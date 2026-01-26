@@ -48,9 +48,7 @@ type Parser struct {
 }
 
 func NewParser(cfg *config.Config) *Parser {
-	// YDB is not used - data is served directly from in-memory store
-	// This makes parsing much faster (no slow YDB writes)
-	fmt.Println("Pinnacle888 parser running in memory-only mode (no YDB storage)")
+	// Data is served directly from in-memory store
 
 	baseURL := cfg.Parser.Pinnacle888.BaseURL
 	if baseURL == "" {
@@ -64,7 +62,7 @@ func NewParser(cfg *config.Config) *Parser {
 	return &Parser{
 		cfg:     cfg,
 		client:  client,
-		storage: nil, // No YDB storage
+		storage: nil, // No external storage - data served from memory
 	}
 }
 
@@ -346,7 +344,7 @@ func (p *Parser) processAll(ctx context.Context) error {
 			}
 
 			// Add match to in-memory store for fast API access (primary storage)
-			// YDB is not used - data is served directly from memory
+			// Data is served directly from memory
 			health.AddMatch(m)
 		}
 	}
@@ -504,7 +502,7 @@ func (p *Parser) processMatchup(ctx context.Context, matchupID int64) error {
 	}
 
 	// Add match to in-memory store for fast API access (primary storage)
-	// YDB is not used - data is served directly from memory
+	// Data is served directly from memory
 	health.AddMatch(m)
 
 	return nil

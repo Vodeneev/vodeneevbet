@@ -2,20 +2,6 @@
 # Manage active parsers via enabled_parsers
 # For individual containers use --parser flag (fonbet/pinnacle)
 
-# YDB cloud configuration
-ydb:
-  endpoint: "grpcs://ydb.serverless.yandexcloud.net:2135"
-  database: "/ru-central1/b1gttv06r5rq0hc4filn/etn1sqa39tgha69fe2mt"
-  # Path to Service Account key file
-  # IMPORTANT: path is resolved relative to config file directory (configs/)
-  service_account_key_file: "../keys/service-account-key.json"
-  
-  # TTL settings for automatic cleanup of stale data
-  ttl:
-    enabled: true                    # Enable TTL
-    expire_after: 4h                 # Delete odds 4 hours after match
-    auto_setup: true                 # Automatically setup TTL on startup
-
 # PostgreSQL for value bet history
 # Yandex Cloud Managed PostgreSQL configuration
 # 
@@ -105,8 +91,7 @@ value_calculator:
   check_interval: 5m               # Check interval
   test_interval: 30s               # Test interval
   
-  # Data source: use parser's /matches endpoint instead of YDB
-  # If not set, calculator will use YDB as fallback
+  # Data source: use parser's /matches endpoint
   parser_url: "http://158.160.197.172/parser"  # URL to parser service (e.g. "http://parser:8080" in Docker)
   
   # Filters

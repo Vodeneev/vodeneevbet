@@ -8,7 +8,7 @@ import (
 	"github.com/Vodeneev/vodeneevbet/internal/pkg/models"
 )
 
-// MatchConverter converts parser data to YDB match structures
+// MatchConverter converts parser data to match structures
 type MatchConverter struct {
 	bookmaker string
 }

@@ -21,10 +21,6 @@ type Parser struct {
 }
 
 func NewParser(config *config.Config) *Parser {
-	// YDB is not used - data is served directly from in-memory store
-	// This makes parsing much faster (no slow YDB writes)
-	fmt.Println("Parser running in memory-only mode (no YDB storage)")
-	
 	// Create components
 	eventFetcher := NewEventFetcher(config)
 	oddsParser := NewOddsParser()
@@ -36,7 +32,7 @@ func NewParser(config *config.Config) *Parser {
 		oddsParser:     oddsParser,
 		matchBuilder:   matchBuilder,
 		eventProcessor: eventProcessor,
-		storage:        nil, // No YDB storage
+		storage:        nil, // No external storage - data served from memory
 		config:         config,
 	}
 }

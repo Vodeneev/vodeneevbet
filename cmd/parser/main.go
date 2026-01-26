@@ -77,7 +77,7 @@ func run() error {
 	}
 	health.RegisterParsers(interfaceParsers)
 
-	// Health server now uses in-memory store (no YDB client needed for /matches endpoint)
+	// Health server uses in-memory store for /matches endpoint
 	health.Run(ctx, cfg.healthAddr, "parser", nil)
 
 	log.Println("Starting parsers...")

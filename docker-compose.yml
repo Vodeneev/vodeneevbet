@@ -19,25 +19,6 @@ services:
       timeout: 5s
       retries: 5
 
-
-  # YDB для локального тестирования
-  ydb:
-    image: cr.yandex/yc/yandex-docker-local-ydb:latest
-    container_name: arb-ydb
-    ports:
-      - "2135:2135"
-      - "2136:2136"
-    environment:
-      - YDB_USE_IN_MEMORY_PDISKS=true
-    command: ["ydbd", "server", "--log-level", "NOTICE", "--syslog", "--tcp", "--yaml-config", "/ydb_cfg.yaml", "--node", "1", "--grpc-port", "2135", "--ic-port", "2136", "--mon-port", "8765", "--log", "/ydb/logs"]
-    volumes:
-      - ydb_data:/ydb
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8765/status"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
   # Веб-интерфейс для администрирования PostgreSQL
   adminer:
     image: adminer
@@ -49,4 +30,3 @@ services:
 
 volumes:
   postgres_data:
-  ydb_data:

@@ -87,7 +87,7 @@ func (p *EventProcessor) ProcessEvent(event interface{}) error {
 		// Store using new hierarchical structure
 		if match != nil {
 			if matchModel, ok := (*match).(*models.Match); ok {
-				// Storage is optional: allow running without YDB.
+				// Storage is optional: allow running without external storage.
 				if p.storage == nil {
 					return nil
 				}

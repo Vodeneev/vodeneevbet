@@ -51,7 +51,7 @@ func (b *MatchBuilder) BuildMatch(mainEvent interface{}, statisticalEvents []int
 	// Create match name
 	matchName := fmt.Sprintf("%s vs %s", fonbetEvent.HomeTeam, fonbetEvent.AwayTeam)
 	
-	// Canonical match ID so multiple bookmakers can write into the same match in YDB.
+	// Canonical match ID for consistent match identification across bookmakers.
 	matchID := models.CanonicalMatchID(fonbetEvent.HomeTeam, fonbetEvent.AwayTeam, fonbetEvent.StartTime)
 
 	// Create match

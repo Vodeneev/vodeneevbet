@@ -165,8 +165,8 @@ func (p *BatchProcessor) ProcessSportEvents(sport string) error {
 	)
 
 	fmt.Printf("✅ Successfully processed %d matches for sport: %s\n", processedCount, sport)
-	fmt.Printf("⏱️  Total timing: fetch=%v, parse=%v, group=%v, process=%v, ydb_write=%v, total=%v\n",
-		fetchDuration, parseDuration, groupDuration, processDuration, ydbWriteTime, totalDuration)
+	fmt.Printf("⏱️  Total timing: fetch=%v, parse=%v, group=%v, process=%v, total=%v\n",
+		fetchDuration, parseDuration, groupDuration, processDuration, totalDuration)
 	fmt.Printf("📈 Stats: %d events, %d outcomes processed\n", totalEvents, totalOutcomes)
 
 	return nil
@@ -259,8 +259,8 @@ func (p *BatchProcessor) processMatchesInBatches(
 		totalYDBWriteTime += ydbTime
 
 		batchDuration := time.Since(batchStart)
-		fmt.Printf("⏱️  Batch %d-%d: %d matches, %d events, %d outcomes in %v (ydb_write=%v, batch_size=%d)\n",
-			i+1, end, count, events, outcomes, batchDuration, ydbTime, p.batchSize)
+		fmt.Printf("⏱️  Batch %d-%d: %d matches, %d events, %d outcomes in %v (batch_size=%d)\n",
+			i+1, end, count, events, outcomes, batchDuration, p.batchSize)
 
 		// Динамически корректируем размер батча
 		p.adjustBatchSize(batchDuration)
@@ -424,11 +424,10 @@ func (p *BatchProcessor) worker(
 				outcomesCount += len(event.Outcomes)
 			}
 
-			// Add match to in-memory store for fast API access (primary storage)
-			// YDB is not used - data is served directly from memory
+			// Add match to in-memory store for fast API access
 			health.AddMatch(matchModel)
 
-			// No YDB storage - data is served from memory only
+			// Store time is always 0 (no external storage)
 			storeTime := time.Duration(0)
 
 			// Record match timing

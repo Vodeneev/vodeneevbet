@@ -334,8 +334,8 @@ func (c *Client) GetLiveEvents(eventsURL string, sportID int64) ([]byte, error) 
 	queryParams.Set("sp", fmt.Sprintf("%d", sportID))
 	queryParams.Set("tm", "0") // Time = 0 (all, including live)
 	queryParams.Set("v", "0")
-	// Use Russian locale as in the user's request (can be changed to en_US for matching with Fonbet)
-	queryParams.Set("locale", "ru_RU")
+	// Use English locale to match Fonbet team names for proper match merging
+	queryParams.Set("locale", "en_US")
 	queryParams.Set("_", fmt.Sprintf("%d", time.Now().UnixMilli())) // Timestamp
 	queryParams.Set("withCredentials", "true")
 
@@ -345,9 +345,10 @@ func (c *Client) GetLiveEvents(eventsURL string, sportID int64) ([]byte, error) 
 	}
 	req.URL.RawQuery = queryParams.Encode()
 
-	// Set headers matching the user's request
+	// Set headers for live events API
+	// Use English language to match Fonbet team names for proper match merging
 	req.Header.Set("Accept", "application/json, text/plain, */*")
-	req.Header.Set("Accept-Language", "ru,en;q=0.9")
+	req.Header.Set("Accept-Language", "en,en-US;q=0.9")
 	req.Header.Set("Accept-Encoding", "gzip, deflate, br, zstd")
 	req.Header.Set("User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 YaBrowser/25.12.0.0 Safari/537.36")
 	req.Header.Set("Referer", u.Scheme+"://"+u.Host+"/ru/compact/sports/soccer")
@@ -360,7 +361,7 @@ func (c *Client) GetLiveEvents(eventsURL string, sportID int64) ([]byte, error) 
 	req.Header.Set("Priority", "u=1, i")
 
 	// Set custom headers from the user's request
-	req.Header.Set("X-App-Data", "directusToken=TwEdnphtyxsfMpXoJkCkWaPsL2KJJ3lo;lang=ru_RU;dpVXz=ZDfaFZUP9")
+	req.Header.Set("X-App-Data", "directusToken=TwEdnphtyxsfMpXoJkCkWaPsL2KJJ3lo;lang=en_US;dpVXz=ZDfaFZUP9")
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {

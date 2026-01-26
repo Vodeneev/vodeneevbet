@@ -305,39 +305,23 @@ func (c *Client) GetLiveEvents(eventsURL string, sportID int64) ([]byte, error) 
 		return nil, fmt.Errorf("parse final events_url: %w", err)
 	}
 
-	// Set query parameters for live events (matching the actual API request)
+	// Set query parameters for live events
+	// Only include essential parameters - many UI filters can be omitted
 	queryParams := u.Query()
-	queryParams.Set("btg", "1")
-	queryParams.Set("c", "")
-	queryParams.Set("cl", "3")
-	queryParams.Set("d", "")
-	queryParams.Set("ec", "")
-	queryParams.Set("ev", "")
-	queryParams.Set("g", "")
-	queryParams.Set("hle", "false")
-	queryParams.Set("ic", "false")
-	queryParams.Set("ice", "false")
-	queryParams.Set("inl", "false")
-	queryParams.Set("l", "3")
-	queryParams.Set("lang", "")
-	queryParams.Set("lg", "")
-	queryParams.Set("lv", "")
-	queryParams.Set("me", "0") // Matches In Progress = false (for live, this should be 0 to get all)
-	queryParams.Set("mk", "2") // Market type
-	queryParams.Set("more", "false")
-	queryParams.Set("o", "1")
-	queryParams.Set("ot", "1") // Order type = 1 for live (vs 2 for line)
-	queryParams.Set("pa", "0")
-	queryParams.Set("pimo", "0,1,8,39,2,3,6,7,4,5") // Market IDs
-	queryParams.Set("pn", "-1")                     // Page Number = -1 (all)
-	queryParams.Set("pv", "1")
-	queryParams.Set("sp", fmt.Sprintf("%d", sportID))
-	queryParams.Set("tm", "0") // Time = 0 (all, including live)
-	queryParams.Set("v", "0")
-	// Use English locale to match Fonbet team names for proper match merging
-	queryParams.Set("locale", "en_US")
-	queryParams.Set("_", fmt.Sprintf("%d", time.Now().UnixMilli())) // Timestamp
-	queryParams.Set("withCredentials", "true")
+	
+	// Essential parameters
+	queryParams.Set("sp", fmt.Sprintf("%d", sportID))        // Sport ID (required)
+	queryParams.Set("tm", "0")                              // Time = 0 (all, including live)
+	queryParams.Set("ot", "1")                              // Order type = 1 for live (vs 2 for line)
+	queryParams.Set("locale", "en_US")                      // Locale for team names matching
+	
+	// Important optional parameters
+	queryParams.Set("mk", "2")                              // Market type
+	queryParams.Set("pimo", "0,1,8,39,2,3,6,7,4,5")        // Market IDs
+	queryParams.Set("pn", "-1")                             // Page Number = -1 (all pages)
+	
+	// Timestamp for cache busting (may help with some APIs)
+	queryParams.Set("_", fmt.Sprintf("%d", time.Now().UnixMilli()))
 
 	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, u.Scheme+"://"+u.Host+u.Path, nil)
 	if err != nil {
@@ -345,23 +329,13 @@ func (c *Client) GetLiveEvents(eventsURL string, sportID int64) ([]byte, error) 
 	}
 	req.URL.RawQuery = queryParams.Encode()
 
-	// Set headers for live events API
+	// Set essential headers for live events API
 	// Use English language to match Fonbet team names for proper match merging
 	req.Header.Set("Accept", "application/json, text/plain, */*")
 	req.Header.Set("Accept-Language", "en,en-US;q=0.9")
 	req.Header.Set("Accept-Encoding", "gzip, deflate, br, zstd")
 	req.Header.Set("User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 YaBrowser/25.12.0.0 Safari/537.36")
-	req.Header.Set("Referer", u.Scheme+"://"+u.Host+"/ru/compact/sports/soccer")
-	req.Header.Set("Sec-CH-UA", `"Chromium";v="142", "YaBrowser";v="25.12", "Not_A Brand";v="99", "Yowser";v="2.5"`)
-	req.Header.Set("Sec-CH-UA-Mobile", "?0")
-	req.Header.Set("Sec-CH-UA-Platform", `"macOS"`)
-	req.Header.Set("Sec-Fetch-Dest", "empty")
-	req.Header.Set("Sec-Fetch-Mode", "cors")
-	req.Header.Set("Sec-Fetch-Site", "same-origin")
-	req.Header.Set("Priority", "u=1, i")
-
-	// Set custom headers from the user's request
-	req.Header.Set("X-App-Data", "directusToken=TwEdnphtyxsfMpXoJkCkWaPsL2KJJ3lo;lang=en_US;dpVXz=ZDfaFZUP9")
+	req.Header.Set("Referer", u.Scheme+"://"+u.Host+"/en/compact/sports/soccer")
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {

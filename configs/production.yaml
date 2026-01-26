@@ -68,11 +68,8 @@ value_calculator:
   # Default: 1.0 for all bookmakers if not specified
   bookmaker_weights:
     pinnacle: 1.0      # Reference bookmaker - maximum weight
-    betfair: 0.95
-    sbobet: 0.9
-    bet365: 0.85
-    williamhill: 0.8
-    pinnacle888: 0.7   # New bookmaker - lower weight
+    fonbet: 0.95       # High weight - reliable bookmaker
+    pinnacle888: 0.7   # Lower weight - newer bookmaker
   
   # Minimum value percent to show value bets (default: 5.0)
   min_value_percent: 5.0

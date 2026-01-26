@@ -1,96 +1,96 @@
-# Настройка GitHub Secrets для деплоя
+# GitHub Secrets Setup for Deployment
 
-Для работы асинхронной обработки и уведомлений в Telegram необходимо настроить секреты в GitHub Actions.
+To enable async processing and Telegram notifications, you need to configure secrets in GitHub Actions.
 
-## Необходимые секреты
+## Required Secrets
 
-### 1. POSTGRES_DSN (обязательно для async режима)
+### 1. POSTGRES_DSN (required for async mode)
 
-Строка подключения к Yandex Cloud Managed PostgreSQL.
+Connection string to Yandex Cloud Managed PostgreSQL.
 
-**Формат:**
+**Format:**
 ```
 host=<host1>,<host2> port=6432 user=<username> password=<password> dbname=<dbname> sslmode=require target_session_attrs=read-write
 ```
 
-**Пример для вашего кластера:**
+**Example for your cluster:**
 ```
 host=rc1a-fec715cq0rept3kd.mdb.yandexcloud.net,rc1a-h8tc88gfbg9v7anh.mdb.yandexcloud.net port=6432 user=vodeneevm password=your_secure_password dbname=db sslmode=require target_session_attrs=read-write
 ```
 
-**⚠️ Важно:** Пользователь должен быть `vodeneevm` (не `vodeneevbet`!)
+**⚠️ Important:** User must be `vodeneevm` (not `vodeneevbet`!)
 
-**Важно:**
-- Указывайте все хосты через запятую для отказоустойчивости
-- Параметр `target_session_attrs=read-write` обеспечивает подключение к хосту с правами записи
+**Important:**
+- Specify all hosts separated by comma for high availability
+- Parameter `target_session_attrs=read-write` ensures connection to host with write permissions
 
-**Как получить:**
-1. Откройте [Yandex Cloud Console](https://console.cloud.yandex.ru)
-2. Managed Service for PostgreSQL → кластер **postgresql106**
-3. Вкладка **Хосты** → скопируйте FQDN
-4. Вкладка **Пользователи** → создайте/используйте пользователя
-5. Вкладка **Базы данных** → создайте/используйте базу данных
+**How to get:**
+1. Open [Yandex Cloud Console](https://console.cloud.yandex.ru)
+2. Managed Service for PostgreSQL → cluster **postgresql106**
+3. **Hosts** tab → copy FQDN
+4. **Users** tab → create/use user
+5. **Databases** tab → create/use database
 
-### 2. TELEGRAM_BOT_TOKEN (обязательно для уведомлений)
+### 2. TELEGRAM_BOT_TOKEN (required for notifications)
 
-Токен вашего Telegram бота.
+Your Telegram bot token.
 
-**Как получить:**
-1. Откройте [@BotFather](https://t.me/botfather) в Telegram
-2. Отправьте `/newbot` и следуйте инструкциям
-3. Скопируйте токен (формат: `123456789:ABCdefGHIjklMNOpqrsTUVwxyz`)
+**How to get:**
+1. Open [@BotFather](https://t.me/botfather) in Telegram
+2. Send `/newbot` and follow instructions
+3. Copy token (format: `123456789:ABCdefGHIjklMNOpqrsTUVwxyz`)
 
-### 3. TELEGRAM_CHAT_ID (обязательно для уведомлений)
+### 3. TELEGRAM_CHAT_ID (required for notifications)
 
-ID чата, куда будут отправляться уведомления.
+Chat ID where notifications will be sent.
 
-**Как получить (выберите один способ):**
+**How to get (choose one method):**
 
-**Способ 1: Через @userinfobot (для личных чатов) - самый простой**
-1. Откройте [@userinfobot](https://t.me/userinfobot) в Telegram
-2. Отправьте `/start`
-3. Бот покажет ваш Chat ID (число, например: `123456789`)
+**Method 1: Via @userinfobot (for personal chats) - simplest**
+1. Open [@userinfobot](https://t.me/userinfobot) in Telegram
+2. Send `/start`
+3. Bot will show your Chat ID (number, e.g.: `123456789`)
 
-**Способ 2: Через @RawDataBot (для групп)**
-1. Создайте группу или откройте существующую
-2. Добавьте [@RawDataBot](https://t.me/RawDataBot) в группу
-3. Отправьте любое сообщение в группу
-4. Бот ответит JSON с данными - найдите `chat.id` (это и есть Chat ID группы)
+**Method 2: Via @RawDataBot (for groups)**
+1. Create a group or open existing one
+2. Add [@RawDataBot](https://t.me/RawDataBot) to the group
+3. Send any message in the group
+4. Bot will reply with JSON data - find `chat.id` (this is the Group Chat ID)
 
-**Способ 3: Через @getidsbot**
-1. Откройте [@getidsbot](https://t.me/getidsbot) в Telegram
-2. Отправьте `/start`
-3. Бот покажет ваш Chat ID
+**Method 3: Via @getidsbot**
+1. Open [@getidsbot](https://t.me/getidsbot) in Telegram
+2. Send `/start`
+3. Bot will show your Chat ID
 
-**Способ 4: Через вашего бота (если уже запущен)**
-1. Напишите вашему боту любое сообщение (например, `/start`)
-2. Проверьте логи бота - там будет Chat ID из входящего сообщения
-3. Или временно добавьте логирование в код бота для вывода Chat ID
+**Method 4: Via your bot (if already running)**
+1. Send any message to your bot (e.g., `/start`)
+2. Check bot logs - there will be Chat ID from incoming message
+3. Or temporarily add logging to bot code to output Chat ID
 
-**Примечание:** 
-- Для личных чатов используйте ваш User ID (получите через @userinfobot)
-- Для групп используйте Group ID (получите через @RawDataBot)
-- Chat ID - это число (может быть отрицательным для групп)
+**Note:** 
+- For personal chats use your User ID (get via @userinfobot)
+- For groups use Group ID (get via @RawDataBot)
+- Chat ID is a number (can be negative for groups)
 
-## Настройка секретов в GitHub
+## Setting Up Secrets in GitHub
 
-### Через веб-интерфейс:
+### Via Web Interface:
 
-1. Откройте ваш репозиторий на GitHub
-2. Перейдите в **Settings** → **Secrets and variables** → **Actions**
-3. Если секрет уже существует:
-   - Найдите нужный секрет в списке (например, `POSTGRES_DSN`)
-   - Нажмите на него, затем нажмите **Update** (или **Edit**)
-   - Вставьте новое значение
-   - Нажмите **Update secret**
-4. Если секрета нет:
-   - Нажмите **New repository secret**
-   - Добавьте каждый секрет:
+1. Open your repository on GitHub
+2. Go to **Settings** → **Secrets and variables** → **Actions**
+3. If secret already exists:
+   - Find the secret in the list (e.g., `POSTGRES_DSN`)
+   - Click on it, then click **Update** (or **Edit**)
+   - Paste new value
+   - Click **Update secret**
+4. If secret doesn't exist:
+   - Click **New repository secret**
+   - Add each secret:
 
      - **Name**: `POSTGRES_DSN`
      - **Secret**: `host=rc1a-fec715cq0rept3kd.mdb.yandexcloud.net,rc1a-h8tc88gfbg9v7anh.mdb.yandexcloud.net port=6432 user=vodeneevm password=your_password dbname=db sslmode=require target_session_attrs=read-write`
      
-     ⚠️ **Важно:** Используйте пользователя `vodeneevm` (не `vodeneevbet`!)
+     ⚠️ **Important:** Use user `vodeneevm` (not `vodeneevbet`!)
 
      - **Name**: `TELEGRAM_BOT_TOKEN`
      - **Secret**: `123456789:ABCdefGHIjklMNOpqrsTUVwxyz`
@@ -98,69 +98,69 @@ ID чата, куда будут отправляться уведомления
      - **Name**: `TELEGRAM_CHAT_ID`
      - **Secret**: `123456789`
 
-   - Нажмите **Add secret**
+   - Click **Add secret**
 
-### Через GitHub CLI:
+### Via GitHub CLI:
 
 ```bash
-# Установите GitHub CLI если еще не установлен
+# Install GitHub CLI if not installed
 # brew install gh  # macOS
 # apt install gh   # Linux
 
-# Авторизуйтесь
+# Authenticate
 gh auth login
 
-# Добавьте или обновите секреты (команда set обновит существующий секрет)
+# Add or update secrets (set command updates existing secret)
 gh secret set POSTGRES_DSN --body "host=rc1a-fec715cq0rept3kd.mdb.yandexcloud.net,rc1a-h8tc88gfbg9v7anh.mdb.yandexcloud.net port=6432 user=vodeneevm password=your_password dbname=db sslmode=require target_session_attrs=read-write"
 gh secret set TELEGRAM_BOT_TOKEN --body "123456789:ABCdefGHIjklMNOpqrsTUVwxyz"
 gh secret set TELEGRAM_CHAT_ID --body "123456789"
 ```
 
-## Проверка секретов
+## Verifying Secrets
 
-После добавления секретов:
+After adding secrets:
 
-1. Запустите деплой (push в `main` или через **Actions** → **Run workflow**)
-2. Проверьте логи деплоя - не должно быть ошибок о missing secrets
-3. После деплоя проверьте логи калькулятора:
+1. Run deployment (push to `main` or via **Actions** → **Run workflow**)
+2. Check deployment logs - there should be no errors about missing secrets
+3. After deployment check calculator logs:
    ```bash
    ssh vm-core-services 'sudo docker logs vodeneevbet-calculator'
    ```
-4. Должны появиться строки:
+4. You should see lines:
    ```
    calculator: PostgreSQL diff storage initialized successfully
    calculator: telegram notifier initialized for chat <ID>
    calculator: starting async processing with interval 30s
    ```
 
-## Существующие секреты
+## Existing Secrets
 
-У вас уже настроены следующие секреты (не трогайте их):
-- `VM_CORE_HOST` - хост VM для core сервисов
-- `VM_PARSERS_HOST` - хост VM для парсеров
-- `SSH_PRIVATE_KEY` - SSH ключ для подключения к VM
-- `GHCR_TOKEN` - токен для GitHub Container Registry
-- `GHCR_USERNAME` - username для GHCR (опционально)
+You already have the following secrets configured (don't touch them):
+- `VM_CORE_HOST` - VM host for core services
+- `VM_PARSERS_HOST` - VM host for parsers
+- `SSH_PRIVATE_KEY` - SSH key for VM connection
+- `GHCR_TOKEN` - token for GitHub Container Registry
+- `GHCR_USERNAME` - username for GHCR (optional)
 
-## Безопасность
+## Security
 
-⚠️ **Важно:**
-- Никогда не коммитьте секреты в код
-- Не логируйте секреты в консоль
-- Регулярно обновляйте пароли
-- Используйте разные пароли для разных окружений (dev/staging/prod)
+⚠️ **Important:**
+- Never commit secrets to code
+- Don't log secrets to console
+- Regularly update passwords
+- Use different passwords for different environments (dev/staging/prod)
 
 ## Troubleshooting
 
-### Ошибка: "postgres DSN is required"
-- Убедитесь, что секрет `POSTGRES_DSN` добавлен в GitHub Secrets
-- Проверьте, что значение не пустое
+### Error: "postgres DSN is required"
+- Make sure `POSTGRES_DSN` secret is added to GitHub Secrets
+- Check that value is not empty
 
-### Ошибка: "failed to initialize PostgreSQL storage"
-- Проверьте правильность DSN строки
-- Убедитесь, что FQDN, порт, пользователь, пароль и имя БД указаны верно
-- Проверьте, что SSL включен (`sslmode=require`)
+### Error: "failed to initialize PostgreSQL storage"
+- Check DSN string correctness
+- Make sure FQDN, port, user, password and database name are correct
+- Check that SSL is enabled (`sslmode=require`)
 
-### Ошибка: "telegram notifier not initialized"
-- Проверьте, что `TELEGRAM_BOT_TOKEN` и `TELEGRAM_CHAT_ID` добавлены
-- Убедитесь, что токен валидный (можно проверить через [@BotFather](https://t.me/botfather))
+### Error: "telegram notifier not initialized"
+- Check that `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID` are added
+- Make sure token is valid (can check via [@BotFather](https://t.me/botfather))

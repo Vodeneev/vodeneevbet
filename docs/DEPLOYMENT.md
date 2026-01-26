@@ -1,74 +1,74 @@
-# Руководство по деплою
+# Deployment Guide
 
-Система автоматического деплоя обеспечивает, что актуальная версия сервисов всегда запущена на виртуальных машинах.
+The automatic deployment system ensures that the latest version of services is always running on virtual machines.
 
-## Архитектура деплоя
+## Deployment Architecture
 
-- **vm-parsers** (158.160.197.172): Запускает Parser Service
-- **vm-core-services** (158.160.200.253): Запускает Calculator Service
+- **vm-parsers** (158.160.197.172): Runs Parser Service
+- **vm-core-services** (158.160.200.253): Runs Calculator Service
 
-## Быстрый старт
+## Quick Start
 
-### Деплой всех сервисов
+### Deploy All Services
 
 **Linux/Mac (bash):**
 ```bash
 make deploy-all
-# или
+# or
 ./scripts/deploy/deploy-all.sh
 ```
 
-### Переменные окружения для ручного деплоя
+### Environment Variables for Manual Deployment
 
-Скрипты `scripts/deploy/deploy-*.sh` ожидают, что вы укажете, откуда тянуть образы:
+The `scripts/deploy/deploy-*.sh` scripts expect you to specify where to pull images from:
 
 ```bash
-export IMAGE_OWNER="vodeneev"   # namespace в GHCR (обычно владелец репозитория)
-export IMAGE_TAG="main"         # или конкретный тег
+export IMAGE_OWNER="vodeneev"   # namespace in GHCR (usually repository owner)
+export IMAGE_TAG="main"         # or specific tag
 
-# если образы приватные:
-export GHCR_TOKEN="..."         # PAT с read:packages
-export GHCR_USERNAME="vodeneev" # опционально
+# if images are private:
+export GHCR_TOKEN="..."         # PAT with read:packages
+export GHCR_USERNAME="vodeneev" # optional
 
-# если нужно синкнуть ./keys на VM (по умолчанию скрипт не трогает ключи):
+# if you need to sync ./keys to VM (by default script doesn't touch keys):
 export COPY_KEYS=1
 ```
 
-### Деплой отдельных сервисов
+### Deploy Individual Services
 
 **Parser Service:**
 ```bash
 make deploy-parsers
-# или
+# or
 ./scripts/deploy/deploy-parsers.sh
 ```
 
 **Core Services (Calculator):**
 ```bash
 make deploy-core
-# или
+# or
 ./scripts/deploy/deploy-core-services.sh
 ```
 
-## Что делает скрипт деплоя
+## What the Deployment Script Does
 
-Актуальные скрипты деплоя используют **Docker Compose на VM** (без rsync кода и без сборки Go на сервере):
+Current deployment scripts use **Docker Compose on VM** (without rsync of code and without building Go on server):
 
-1. **Проверка подключения** — SSH до VM
-2. **Подготовка директорий** — `/opt/vodeneevbet/{parsers,core}`
-3. **Загрузка `docker-compose.yml`** — из `deploy/vm-*/docker-compose.yml`
-4. **Синк `configs/`** — кладётся рядом с compose (ключи по умолчанию не трогаем)
+1. **Connection check** — SSH to VM
+2. **Directory preparation** — `/opt/vodeneevbet/{parsers,core}`
+3. **Upload `docker-compose.yml`** — from `deploy/vm-*/docker-compose.yml`
+4. **Sync `configs/`** — placed next to compose (keys are not touched by default)
 5. **Pull & up** — `docker compose pull && docker compose up -d`
 
-## Управление сервисами
+## Service Management
 
-### Проверка статуса
+### Check Status
 
 ```bash
 make status
 ```
 
-Или вручную:
+Or manually:
 ```bash
 # Parser
 ssh vm-parsers "sudo docker ps --filter name=vodeneevbet-parser"
@@ -77,92 +77,92 @@ ssh vm-parsers "sudo docker ps --filter name=vodeneevbet-parser"
 ssh vm-core-services "sudo docker ps --filter name=vodeneevbet-calculator"
 ```
 
-### Просмотр логов
+### View Logs
 
 ```bash
 # Parser logs
 make logs-parser
-# или
+# or
 ssh vm-parsers "sudo docker logs -f vodeneevbet-parser"
 
 # Calculator logs
 make logs-calculator
-# или
+# or
 ssh vm-core-services "sudo docker logs -f vodeneevbet-calculator"
 ```
 
-### Остановка/Запуск
+### Stop/Start
 
 ```bash
-# Остановить все сервисы
+# Stop all services
 make stop-all
 
-# Запустить все сервисы
+# Start all services
 make start-all
 ```
 
-## Требования
+## Requirements
 
-### На удаленных машинах должно быть установлено:
+### On Remote Machines Must Be Installed:
 
 1. **Docker**
-2. **Docker Compose** (плагин `docker compose` или `docker-compose`)
-3. **SSH доступ** с правами sudo для пользователя `vodeneevm`
+2. **Docker Compose** (plugin `docker compose` or `docker-compose`)
+3. **SSH access** with sudo privileges for user `vodeneevm`
 
-### На локальной машине:
+### On Local Machine:
 
-1. **SSH клиент** с настроенным доступом к VM
-2. **rsync** (для синка `configs/`)
-3. **Make** (опционально)
+1. **SSH client** with configured access to VM
+2. **rsync** (for syncing `configs/`)
+3. **Make** (optional)
 
-## Автоматизация деплоя через CI/CD
+## CI/CD Deployment Automation
 
 ### GitHub Actions
 
 Workflow `.github/workflows/deploy.yml`:
 
-- собирает образы `parser` и `calculator` в GHCR
-- по SSH деплоит на две VM через `docker compose`
+- builds `parser` and `calculator` images in GHCR
+- deploys to two VMs via SSH using `docker compose`
 
-**Secrets (обязательные):**
-- `SSH_PRIVATE_KEY` — приватный ключ для SSH (без passphrase)
-- `VM_PARSERS_HOST` — IP/DNS vm-parsers
-- `VM_CORE_HOST` — IP/DNS vm-core-services
+**Required Secrets:**
+- `SSH_PRIVATE_KEY` — private SSH key (without passphrase)
+- `VM_PARSERS_HOST` — IP/DNS of vm-parsers
+- `VM_CORE_HOST` — IP/DNS of vm-core-services
 
-**Secrets (опциональные):**
-- `VM_USER` — пользователь на VM (если отличается)
-- `GHCR_TOKEN` + `GHCR_USERNAME` — если образы в GHCR приватные (PAT с `read:packages`)
+**Optional Secrets:**
+- `VM_USER` — user on VM (if different)
+- `GHCR_TOKEN` + `GHCR_USERNAME` — if images in GHCR are private (PAT with `read:packages`)
 
 ## Troubleshooting
 
-### Проблема: "Cannot connect to VM"
+### Problem: "Cannot connect to VM"
 
-**Решение:**
-1. Проверьте SSH подключение: `ssh vm-parsers`
-2. Убедитесь, что SSH config настроен правильно
-3. Проверьте доступность порта 22: `Test-NetConnection -ComputerName 158.160.197.172 -Port 22`
+**Solution:**
+1. Check SSH connection: `ssh vm-parsers`
+2. Make sure SSH config is set up correctly
+3. Check port 22 availability: `Test-NetConnection -ComputerName 158.160.197.172 -Port 22`
 
-### Проблема: "Permission denied"
+### Problem: "Permission denied"
 
-**Решение:**
-1. Убедитесь, что пользователь `vodeneevm` имеет права sudo
-2. Проверьте права на директорию: `ssh vm-parsers "ls -la /opt/vodeneevbet"`
+**Solution:**
+1. Make sure user `vodeneevm` has sudo privileges
+2. Check directory permissions: `ssh vm-parsers "ls -la /opt/vodeneevbet"`
 
-### Проблема: "go: command not found"
+### Problem: "go: command not found"
 
-**Решение:**
-Для compose-деплоя Go на VM не нужен. Убедитесь, что на VM установлены Docker и Docker Compose.
+**Solution:**
+For compose deployment, Go is not needed on VM. Make sure Docker and Docker Compose are installed on VM.
 
-### Проблема: Сервис не запускается
+### Problem: Service Won't Start
 
-**Решение:**
-1. Проверьте логи: `ssh vm-parsers "sudo docker logs --tail=200 vodeneevbet-parser"`
-2. Проверьте конфигурацию: `ssh vm-parsers "cat /opt/vodeneevbet/parsers/configs/production.yaml"`
-3. Проверьте директорию: `ssh vm-parsers "ls -la /opt/vodeneevbet/parsers"`
+**Solution:**
+1. Check logs: `ssh vm-parsers "sudo docker logs --tail=200 vodeneevbet-parser"`
+2. Check configuration: `ssh vm-parsers "cat /opt/vodeneevbet/parsers/configs/production.yaml"`
+3. Check directory: `ssh vm-parsers "ls -la /opt/vodeneevbet/parsers"`
 
-## Структура файлов на VM
+## File Structure on VM
 
-После деплоя структура на VM выглядит так:
+After deployment, the structure on VM looks like this:
 
 ```
 /opt/vodeneevbet/
@@ -170,17 +170,17 @@ Workflow `.github/workflows/deploy.yml`:
 │   ├── docker-compose.yml
 │   ├── .env
 │   ├── configs/
-│   └── keys/   # обычно вручную (секреты)
+│   └── keys/   # usually manually (secrets)
 └── core/
     ├── docker-compose.yml
     ├── .env
     ├── configs/
-    └── keys/   # обычно вручную (секреты)
+    └── keys/   # usually manually (secrets)
 ```
 
-## Безопасность
+## Security
 
-- SSH ключи должны быть защищены
-- Service account ключи и пароли не должны попадать в git
-- Используйте `.gitignore` для исключения чувствительных файлов
-- Регулярно обновляйте зависимости: `go mod tidy`
+- SSH keys must be protected
+- Service account keys and passwords must not be committed to git
+- Use `.gitignore` to exclude sensitive files
+- Regularly update dependencies: `go mod tidy`

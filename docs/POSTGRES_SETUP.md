@@ -1,93 +1,93 @@
-# Настройка подключения к Yandex Cloud Managed PostgreSQL
+# Yandex Cloud Managed PostgreSQL Connection Setup
 
-## Информация о вашем кластере
+## Your Cluster Information
 
-- **Имя кластера**: postgresql106
-- **ID кластера**: c9q4ti8th22kbmunjceg
-- **Версия**: PostgreSQL 16
-- **Окружение**: PRODUCTION
-- **Хосты**: 
+- **Cluster name**: postgresql106
+- **Cluster ID**: c9q4ti8th22kbmunjceg
+- **Version**: PostgreSQL 16
+- **Environment**: PRODUCTION
+- **Hosts**: 
   - `rc1a-fec715cq0rept3kd.mdb.yandexcloud.net` (read-write)
   - `rc1a-h8tc88gfbg9v7anh.mdb.yandexcloud.net` (read-write)
-- **Порт**: 6432
-- **Пользователь**: vodeneevbet
+- **Port**: 6432
+- **User**: vodeneevbet
 
-## Получение данных для подключения
+## Getting Connection Data
 
-### 1. Хосты базы данных
+### 1. Database Hosts
 
-Ваш кластер имеет несколько хостов для отказоустойчивости. Используйте оба хоста через запятую в DSN строке:
+Your cluster has multiple hosts for high availability. Use both hosts separated by comma in DSN string:
 
 ```
 rc1a-fec715cq0rept3kd.mdb.yandexcloud.net,rc1a-h8tc88gfbg9v7anh.mdb.yandexcloud.net
 ```
 
-### 2. Получите FQDN хостов (если нужно обновить)
+### 2. Get FQDN Hosts (if need to update)
 
-1. Откройте [Yandex Cloud Console](https://console.cloud.yandex.ru)
-2. Перейдите в **Managed Service for PostgreSQL**
-3. Выберите кластер **postgresql106**
-4. Перейдите на вкладку **Хосты**
-5. Скопируйте **FQDN** всех хостов (через запятую для отказоустойчивости)
+1. Open [Yandex Cloud Console](https://console.cloud.yandex.ru)
+2. Go to **Managed Service for PostgreSQL**
+3. Select cluster **postgresql106**
+4. Go to **Hosts** tab
+5. Copy **FQDN** of all hosts (separated by comma for high availability)
 
-### 2. Создайте базу данных (если еще не создана)
+### 2. Create Database (if not created yet)
 
-1. В консоли кластера перейдите на вкладку **Базы данных**
-2. Создайте базу данных (например, `arb_db` или используйте существующую `db`)
+1. In cluster console go to **Databases** tab
+2. Create database (e.g., `arb_db` or use existing `db`)
 
-### 3. Настройте права доступа
+### 3. Configure Access Rights
 
-Убедитесь, что пользователь `vodeneevbet` имеет права на создание таблиц в базе данных.
+Make sure user `vodeneevbet` has permissions to create tables in the database.
 
-### 4. Получите пароль пользователя
+### 4. Get User Password
 
-Пароль пользователя `vodeneevbet` должен быть установлен в консоли Yandex Cloud или при создании пользователя.
+User `vodeneevbet` password should be set in Yandex Cloud console or when creating the user.
 
-## Настройка подключения
+## Connection Setup
 
-### Вариант 1: Через переменную окружения (рекомендуется)
+### Option 1: Via Environment Variable (recommended)
 
 ```bash
 export POSTGRES_DSN="host=<host1>,<host2> port=6432 user=<username> password=<password> dbname=<dbname> sslmode=require target_session_attrs=read-write"
 ```
 
-**Пример для вашего кластера:**
+**Example for your cluster:**
 ```bash
 export POSTGRES_DSN="host=rc1a-fec715cq0rept3kd.mdb.yandexcloud.net,rc1a-h8tc88gfbg9v7anh.mdb.yandexcloud.net port=6432 user=vodeneevbet password=your_password dbname=db sslmode=require target_session_attrs=read-write"
 ```
 
-### Вариант 2: Через конфигурационный файл
+### Option 2: Via Configuration File
 
-Отредактируйте `configs/production.yaml`:
+Edit `configs/production.yaml`:
 
 ```yaml
 postgres:
   dsn: "host=<host1>,<host2> port=6432 user=<username> password=<password> dbname=<dbname> sslmode=require target_session_attrs=read-write"
 ```
 
-**Пример для вашего кластера:**
+**Example for your cluster:**
 ```yaml
 postgres:
   dsn: "host=rc1a-fec715cq0rept3kd.mdb.yandexcloud.net,rc1a-h8tc88gfbg9v7anh.mdb.yandexcloud.net port=6432 user=vodeneevbet password=your_password dbname=db sslmode=require target_session_attrs=read-write"
 ```
 
-### Важные параметры
+### Important Parameters
 
-- **Несколько хостов**: Указывайте все хосты через запятую для отказоустойчивости
-- **target_session_attrs=read-write**: Обеспечивает подключение к хосту с правами записи
-- **sslmode=require**: Обязательный SSL (для Go приложений достаточно `require`, не нужен `verify-full`)
+- **Multiple hosts**: Specify all hosts separated by comma for high availability
+- **target_session_attrs=read-write**: Ensures connection to host with write permissions
+- **sslmode=require**: Required SSL (for Go applications `require` is enough, `verify-full` is not needed)
 
-## Тестирование подключения (опционально)
+## Testing Connection (optional)
 
-Для тестирования подключения через `psql`:
+To test connection via `psql`:
 
-### 1. Установите PostgreSQL клиент
+### 1. Install PostgreSQL Client
 
 ```bash
 sudo apt update && sudo apt install --yes postgresql-client
 ```
 
-### 2. Установите сертификат (для psql с verify-full)
+### 2. Install Certificate (for psql with verify-full)
 
 ```bash
 mkdir -p ~/.postgresql && \
@@ -96,7 +96,7 @@ wget "https://storage.yandexcloud.net/cloud-certs/CA.pem" \
 chmod 0655 ~/.postgresql/root.crt
 ```
 
-### 3. Подключитесь к базе данных
+### 3. Connect to Database
 
 ```bash
 psql "host=rc1a-fec715cq0rept3kd.mdb.yandexcloud.net,rc1a-h8tc88gfbg9v7anh.mdb.yandexcloud.net \
@@ -107,48 +107,48 @@ psql "host=rc1a-fec715cq0rept3kd.mdb.yandexcloud.net,rc1a-h8tc88gfbg9v7anh.mdb.y
     target_session_attrs=read-write"
 ```
 
-### 4. Проверьте подключение
+### 4. Test Connection
 
 ```sql
 SELECT version();
 ```
 
-**Примечание**: Для Go приложений сертификат не требуется, достаточно `sslmode=require`. Сертификат нужен только для `psql` с `sslmode=verify-full`.
+**Note**: For Go applications certificate is not required, `sslmode=require` is enough. Certificate is only needed for `psql` with `sslmode=verify-full`.
 
-## Проверка подключения
+## Verifying Connection
 
-После настройки запустите калькулятор:
+After setup, run calculator:
 
 ```bash
 go run ./cmd/calculator -config configs/production.yaml
 ```
 
-В логах должно появиться:
+Logs should show:
 ```
 calculator: PostgreSQL diff storage initialized successfully
 ```
 
-## Безопасность
+## Security
 
-⚠️ **Важно**: Никогда не коммитьте пароли в репозиторий!
+⚠️ **Important**: Never commit passwords to repository!
 
-- Используйте переменные окружения для паролей
-- Добавьте `.env` файл в `.gitignore`
-- Используйте секреты в CI/CD системах
+- Use environment variables for passwords
+- Add `.env` file to `.gitignore`
+- Use secrets in CI/CD systems
 
 ## Troubleshooting
 
-### Ошибка: "connection refused"
-- Проверьте, что используете правильный порт (6432, не 5432)
-- Убедитесь, что FQDN указан правильно
+### Error: "connection refused"
+- Check that you're using correct port (6432, not 5432)
+- Make sure FQDN is specified correctly
 
-### Ошибка: "SSL required"
-- Добавьте `sslmode=require` в DSN строку
+### Error: "SSL required"
+- Add `sslmode=require` to DSN string
 
-### Ошибка: "authentication failed"
-- Проверьте имя пользователя и пароль
-- Убедитесь, что пользователь существует в кластере
+### Error: "authentication failed"
+- Check username and password
+- Make sure user exists in cluster
 
-### Ошибка: "database does not exist"
-- Создайте базу данных в консоли Yandex Cloud
-- Проверьте, что имя базы данных указано правильно
+### Error: "database does not exist"
+- Create database in Yandex Cloud console
+- Check that database name is specified correctly

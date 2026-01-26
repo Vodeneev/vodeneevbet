@@ -2,27 +2,6 @@
 # Manage active parsers via enabled_parsers
 # For individual containers use --parser flag (fonbet/pinnacle)
 
-# PostgreSQL for value bet history
-# Yandex Cloud Managed PostgreSQL configuration
-# 
-# Production cluster info:
-# - Hosts: rc1a-fec715cq0rept3kd.mdb.yandexcloud.net,rc1a-h8tc88gfbg9v7anh.mdb.yandexcloud.net
-# - Port: 6432
-# - User: vodeneevbet
-# - Database: db (or your database name)
-#
-# For Yandex Cloud Managed PostgreSQL, use format:
-# dsn: "host=<host1>,<host2> port=6432 user=<username> password=<password> dbname=<dbname> sslmode=require target_session_attrs=read-write"
-# 
-# Example for production (set via POSTGRES_DSN env var or GitHub Secrets):
-# dsn: "host=rc1a-fec715cq0rept3kd.mdb.yandexcloud.net,rc1a-h8tc88gfbg9v7anh.mdb.yandexcloud.net port=6432 user=vodeneevm password=<your_password> dbname=db sslmode=require target_session_attrs=read-write"
-# 
-# For local development (docker-compose):
-postgres:
-  dsn: "host=localhost user=arb_user password=arb_password dbname=arb_db port=5432 sslmode=disable"
-  # 
-  # You can also set DSN via environment variable: POSTGRES_DSN
-
 parser:
   # Production parser management
   # Empty array [] = run all registered parsers

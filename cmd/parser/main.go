@@ -69,15 +69,12 @@ func run() error {
 
 	setupSignalHandler(ctx, cancel)
 
-	// Register parsers for on-demand parsing via /matches endpoint
-	// Convert parsers.Parser to interfaces.Parser
 	interfaceParsers := make([]interfaces.Parser, len(ps))
 	for i, p := range ps {
 		interfaceParsers[i] = p
 	}
 	health.RegisterParsers(interfaceParsers)
 
-	// Health server uses in-memory store for /matches endpoint
 	health.Run(ctx, cfg.healthAddr, "parser", nil)
 
 	log.Println("Starting parsers...")
@@ -86,13 +83,12 @@ func run() error {
 
 func parseFlags() config {
 	var cfg config
-	
-	// Get default config path from environment or use default
+
 	defaultConfig := os.Getenv("CONFIG_PATH")
 	if defaultConfig == "" {
 		defaultConfig = defaultConfigPath
 	}
-	
+
 	flag.StringVar(&cfg.configPath, "config", defaultConfig, "Path to config file (can be set via CONFIG_PATH env var)")
 	flag.StringVar(&cfg.healthAddr, "health-addr", ":8080", "Health server listen address (e.g. :8080)")
 	flag.DurationVar(&cfg.runFor, "run-for", 0, "Auto-stop after duration (e.g. 10s, 1m). 0 = run until SIGINT/SIGTERM")

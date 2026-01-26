@@ -9,7 +9,6 @@ import (
 	"github.com/Vodeneev/vodeneevbet/internal/pkg/config"
 )
 
-// Factory constructs a parser instance from config.
 type Factory func(cfg *config.Config) Parser
 
 var (
@@ -17,8 +16,6 @@ var (
 	registry   = map[string]Factory{}
 )
 
-// Register registers a parser factory under a name (e.g. "fonbet").
-// Names are normalized to lower-case and trimmed.
 func Register(name string, f Factory) {
 	n := strings.ToLower(strings.TrimSpace(name))
 	if n == "" {
@@ -36,7 +33,6 @@ func Register(name string, f Factory) {
 	registry[n] = f
 }
 
-// FactoryByName returns a registered factory by name.
 func FactoryByName(name string) (Factory, bool) {
 	n := strings.ToLower(strings.TrimSpace(name))
 	registryMu.RLock()
@@ -45,7 +41,6 @@ func FactoryByName(name string) (Factory, bool) {
 	return f, ok
 }
 
-// Available returns a copy of the registry.
 func Available() map[string]Factory {
 	registryMu.RLock()
 	defer registryMu.RUnlock()
@@ -56,7 +51,6 @@ func Available() map[string]Factory {
 	return out
 }
 
-// AvailableNames returns sorted registered parser names.
 func AvailableNames() []string {
 	registryMu.RLock()
 	defer registryMu.RUnlock()
@@ -68,7 +62,6 @@ func AvailableNames() []string {
 	return out
 }
 
-// MustFactoryByName returns factory or panics with helpful error.
 func MustFactoryByName(name string) Factory {
 	if f, ok := FactoryByName(name); ok {
 		return f
@@ -77,4 +70,3 @@ func MustFactoryByName(name string) Factory {
 		panic(fmt.Sprintf("parsers: unknown parser %q (available: %v)", name, AvailableNames()))
 	}
 }
-

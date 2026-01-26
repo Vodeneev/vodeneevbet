@@ -72,7 +72,6 @@ bin/
 /telegram-bot
 /main
 internal/parser/parser
-internal/api/api
 internal/export/export
 
 # Export files

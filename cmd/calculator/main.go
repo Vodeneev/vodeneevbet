@@ -27,7 +27,6 @@ func main() {
 	var configPath string
 	var healthAddr string
 
-	// Get default config path from environment or use default
 	defaultConfig := os.Getenv("CONFIG_PATH")
 	if defaultConfig == "" {
 		defaultConfig = defaultConfigPath
@@ -51,7 +50,6 @@ func main() {
 	}
 	log.Printf("calculator: using parser URL %s", cfg.ValueCalculator.ParserURL)
 
-	// Override Telegram settings from environment if provided
 	if token := os.Getenv("TELEGRAM_BOT_TOKEN"); token != "" {
 		cfg.ValueCalculator.TelegramBotToken = token
 		log.Println("calculator: using Telegram bot token from environment")
@@ -72,11 +70,11 @@ func main() {
 			postgresDSN = envDSN
 			log.Println("calculator: using PostgreSQL DSN from POSTGRES_DSN environment variable")
 		}
-		
+
 		if postgresDSN == "" {
 			log.Fatalf("calculator: postgres DSN is required when async is enabled. Set it in config or POSTGRES_DSN env var")
 		}
-		
+
 		log.Println("calculator: initializing PostgreSQL diff storage...")
 		pgConfig := cfg.Postgres
 		pgConfig.DSN = postgresDSN
@@ -91,7 +89,7 @@ func main() {
 			}
 		}()
 		log.Println("calculator: PostgreSQL diff storage initialized")
-		
+
 		// Clean diff_bets table on startup to prevent stale data from blocking alerts
 		log.Println("calculator: cleaning diff_bets table on startup...")
 		cleanCtx, cleanCancel := context.WithTimeout(context.Background(), 10*time.Second)

@@ -150,6 +150,7 @@ func buildMatchFromCompactEvent(leagueName string, eventData interface{}, isLive
 
 	// For pre-match events: skip if in the past
 	// Status values: 0 = finished, 1 = live, 9 = upcoming/pre-match, 37 = upcoming with markets
+	// Note: Status 7, 5, 6, 3 etc. can also indicate live matches in progress
 	if !isLiveEvent {
 		if startTime.Before(now) {
 			return nil // Skip past events
@@ -157,10 +158,16 @@ func buildMatchFromCompactEvent(leagueName string, eventData interface{}, isLive
 		// Include pre-match events (status 9 or 37 typically means upcoming)
 		// Don't filter by status for pre-match - include all future events
 	} else {
-		// For live events: only include if actually live (status == 1)
-		if int(status) != 1 {
-			return nil
+		// For live events: include if match has started (startTime <= now) and not finished
+		// Status 1 = live, but status 7, 5, 6, 3 etc. can also indicate live matches
+		// Check if match has started (startTime <= now) and status is not 0 (finished)
+		if startTime.After(now) {
+			return nil // Match hasn't started yet
 		}
+		if int(status) == 0 {
+			return nil // Match is finished
+		}
+		// Include all matches that have started and are not finished (status != 0)
 	}
 
 	// Parse markets if available (event[8] contains markets as map)

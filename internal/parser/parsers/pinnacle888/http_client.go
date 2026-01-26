@@ -14,6 +14,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/chromedp/chromedp"
 )
 
 type Client struct {
@@ -30,7 +32,9 @@ type Client struct {
 }
 
 // resolveMirror resolves the actual URL from mirror link
+// First tries HTTP redirects, then falls back to JavaScript execution via headless browser
 func resolveMirror(mirrorURL string, timeout time.Duration) (string, error) {
+	// First, try simple HTTP redirect
 	transport := http.DefaultTransport.(*http.Transport).Clone()
 	if transport.TLSClientConfig == nil {
 		transport.TLSClientConfig = &tls.Config{}
@@ -58,34 +62,123 @@ func resolveMirror(mirrorURL string, timeout time.Duration) (string, error) {
 
 	resp, err := client.Do(req)
 	if err != nil {
-		return "", fmt.Errorf("request: %w", err)
+		// If HEAD fails, try JavaScript resolution
+		return resolveMirrorWithJS(mirrorURL, timeout)
 	}
 	defer resp.Body.Close()
 
 	// Get final URL after redirects
 	finalURL := resp.Request.URL.String()
 	if finalURL != mirrorURL {
-		fmt.Printf("Pinnacle888: Resolved mirror %s -> %s\n", mirrorURL, finalURL)
+		fmt.Printf("Pinnacle888: Resolved mirror %s -> %s (HTTP redirect)\n", mirrorURL, finalURL)
 		return finalURL, nil
 	}
 
 	// If HEAD didn't redirect, try GET
 	req, err = http.NewRequest(http.MethodGet, mirrorURL, nil)
 	if err != nil {
-		return "", fmt.Errorf("create GET request: %w", err)
+		return resolveMirrorWithJS(mirrorURL, timeout)
 	}
 
 	req.Header.Set("User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36")
 
 	resp, err = client.Do(req)
 	if err != nil {
-		return "", fmt.Errorf("GET request: %w", err)
+		return resolveMirrorWithJS(mirrorURL, timeout)
 	}
 	defer resp.Body.Close()
 
+	// Check if we got HTML (might need JavaScript execution)
+	contentType := resp.Header.Get("Content-Type")
+	if strings.Contains(contentType, "text/html") {
+		// Read body to check if it contains JavaScript redirect
+		body, err := io.ReadAll(resp.Body)
+		if err == nil {
+			bodyStr := string(body)
+			// Check if body contains JavaScript that might do redirect
+			if strings.Contains(bodyStr, "<script") || strings.Contains(bodyStr, "window.location") ||
+				strings.Contains(bodyStr, "location.href") || strings.Contains(bodyStr, "document.location") {
+				fmt.Printf("Pinnacle888: Detected JavaScript redirect, using headless browser...\n")
+				return resolveMirrorWithJS(mirrorURL, timeout)
+			}
+		}
+	}
+
 	finalURL = resp.Request.URL.String()
-	fmt.Printf("Pinnacle888: Resolved mirror %s -> %s\n", mirrorURL, finalURL)
-	return finalURL, nil
+	if finalURL != mirrorURL {
+		fmt.Printf("Pinnacle888: Resolved mirror %s -> %s (HTTP redirect)\n", mirrorURL, finalURL)
+		return finalURL, nil
+	}
+
+	// If still same URL, try JavaScript resolution
+	fmt.Printf("Pinnacle888: HTTP redirect didn't work, trying JavaScript resolution...\n")
+	return resolveMirrorWithJS(mirrorURL, timeout)
+}
+
+// resolveMirrorWithJS uses headless browser to execute JavaScript and get final URL
+func resolveMirrorWithJS(mirrorURL string, timeout time.Duration) (string, error) {
+	// Create context with timeout
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+
+	// Create chromedp context
+	opts := append(chromedp.DefaultExecAllocatorOptions[:],
+		chromedp.Flag("headless", true),
+		chromedp.Flag("disable-gpu", true),
+		chromedp.Flag("disable-dev-shm-usage", true),
+		chromedp.Flag("no-sandbox", true),
+		chromedp.UserAgent("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36"),
+	)
+
+	allocCtx, cancel := chromedp.NewExecAllocator(ctx, opts...)
+	defer cancel()
+
+	// Create chrome instance
+	ctx, cancel = chromedp.NewContext(allocCtx, chromedp.WithLogf(func(format string, v ...interface{}) {
+		// Suppress chromedp logs unless debugging
+		if os.Getenv("PINNACLE888_DEBUG") == "1" {
+			fmt.Printf("chromedp: "+format, v...)
+		}
+	}))
+	defer cancel()
+
+	var finalURL string
+
+	// Navigate and wait for page to load (including JavaScript redirects)
+	err := chromedp.Run(ctx,
+		chromedp.Navigate(mirrorURL),
+		// Wait a bit for JavaScript to execute
+		chromedp.Sleep(2*time.Second),
+		// Get the current URL after JavaScript execution
+		chromedp.Location(&finalURL),
+	)
+
+	if err != nil {
+		return "", fmt.Errorf("chromedp navigation: %w", err)
+	}
+
+	if finalURL == "" || finalURL == mirrorURL {
+		// Try waiting longer and checking again
+		err = chromedp.Run(ctx,
+			chromedp.Sleep(3*time.Second),
+			chromedp.Location(&finalURL),
+		)
+		if err != nil {
+			return "", fmt.Errorf("chromedp wait: %w", err)
+		}
+	}
+
+	if finalURL != "" && finalURL != mirrorURL {
+		fmt.Printf("Pinnacle888: Resolved mirror %s -> %s (JavaScript redirect)\n", mirrorURL, finalURL)
+		return finalURL, nil
+	}
+
+	// If still same URL, return it (maybe no redirect needed)
+	if finalURL != "" {
+		return finalURL, nil
+	}
+
+	return "", fmt.Errorf("failed to resolve mirror URL: %s", mirrorURL)
 }
 
 func NewClient(baseURL, mirrorURL, apiKey, deviceUUID string, timeout time.Duration, proxyList []string) *Client {
@@ -212,41 +305,62 @@ func (c *Client) GetLiveEvents(eventsURL string, sportID int64) ([]byte, error) 
 		return nil, fmt.Errorf("parse final events_url: %w", err)
 	}
 
-	// Add sport parameter if not present
-	q := u.Query()
-	if q.Get("sp") == "" {
-		q.Set("sp", fmt.Sprintf("%d", sportID))
-	}
-	// Set tm=0 for live matches
-	q.Set("tm", "0")
-	// Set other required parameters
-	if q.Get("btg") == "" {
-		q.Set("btg", "1")
-	}
-	if q.Get("mk") == "" {
-		q.Set("mk", "2")
-	}
-	// Use English locale to match Fonbet team names for proper match merging
-	if q.Get("locale") == "" {
-		q.Set("locale", "en_US")
-	}
-	u.RawQuery = q.Encode()
+	// Set query parameters for live events (matching the actual API request)
+	queryParams := u.Query()
+	queryParams.Set("btg", "1")
+	queryParams.Set("c", "")
+	queryParams.Set("cl", "3")
+	queryParams.Set("d", "")
+	queryParams.Set("ec", "")
+	queryParams.Set("ev", "")
+	queryParams.Set("g", "")
+	queryParams.Set("hle", "false")
+	queryParams.Set("ic", "false")
+	queryParams.Set("ice", "false")
+	queryParams.Set("inl", "false")
+	queryParams.Set("l", "3")
+	queryParams.Set("lang", "")
+	queryParams.Set("lg", "")
+	queryParams.Set("lv", "")
+	queryParams.Set("me", "0") // Matches In Progress = false (for live, this should be 0 to get all)
+	queryParams.Set("mk", "2") // Market type
+	queryParams.Set("more", "false")
+	queryParams.Set("o", "1")
+	queryParams.Set("ot", "1") // Order type = 1 for live (vs 2 for line)
+	queryParams.Set("pa", "0")
+	queryParams.Set("pimo", "0,1,8,39,2,3,6,7,4,5") // Market IDs
+	queryParams.Set("pn", "-1")                     // Page Number = -1 (all)
+	queryParams.Set("pv", "1")
+	queryParams.Set("sp", fmt.Sprintf("%d", sportID))
+	queryParams.Set("tm", "0") // Time = 0 (all, including live)
+	queryParams.Set("v", "0")
+	// Use Russian locale as in the user's request (can be changed to en_US for matching with Fonbet)
+	queryParams.Set("locale", "ru_RU")
+	queryParams.Set("_", fmt.Sprintf("%d", time.Now().UnixMilli())) // Timestamp
+	queryParams.Set("withCredentials", "true")
 
-	req, err := http.NewRequest(http.MethodGet, u.String(), nil)
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, u.Scheme+"://"+u.Host+u.Path, nil)
 	if err != nil {
-		return nil, fmt.Errorf("create request: %w", err)
+		return nil, fmt.Errorf("failed to create request for live events: %w", err)
 	}
+	req.URL.RawQuery = queryParams.Encode()
 
-	// Set headers for live events API
-	// Use English language to match Fonbet team names for proper match merging
+	// Set headers matching the user's request
 	req.Header.Set("Accept", "application/json, text/plain, */*")
-	req.Header.Set("Accept-Language", "en,en-US;q=0.9")
+	req.Header.Set("Accept-Language", "ru,en;q=0.9")
 	req.Header.Set("Accept-Encoding", "gzip, deflate, br, zstd")
 	req.Header.Set("User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 YaBrowser/25.12.0.0 Safari/537.36")
 	req.Header.Set("Referer", u.Scheme+"://"+u.Host+"/ru/compact/sports/soccer")
 	req.Header.Set("Sec-CH-UA", `"Chromium";v="142", "YaBrowser";v="25.12", "Not_A Brand";v="99", "Yowser";v="2.5"`)
 	req.Header.Set("Sec-CH-UA-Mobile", "?0")
 	req.Header.Set("Sec-CH-UA-Platform", `"macOS"`)
+	req.Header.Set("Sec-Fetch-Dest", "empty")
+	req.Header.Set("Sec-Fetch-Mode", "cors")
+	req.Header.Set("Sec-Fetch-Site", "same-origin")
+	req.Header.Set("Priority", "u=1, i")
+
+	// Set custom headers from the user's request
+	req.Header.Set("X-App-Data", "directusToken=TwEdnphtyxsfMpXoJkCkWaPsL2KJJ3lo;lang=ru_RU;dpVXz=ZDfaFZUP9")
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
@@ -256,12 +370,26 @@ func (c *Client) GetLiveEvents(eventsURL string, sportID int64) ([]byte, error) 
 
 	if resp.StatusCode != http.StatusOK {
 		b, _ := io.ReadAll(resp.Body)
+		previewLen := 500
+		if len(b) < previewLen {
+			previewLen = len(b)
+		}
+		fmt.Printf("Pinnacle888: Live events API returned status %d, body preview: %s\n", resp.StatusCode, string(b[:previewLen]))
 		return nil, fmt.Errorf("unexpected status %d: %s", resp.StatusCode, string(b))
 	}
 
 	body, err := readBodyMaybeGzip(resp)
 	if err != nil {
 		return nil, err
+	}
+
+	// Log response preview for debugging
+	if len(body) > 0 {
+		previewLen := 200
+		if len(body) < previewLen {
+			previewLen = len(body)
+		}
+		fmt.Printf("Pinnacle888: Live events API response (%d bytes), preview: %s\n", len(body), string(body[:previewLen]))
 	}
 
 	return body, nil

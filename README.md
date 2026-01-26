@@ -182,7 +182,7 @@ parser:
 
 ### Управление парсерами через конфиг
 
-Параметр `enabled_parsers` позволяет гибко управлять тем, какие парсеры будут запущены:
+Параметр `enabled_parsers` в `configs/production.yaml` позволяет гибко управлять тем, какие парсеры будут запущены:
 
 #### Запустить все доступные парсеры
 ```yaml
@@ -195,21 +195,18 @@ parser:
 parser:
   enabled_parsers: ["fonbet"]
 ```
-Используется в `configs/parser_fonbet.yaml`
 
 #### Запустить только Pinnacle
 ```yaml
 parser:
   enabled_parsers: ["pinnacle"]
 ```
-Используется в `configs/parser_pinnacle.yaml`
 
 #### Запустить несколько парсеров параллельно
 ```yaml
 parser:
-  enabled_parsers: ["fonbet", "pinnacle"]
+  enabled_parsers: ["fonbet", "pinnacle", "pinnacle888"]
 ```
-Используется в `configs/production.yaml`
 
 **Преимущества:**
 - ✅ Одна кодовая база, разные конфигурации для разных окружений

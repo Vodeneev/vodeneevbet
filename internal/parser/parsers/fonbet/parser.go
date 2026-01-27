@@ -26,7 +26,7 @@ func NewParser(config *config.Config) *Parser {
 	oddsParser := NewOddsParser()
 	matchBuilder := NewMatchBuilder("Fonbet")
 	eventProcessor := NewBatchProcessor(nil, eventFetcher, oddsParser, matchBuilder)
-	
+
 	return &Parser{
 		eventFetcher:   eventFetcher,
 		oddsParser:     oddsParser,
@@ -56,7 +56,7 @@ func (p *Parser) runOnce(ctx context.Context) error {
 			fmt.Printf("Failed to parse %s events: %v\n", sport, err)
 			continue
 		}
-		
+
 		// Print performance summary after each run
 		performance.GetTracker().PrintSummary()
 	}
@@ -65,15 +65,14 @@ func (p *Parser) runOnce(ctx context.Context) error {
 
 func (p *Parser) Start(ctx context.Context) error {
 	fmt.Println("Starting Fonbet parser (background mode - periodic parsing runs automatically)...")
-	
+
 	// Run once at startup to have initial data
 	if err := p.runOnce(ctx); err != nil {
 		return err
 	}
-	
-	// Wait for context cancellation (periodic parsing is handled by main loop)
+
 	<-ctx.Done()
-	
+
 	// Print final summary before shutdown
 	fmt.Println("\n📊 Final Performance Summary:")
 	performance.GetTracker().PrintSummary()

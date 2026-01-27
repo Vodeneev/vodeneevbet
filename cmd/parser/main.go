@@ -205,9 +205,15 @@ func runParsers(ctx context.Context, ps []parsers.Parser, appConfig *pkgconfig.C
 	}
 
 	// Start parsers in background (they will wait for context cancellation)
+	// Use async options because Start() is a long-running process that waits for context cancellation
+	opts := parserutil.AsyncRunOptions()
+	opts.LogStart = true // Log when parsers start
+	opts.OnError = func(p interfaces.Parser, err error) {
+		log.Printf("Parser %s failed: %v", p.GetName(), err)
+	}
 	err := parserutil.RunParsers(ctx, interfaceParsers, func(ctx context.Context, p interfaces.Parser) error {
 		return p.Start(ctx)
-	}, parserutil.DefaultRunOptions())
+	}, opts)
 
 	if err != nil {
 		log.Printf("Parser error detected: %v", err)
@@ -232,9 +238,14 @@ func runParsers(ctx context.Context, ps []parsers.Parser, appConfig *pkgconfig.C
 }
 
 func startPeriodicParsing(ctx context.Context, parsers []interfaces.Parser, interval time.Duration, timeout time.Duration) {
-	// Run initial parsing immediately
-	log.Println("Running initial parsing...")
-	runParsingOnce(parsers, timeout, parserutil.DefaultRunOptions())
+	// Helper function to create async parsing options with error handling
+	createAsyncOpts := func() parserutil.RunOptions {
+		opts := parserutil.AsyncRunOptions()
+		opts.OnError = func(p interfaces.Parser, err error) {
+			log.Printf("Periodic parsing failed for %s: %v", p.GetName(), err)
+		}
+		return opts
+	}
 
 	// Start periodic parsing loop
 	ticker := time.NewTicker(interval)
@@ -248,11 +259,7 @@ func startPeriodicParsing(ctx context.Context, parsers []interfaces.Parser, inte
 				return
 			case <-ticker.C:
 				log.Printf("Running periodic parsing (interval: %v)...", interval)
-				opts := parserutil.AsyncRunOptions()
-				opts.OnError = func(p interfaces.Parser, err error) {
-					log.Printf("Periodic parsing failed for %s: %v", p.GetName(), err)
-				}
-				runParsingOnce(parsers, timeout, opts)
+				runParsingOnce(parsers, timeout, createAsyncOpts())
 			}
 		}
 	}()

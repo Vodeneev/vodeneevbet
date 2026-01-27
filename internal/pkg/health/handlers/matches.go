@@ -23,25 +23,23 @@ func SetGetMatchesFunc(fn GetMatchesFunc) {
 	getMatchesFunc = fn
 }
 
-// Global parser registry for on-demand parsing
-var (
-	globalParsers   []interfaces.Parser
-	globalParsersMu sync.RWMutex
-)
+// GetParsersFunc is a function type for getting registered parsers
+type GetParsersFunc func() []interfaces.Parser
 
-// RegisterParsers registers parsers for on-demand parsing
-func RegisterParsers(parsers []interfaces.Parser) {
-	globalParsersMu.Lock()
-	defer globalParsersMu.Unlock()
-	globalParsers = parsers
+var getParsersFunc GetParsersFunc
+
+// SetGetParsersFunc sets the function to get parsers
+func SetGetParsersFunc(fn GetParsersFunc) {
+	getParsersFunc = fn
 }
 
 // triggerParsingAsync triggers parsing for all parsers asynchronously (non-blocking)
 // Uses a separate context with timeout to allow parsing to complete even after HTTP request ends
 func triggerParsingAsync() {
-	globalParsersMu.RLock()
-	parsers := globalParsers
-	globalParsersMu.RUnlock()
+	if getParsersFunc == nil {
+		return
+	}
+	parsers := getParsersFunc()
 
 	if len(parsers) == 0 {
 		return

@@ -11,13 +11,11 @@ import (
 	"github.com/Vodeneev/vodeneevbet/internal/pkg/interfaces"
 )
 
-func RegisterParsers(parsers []interfaces.Parser) {
-	handlers.RegisterParsers(parsers)
-}
-
 func init() {
 	// Set the GetMatches function for handlers
 	handlers.SetGetMatchesFunc(GetMatches)
+	// Set the GetParsers function for handlers
+	handlers.SetGetParsersFunc(GetParsers)
 }
 
 func Run(ctx context.Context, addr string, service string, storage interfaces.Storage, readHeaderTimeout time.Duration) {

@@ -76,6 +76,7 @@ type ValueCalculatorConfig struct {
 
 type HealthConfig struct {
 	ReadHeaderTimeout time.Duration `yaml:"read_header_timeout"` // HTTP server read header timeout (default: 5s)
+	Port              int           `yaml:"port"`                 // HTTP server listen port (default: 8080)
 }
 
 func Load(configPath string) (*Config, error) {

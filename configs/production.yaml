@@ -56,7 +56,8 @@ parser:
 
 health:
   # HTTP server settings
-  read_header_timeout: 5s  # Timeout for reading HTTP headers (default: 5s)
+  port: 8080                # HTTP server listen port (default: 8080)
+  read_header_timeout: 5s   # Timeout for reading HTTP headers (default: 5s)
 
 value_calculator:
   # Data source: use parser's /matches endpoint

@@ -58,9 +58,9 @@ func Run(ctx context.Context, addr string, service string, storage interfaces.St
 	}()
 }
 
-// AddrFor returns a consistent default health listen address.
-func AddrFor(service string) string {
-	// Keep as :8080 inside container; publishing is handled by docker-compose.
-	_ = service
-	return fmt.Sprintf(":%d", 8080)
+func AddrFor(port int) string {
+	if port <= 0 {
+		log.Fatalf("health: port must be greater than 0")
+	}
+	return fmt.Sprintf(":%d", port)
 }

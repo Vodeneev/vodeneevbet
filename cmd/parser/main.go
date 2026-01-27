@@ -28,7 +28,6 @@ const (
 
 type config struct {
 	configPath string
-	healthAddr string
 	runFor     time.Duration
 	parser     string // Override enabled_parsers from config (e.g. "fonbet" or "pinnacle")
 }
@@ -75,8 +74,12 @@ func run() error {
 	}
 	health.RegisterParsers(interfaceParsers)
 
-	// Use read_header_timeout from config (defaults to 5s in config if not specified)
-	health.Run(ctx, cfg.healthAddr, "parser", nil, appConfig.Health.ReadHeaderTimeout)
+	port := appConfig.Health.Port
+	if port <= 0 {
+		log.Fatalf("parser: health.port must be specified in config")
+	}
+	healthAddr := health.AddrFor(port)
+	health.Run(ctx, healthAddr, "parser", nil, appConfig.Health.ReadHeaderTimeout)
 
 	log.Println("Starting parsers...")
 	return runParsers(ctx, ps)
@@ -91,7 +94,6 @@ func parseFlags() config {
 	}
 
 	flag.StringVar(&cfg.configPath, "config", defaultConfig, "Path to config file (can be set via CONFIG_PATH env var)")
-	flag.StringVar(&cfg.healthAddr, "health-addr", ":8080", "Health server listen address (e.g. :8080)")
 	flag.DurationVar(&cfg.runFor, "run-for", 0, "Auto-stop after duration (e.g. 10s, 1m). 0 = run until SIGINT/SIGTERM")
 	flag.StringVar(&cfg.parser, "parser", "", "Override enabled_parsers: specify parser name (e.g. 'fonbet' or 'pinnacle'). Empty = use config")
 	flag.Parse()

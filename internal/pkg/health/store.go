@@ -12,7 +12,6 @@ import (
 type InMemoryMatchStore struct {
 	mu      sync.RWMutex
 	matches map[string]*models.Match // key: match_id
-	maxSize int                      // maximum number of matches to keep
 }
 
 var globalMatchStore *InMemoryMatchStore
@@ -20,7 +19,6 @@ var globalMatchStore *InMemoryMatchStore
 func init() {
 	globalMatchStore = &InMemoryMatchStore{
 		matches: make(map[string]*models.Match),
-		maxSize: 50000, // Keep last 50000 matches (increased for better coverage)
 	}
 }
 
@@ -31,19 +29,6 @@ func AddMatch(match *models.Match) {
 	}
 	globalMatchStore.mu.Lock()
 	defer globalMatchStore.mu.Unlock()
-
-	// If we exceed max size, remove oldest matches (simple FIFO)
-	if len(globalMatchStore.matches) >= globalMatchStore.maxSize {
-		// Remove first 10% of matches (simple cleanup)
-		removed := 0
-		for k := range globalMatchStore.matches {
-			if removed >= globalMatchStore.maxSize/10 {
-				break
-			}
-			delete(globalMatchStore.matches, k)
-			removed++
-		}
-	}
 
 	// Detect bookmaker from events
 	bookmakers := make(map[string]bool)

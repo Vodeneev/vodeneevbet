@@ -261,7 +261,7 @@ func sendHelpMessage(bot *tgbotapi.BotAPI, chatID int64) {
 
 /start - Start/resume asynchronous diff processing
 
-/stop - Stop asynchronous diff processing
+/stop - Stop calculator async processing (parser continues running)
 
 /top [limit] - Get top value bet differences
   Example: /top 10

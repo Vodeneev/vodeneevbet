@@ -14,11 +14,11 @@ import (
 func init() {
 	// Set the GetMatches function for handlers
 	handlers.SetGetMatchesFunc(GetMatches)
-	// Set the GetParsers function for handlers
-	handlers.SetGetParsersFunc(GetParsers)
 }
 
-func Run(ctx context.Context, addr string, service string, storage interfaces.Storage, readHeaderTimeout time.Duration) {
+func Run(ctx context.Context, addr string, service string, storage interfaces.Storage, readHeaderTimeout time.Duration, parsingTimeout time.Duration) {
+	// parsingTimeout parameter kept for backward compatibility but not used
+	// (parsing now runs continuously in background, not triggered by requests)
 	mux := http.NewServeMux()
 
 	// Health endpoints

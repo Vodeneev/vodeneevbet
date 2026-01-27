@@ -5,6 +5,7 @@ parser:
   
   user_agent: "ValueBetBot/1.0 (https://github.com/Vodeneev/vodeneevbet)"
   timeout: 120s
+  interval: 10s  # Periodic parsing interval (default: 10s if not specified)
   headers:
     "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8"
     "Accept-Language": "ru-RU,ru;q=0.9,en;q=0.8"
@@ -58,6 +59,7 @@ health:
   # HTTP server settings
   port: 8080                # HTTP server listen port (default: 8080)
   read_header_timeout: 5s   # Timeout for reading HTTP headers (default: 5s)
+  async_parsing_timeout: 60s  # Timeout for async parsing triggered by /matches endpoint (default: 60s)
 
 value_calculator:
   # Data source: use parser's /matches endpoint

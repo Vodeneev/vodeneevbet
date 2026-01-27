@@ -90,14 +90,13 @@ func (p *Parser) runOnce(ctx context.Context) error {
 }
 
 func (p *Parser) Start(ctx context.Context) error {
-	fmt.Println("Starting Pinnacle parser (on-demand mode - parsing triggered by /matches requests)...")
+	fmt.Println("Starting Pinnacle parser (background mode - periodic parsing runs automatically)...")
 
 	// Run once at startup to have initial data
 	if err := p.runOnce(ctx); err != nil {
 		return err
 	}
 
-	// Just wait for context cancellation (no background parsing)
 	<-ctx.Done()
 	return nil
 }

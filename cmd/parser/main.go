@@ -9,7 +9,6 @@ import (
 	"os/signal"
 	"sort"
 	"strings"
-	"sync"
 	"syscall"
 	"time"
 
@@ -17,6 +16,7 @@ import (
 	pkgconfig "github.com/Vodeneev/vodeneevbet/internal/pkg/config"
 	"github.com/Vodeneev/vodeneevbet/internal/pkg/health"
 	"github.com/Vodeneev/vodeneevbet/internal/pkg/interfaces"
+	"github.com/Vodeneev/vodeneevbet/internal/pkg/parserutil"
 
 	// Register all supported parsers via init().
 	_ "github.com/Vodeneev/vodeneevbet/internal/parser/parsers/all"
@@ -192,49 +192,24 @@ func setupSignalHandler(ctx context.Context, cancel context.CancelFunc) {
 }
 
 func runParsers(ctx context.Context, ps []parsers.Parser) error {
-	var wg sync.WaitGroup
-	var once sync.Once
-	var firstErr error
-
-	errCh := make(chan error, 1)
-
-	for _, p := range ps {
-		p := p
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			log.Printf("Starting %s parser...", p.GetName())
-			if err := p.Start(ctx); err != nil && ctx.Err() == nil {
-				// Only record the first error and notify via channel once
-				once.Do(func() {
-					firstErr = fmt.Errorf("%s parser failed: %w", p.GetName(), err)
-					errCh <- firstErr
-				})
-			}
-		}()
+	interfaceParsers := make([]interfaces.Parser, len(ps))
+	for i, p := range ps {
+		interfaceParsers[i] = p
 	}
 
-	// Wait for all parsers to complete in separate goroutine
-	doneCh := make(chan struct{})
-	go func() {
-		wg.Wait()
-		close(doneCh)
-	}()
+	err := parserutil.RunParsers(ctx, interfaceParsers, func(ctx context.Context, p interfaces.Parser) error {
+		return p.Start(ctx)
+	}, parserutil.DefaultRunOptions())
 
-	// Wait for either an error or all parsers to complete
-	select {
-	case err := <-errCh:
-		// Parser failed - wait for graceful shutdown of all parsers
+	if err != nil {
 		log.Printf("Parser error detected: %v", err)
-		<-doneCh
 		return err
-	case <-doneCh:
-		// All parsers completed successfully or via context cancellation
-		if ctx.Err() != nil {
-			log.Println("Parser stopped gracefully")
-			return nil
-		}
-		log.Println("Parser stopped")
+	}
+
+	if ctx.Err() != nil {
+		log.Println("Parser stopped gracefully")
 		return nil
 	}
+	log.Println("Parser stopped")
+	return nil
 }

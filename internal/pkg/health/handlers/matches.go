@@ -6,11 +6,11 @@ import (
 	"fmt"
 	"log"
 	"net/http"
-	"sync"
 	"time"
 
 	"github.com/Vodeneev/vodeneevbet/internal/pkg/interfaces"
 	"github.com/Vodeneev/vodeneevbet/internal/pkg/models"
+	"github.com/Vodeneev/vodeneevbet/internal/pkg/parserutil"
 )
 
 // GetMatchesFunc is a function type for getting matches
@@ -49,27 +49,20 @@ func triggerParsingAsync() {
 	// This allows parsing to continue even after HTTP request completes
 	parseCtx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 
-	// Use WaitGroup to track when all parsers are done, then cancel context
-	var wg sync.WaitGroup
-	wg.Add(len(parsers))
-
-	// Trigger parsing for all parsers in parallel (asynchronously to different bookmakers)
-	// Don't wait - return immediately, parsing happens in background
-	for _, p := range parsers {
-		p := p
-		go func() {
-			defer wg.Done()
-			if err := p.ParseOnce(parseCtx); err != nil {
-				log.Printf("On-demand parsing failed for %s: %v", p.GetName(), err)
-			}
-		}()
+	// Configure options for async (non-blocking) execution
+	opts := parserutil.AsyncRunOptions()
+	opts.OnError = func(p interfaces.Parser, err error) {
+		log.Printf("On-demand parsing failed for %s: %v", p.GetName(), err)
+	}
+	opts.OnComplete = func() {
+		// Cancel context after all parsers complete (or timeout)
+		cancel()
 	}
 
-	// Cancel context after all parsers complete (or timeout)
-	go func() {
-		wg.Wait()
-		cancel()
-	}()
+	// Run parsers asynchronously - don't wait for completion
+	_ = parserutil.RunParsers(parseCtx, parsers, func(ctx context.Context, p interfaces.Parser) error {
+		return p.ParseOnce(ctx)
+	}, opts)
 }
 
 // HandleMatches handles /matches endpoint

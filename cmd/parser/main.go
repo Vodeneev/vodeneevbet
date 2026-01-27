@@ -55,12 +55,10 @@ func run() error {
 	if cfg.parser != "" {
 		appConfig.Parser.EnabledParsers = []string{cfg.parser}
 	}
-
 	ps, err := selectParsers(appConfig)
 	if err != nil {
 		return err
 	}
-
 	printSelectedParsers(ps)
 
 	ctx, cancel := createContext(cfg.runFor)

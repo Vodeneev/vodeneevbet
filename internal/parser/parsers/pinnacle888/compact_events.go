@@ -123,6 +123,7 @@ func buildMatchFromCompactEvent(leagueName string, eventData interface{}, isLive
 	}
 
 	// Teams are in reverse order in API: event[1] = away, event[2] = home
+	// But these may be in Russian. Check for English names at event[24] and event[25]
 	awayTeam, ok := event[1].(string)
 	if !ok {
 		return nil
@@ -131,6 +132,17 @@ func buildMatchFromCompactEvent(leagueName string, eventData interface{}, isLive
 	homeTeam, ok := event[2].(string)
 	if !ok {
 		return nil
+	}
+
+	// Prefer English team names if available (at indices 24-25)
+	// This ensures proper match merging with other bookmakers
+	if len(event) > 25 {
+		if engAway, ok := event[24].(string); ok && engAway != "" {
+			awayTeam = engAway
+		}
+		if engHome, ok := event[25].(string); ok && engHome != "" {
+			homeTeam = engHome
+		}
 	}
 
 	// Status: 1 = live, 0 = upcoming/pre-match

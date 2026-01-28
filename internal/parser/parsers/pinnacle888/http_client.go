@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
@@ -71,6 +72,18 @@ func resolveMirror(mirrorURL string, timeout time.Duration) (string, error) {
 	// Get final URL after redirects
 	finalURL := resp.Request.URL.String()
 	if finalURL != mirrorURL {
+		// Check if the final URL is an IP address - if so, we need JavaScript resolution
+		parsed, err := url.Parse(finalURL)
+		if err == nil {
+			domain := parsed.Host
+			if idx := strings.Index(domain, ":"); idx != -1 {
+				domain = domain[:idx]
+			}
+			if isIPAddress(domain) {
+				fmt.Printf("Pinnacle888: HTTP redirect leads to IP address %s, using JavaScript resolution...\n", domain)
+				return resolveMirrorWithJS(mirrorURL, timeout)
+			}
+		}
 		fmt.Printf("Pinnacle888: Resolved mirror %s -> %s (HTTP redirect)\n", mirrorURL, finalURL)
 		return finalURL, nil
 	}
@@ -89,6 +102,25 @@ func resolveMirror(mirrorURL string, timeout time.Duration) (string, error) {
 	}
 	defer resp.Body.Close()
 
+	// Get final URL after GET redirects
+	finalURL = resp.Request.URL.String()
+	if finalURL != mirrorURL {
+		// Check if the final URL is an IP address - if so, we need JavaScript resolution
+		parsed, err := url.Parse(finalURL)
+		if err == nil {
+			domain := parsed.Host
+			if idx := strings.Index(domain, ":"); idx != -1 {
+				domain = domain[:idx]
+			}
+			if isIPAddress(domain) {
+				fmt.Printf("Pinnacle888: HTTP redirect leads to IP address %s, using JavaScript resolution...\n", domain)
+				return resolveMirrorWithJS(mirrorURL, timeout)
+			}
+		}
+		fmt.Printf("Pinnacle888: Resolved mirror %s -> %s (HTTP redirect)\n", mirrorURL, finalURL)
+		return finalURL, nil
+	}
+
 	// Check if we got HTML (might need JavaScript execution)
 	contentType := resp.Header.Get("Content-Type")
 	if strings.Contains(contentType, "text/html") {
@@ -103,12 +135,6 @@ func resolveMirror(mirrorURL string, timeout time.Duration) (string, error) {
 				return resolveMirrorWithJS(mirrorURL, timeout)
 			}
 		}
-	}
-
-	finalURL = resp.Request.URL.String()
-	if finalURL != mirrorURL {
-		fmt.Printf("Pinnacle888: Resolved mirror %s -> %s (HTTP redirect)\n", mirrorURL, finalURL)
-		return finalURL, nil
 	}
 
 	// If still same URL, try JavaScript resolution
@@ -146,11 +172,10 @@ func resolveMirrorWithJS(mirrorURL string, timeout time.Duration) (string, error
 	var finalURL string
 
 	// Navigate and wait for page to load (including JavaScript redirects)
+	// Use longer wait times to ensure JavaScript redirects complete
 	err := chromedp.Run(ctx,
 		chromedp.Navigate(mirrorURL),
-		// Wait a bit for JavaScript to execute
-		chromedp.Sleep(2*time.Second),
-		// Get the current URL after JavaScript execution
+		chromedp.Sleep(3*time.Second), // Wait for initial page load
 		chromedp.Location(&finalURL),
 	)
 
@@ -158,10 +183,27 @@ func resolveMirrorWithJS(mirrorURL string, timeout time.Duration) (string, error
 		return "", fmt.Errorf("chromedp navigation: %w", err)
 	}
 
-	if finalURL == "" || finalURL == mirrorURL {
-		// Try waiting longer and checking again
+	// Check if URL changed
+	if finalURL != "" && finalURL != mirrorURL {
+		// Wait a bit more and check again to ensure we got the final redirect
+		var checkURL string
 		err = chromedp.Run(ctx,
-			chromedp.Sleep(3*time.Second),
+			chromedp.Sleep(2*time.Second),
+			chromedp.Location(&checkURL),
+		)
+		if err == nil && checkURL != "" && checkURL != finalURL {
+			// URL changed again, use the new one
+			finalURL = checkURL
+		}
+
+		fmt.Printf("Pinnacle888: Resolved mirror %s -> %s (JavaScript redirect)\n", mirrorURL, finalURL)
+		return finalURL, nil
+	}
+
+	// If URL didn't change, try waiting longer
+	if finalURL == "" || finalURL == mirrorURL {
+		err = chromedp.Run(ctx,
+			chromedp.Sleep(5*time.Second),
 			chromedp.Location(&finalURL),
 		)
 		if err != nil {
@@ -170,12 +212,13 @@ func resolveMirrorWithJS(mirrorURL string, timeout time.Duration) (string, error
 	}
 
 	if finalURL != "" && finalURL != mirrorURL {
-		fmt.Printf("Pinnacle888: Resolved mirror %s -> %s (JavaScript redirect)\n", mirrorURL, finalURL)
+		fmt.Printf("Pinnacle888: Resolved mirror %s -> %s (JavaScript redirect after wait)\n", mirrorURL, finalURL)
 		return finalURL, nil
 	}
 
 	// If still same URL, return it (maybe no redirect needed)
 	if finalURL != "" {
+		fmt.Printf("Pinnacle888: Mirror URL did not redirect: %s\n", finalURL)
 		return finalURL, nil
 	}
 
@@ -185,7 +228,21 @@ func resolveMirrorWithJS(mirrorURL string, timeout time.Duration) (string, error
 // getFinalDomainFromResolved tries to get the final domain after JavaScript redirects
 // This is used to find the actual odds domain from the resolved mirror URL
 func getFinalDomainFromResolved(resolvedURL string, timeout time.Duration) (string, error) {
-	// Try JavaScript resolution to get final URL after all redirects
+	// First, check if resolvedURL is already a domain (not an IP address)
+	parsed, err := url.Parse(resolvedURL)
+	if err == nil {
+		domain := parsed.Host
+		if idx := strings.Index(domain, ":"); idx != -1 {
+			domain = domain[:idx]
+		}
+		// If it's already a domain (not an IP), return it directly
+		if !isIPAddress(domain) {
+			fmt.Printf("Pinnacle888: Resolved URL already contains domain: %s\n", domain)
+			return domain, nil
+		}
+	}
+
+	// If it's an IP address, try JavaScript resolution to get final URL after all redirects
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 
@@ -209,19 +266,32 @@ func getFinalDomainFromResolved(resolvedURL string, timeout time.Duration) (stri
 	defer cancel()
 
 	var finalURL string
+	var pageHTML string
 
 	// Navigate and wait for page to load (including JavaScript redirects)
-	err := chromedp.Run(ctx,
+	err = chromedp.Run(ctx,
 		chromedp.Navigate(resolvedURL),
 		chromedp.Sleep(5*time.Second), // Wait longer for JavaScript redirects
 		chromedp.Location(&finalURL),
+		chromedp.OuterHTML("html", &pageHTML),
 	)
 
 	if err != nil {
 		return "", fmt.Errorf("chromedp navigation: %w", err)
 	}
 
+	// Check if URL changed - wait a bit more to ensure final redirect
 	if finalURL != "" && finalURL != resolvedURL {
+		var checkURL string
+		err = chromedp.Run(ctx,
+			chromedp.Sleep(2*time.Second),
+			chromedp.Location(&checkURL),
+		)
+		if err == nil && checkURL != "" && checkURL != finalURL {
+			// URL changed again, use the new one
+			finalURL = checkURL
+		}
+
 		// Parse final URL to extract domain
 		parsed, err := url.Parse(finalURL)
 		if err != nil {
@@ -232,10 +302,74 @@ func getFinalDomainFromResolved(resolvedURL string, timeout time.Duration) (stri
 		if idx := strings.Index(domain, ":"); idx != -1 {
 			domain = domain[:idx]
 		}
-		return domain, nil
+		// Only return if it's a domain (not an IP address)
+		if !isIPAddress(domain) {
+			fmt.Printf("Pinnacle888: Extracted domain from final URL: %s\n", domain)
+			return domain, nil
+		}
 	}
 
-	return "", fmt.Errorf("no redirect detected")
+	// If URL didn't change, try to extract domain from the original resolvedURL
+	if finalURL == "" || finalURL == resolvedURL {
+		parsed, err := url.Parse(resolvedURL)
+		if err == nil {
+			domain := parsed.Host
+			if idx := strings.Index(domain, ":"); idx != -1 {
+				domain = domain[:idx]
+			}
+			if !isIPAddress(domain) {
+				return domain, nil
+			}
+		}
+	}
+
+	// Try to extract domain from JavaScript code in the page
+	// Look for common patterns like window.location, document.location, etc.
+	if strings.Contains(pageHTML, "window.location") || strings.Contains(pageHTML, "document.location") {
+		// Use simple string search for domain patterns
+		// Look for domains in the HTML
+		lines := strings.Split(pageHTML, "\n")
+		for _, line := range lines {
+			if strings.Contains(line, "https://") || strings.Contains(line, "http://") {
+				// Try to extract domain from this line
+				startIdx := strings.Index(line, "https://")
+				if startIdx == -1 {
+					startIdx = strings.Index(line, "http://")
+				}
+				if startIdx != -1 {
+					// Extract URL from this position
+					urlPart := line[startIdx:]
+					// Find end of URL (space, quote, etc.)
+					endIdx := len(urlPart)
+					for i, char := range urlPart {
+						if char == ' ' || char == '"' || char == '\'' || char == ';' || char == ')' || char == '}' {
+							endIdx = i
+							break
+						}
+					}
+					urlStr := urlPart[:endIdx]
+					parsed, err := url.Parse(urlStr)
+					if err == nil {
+						domain := parsed.Host
+						if idx := strings.Index(domain, ":"); idx != -1 {
+							domain = domain[:idx]
+						}
+						if domain != "" && !isIPAddress(domain) {
+							fmt.Printf("Pinnacle888: Extracted domain from JavaScript: %s\n", domain)
+							return domain, nil
+						}
+					}
+				}
+			}
+		}
+	}
+
+	return "", fmt.Errorf("no domain found in JavaScript redirects")
+}
+
+// isIPAddress checks if a string is an IP address (IPv4 or IPv6)
+func isIPAddress(s string) bool {
+	return net.ParseIP(s) != nil
 }
 
 func NewClient(baseURL, mirrorURL, apiKey, deviceUUID string, timeout time.Duration, proxyList []string) *Client {
@@ -290,19 +424,50 @@ func NewClient(baseURL, mirrorURL, apiKey, deviceUUID string, timeout time.Durat
 			// Use resolved URL as baseURL
 			client.baseURL = resolved
 
-			// Try to get final domain after JavaScript redirects for odds endpoint
-			// The resolved URL might redirect further to the actual domain
-			fmt.Printf("Pinnacle888: Attempting to resolve final odds domain from %s\n", resolved)
-			finalDomain, err := getFinalDomainFromResolved(resolved, timeout)
-			if err != nil {
-				fmt.Printf("Pinnacle888: Failed to resolve final odds domain: %v, using fallback\n", err)
-			} else if finalDomain != "" {
-				client.resolvedMu.Lock()
-				client.oddsDomain = finalDomain
-				client.resolvedMu.Unlock()
-				fmt.Printf("Pinnacle888: Resolved odds domain: %s\n", finalDomain)
+			// Extract domain from resolved URL for odds endpoint
+			// The resolved URL might be an IP address or a domain (e.g., https://www.crimsonhaven46.xyz/en/standard/home)
+			fmt.Printf("Pinnacle888: Resolved mirror URL: %s\n", resolved)
+			parsed, err := url.Parse(resolved)
+			if err == nil {
+				domain := parsed.Host
+				// Remove port if present
+				if idx := strings.Index(domain, ":"); idx != -1 {
+					domain = domain[:idx]
+				}
+
+				// Check if it's an IP address
+				if isIPAddress(domain) {
+					// If it's an IP address, try to get domain from JavaScript redirects
+					fmt.Printf("Pinnacle888: Resolved URL is IP address %s, attempting to resolve domain via JavaScript...\n", domain)
+					finalDomain, err := getFinalDomainFromResolved(resolved, timeout)
+					if err != nil {
+						fmt.Printf("Pinnacle888: Failed to resolve domain from IP via JavaScript: %v, using IP address directly\n", err)
+						// Use IP address directly as fallback
+						client.resolvedMu.Lock()
+						client.oddsDomain = domain
+						client.resolvedMu.Unlock()
+						fmt.Printf("Pinnacle888: Using IP address %s for odds endpoint\n", domain)
+					} else if finalDomain != "" {
+						client.resolvedMu.Lock()
+						client.oddsDomain = finalDomain
+						client.resolvedMu.Unlock()
+						fmt.Printf("Pinnacle888: Resolved odds domain from JavaScript: %s\n", finalDomain)
+					} else {
+						// Use IP address as fallback
+						client.resolvedMu.Lock()
+						client.oddsDomain = domain
+						client.resolvedMu.Unlock()
+						fmt.Printf("Pinnacle888: Using IP address %s for odds endpoint (fallback)\n", domain)
+					}
+				} else {
+					// It's already a domain (e.g., www.crimsonhaven46.xyz), use it directly
+					client.resolvedMu.Lock()
+					client.oddsDomain = domain
+					client.resolvedMu.Unlock()
+					fmt.Printf("Pinnacle888: Using resolved domain %s for odds endpoint\n", domain)
+				}
 			} else {
-				fmt.Printf("Pinnacle888: No domain resolved, using fallback\n")
+				fmt.Printf("Pinnacle888: Failed to parse resolved URL %s: %v, using fallback\n", resolved, err)
 			}
 		}
 	}

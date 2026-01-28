@@ -15,7 +15,6 @@ services:
       - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN:-}
       - TELEGRAM_CHAT_ID=${TELEGRAM_CHAT_ID:-}
       # Yandex Cloud Logging settings
-      - YC_IAM_TOKEN=${YC_IAM_TOKEN:-}
       - YC_FOLDER_ID=${YC_FOLDER_ID:-}
       - YC_LOG_GROUP_NAME=${YC_LOG_GROUP_NAME:-default}
     volumes:

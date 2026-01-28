@@ -22,7 +22,6 @@ type YandexLoggingConfig struct {
 	Enabled       bool          `yaml:"enabled"`        // Включить отправку в Cloud Logging
 	GroupName     string        `yaml:"group_name"`     // Имя лог-группы (например, "default")
 	GroupID       string        `yaml:"group_id"`       // ID лог-группы (альтернатива group_name)
-	IAMToken      string        `yaml:"iam_token"`      // IAM токен (можно задать через YC_IAM_TOKEN env)
 	FolderID      string        `yaml:"folder_id"`      // ID каталога (можно задать через YC_FOLDER_ID env)
 	Level         string        `yaml:"level"`          // Минимальный уровень логирования (DEBUG, INFO, WARN, ERROR)
 	BatchSize     int           `yaml:"batch_size"`     // Размер батча для отправки (по умолчанию 10)
@@ -54,12 +53,7 @@ type LogEntry struct {
 
 // NewYandexLoggingHandler создает новый handler для Yandex Cloud Logging
 func NewYandexLoggingHandler(config YandexLoggingConfig) (*YandexLoggingHandler, error) {
-	// Получаем IAM токен из env, если не указан в конфиге
-	// Если токен не указан, будем использовать Instance Metadata Service
-	if config.IAMToken == "" {
-		config.IAMToken = os.Getenv("YC_IAM_TOKEN")
-	}
-	// Примечание: если токен не указан, используем Instance Metadata Service
+	// Используем Instance Metadata Service для автоматического получения и обновления токенов
 	// Это работает только на VM в Yandex Cloud
 
 	// Получаем folder_id из env, если не указан в конфиге
@@ -105,21 +99,10 @@ func NewYandexLoggingHandler(config YandexLoggingConfig) (*YandexLoggingHandler,
 	}
 
 	// Инициализируем Yandex Cloud SDK
-	// Используем Instance Metadata Service для автоматического обновления токенов,
-	// если приложение работает на VM в Yandex Cloud
-	// Если IAM токен указан явно, используем его (для локальной разработки или других случаев)
-	var creds ycsdk.Credentials
-	if config.IAMToken != "" {
-		// Используем явно указанный IAM токен
-		creds = ycsdk.NewIAMTokenCredentials(config.IAMToken)
-	} else {
-		// Используем Instance Metadata Service для автоматического получения и обновления токенов
-		// Это работает только на VM в Yandex Cloud
-		creds = ycsdk.InstanceServiceAccount()
-	}
-	
+	// Используем Instance Metadata Service для автоматического получения и обновления токенов
+	// Это работает только на VM в Yandex Cloud
 	sdk, err := ycsdk.Build(context.Background(), ycsdk.Config{
-		Credentials: creds,
+		Credentials: ycsdk.InstanceServiceAccount(),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize Yandex Cloud SDK: %w", err)

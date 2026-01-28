@@ -93,7 +93,6 @@ logging:
   enabled: true                    # Enable sending logs to Yandex Cloud Logging
   group_name: "default"            # Log group name (can be set via YC_LOG_GROUP_NAME env var)
   group_id: ""                     # Log group ID (alternative to group_name, can be set via YC_LOG_GROUP_ID env var)
-  iam_token: ""                    # IAM token (set via YC_IAM_TOKEN env var)
   folder_id: ""                    # Folder ID (can be set via YC_FOLDER_ID env var)
   level: "INFO"                    # Minimum log level: DEBUG, INFO, WARN, ERROR (default: INFO)
   batch_size: 10                   # Batch size for sending logs (default: 10)

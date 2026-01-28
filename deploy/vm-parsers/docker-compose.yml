@@ -21,7 +21,6 @@ services:
       # With auth: http://user:password@proxy.example.com:8080
       - PINNACLE_PROXY=${PINNACLE_PROXY:-}
       # Yandex Cloud Logging settings
-      - YC_IAM_TOKEN=${YC_IAM_TOKEN:-}
       - YC_FOLDER_ID=${YC_FOLDER_ID:-}
       - YC_LOG_GROUP_NAME=${YC_LOG_GROUP_NAME:-default}
     volumes:

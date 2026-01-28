@@ -85,7 +85,6 @@ type LoggingConfig struct {
 	Enabled       bool          `yaml:"enabled"`        // Включить отправку в Yandex Cloud Logging
 	GroupName     string        `yaml:"group_name"`     // Имя лог-группы (например, "default")
 	GroupID       string        `yaml:"group_id"`       // ID лог-группы (альтернатива group_name)
-	IAMToken      string        `yaml:"iam_token"`      // IAM токен (можно задать через YC_IAM_TOKEN env)
 	FolderID      string        `yaml:"folder_id"`      // ID каталога (можно задать через YC_FOLDER_ID env)
 	Level         string        `yaml:"level"`          // Минимальный уровень логирования (DEBUG, INFO, WARN, ERROR)
 	BatchSize     int           `yaml:"batch_size"`     // Размер батча для отправки (по умолчанию 10)

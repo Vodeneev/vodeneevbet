@@ -16,7 +16,6 @@ func SetupLogger(cfg *config.LoggingConfig, serviceName string) (*slog.Logger, e
 		Enabled:       cfg.Enabled,
 		GroupName:     cfg.GroupName,
 		GroupID:       cfg.GroupID,
-		IAMToken:      cfg.IAMToken,
 		FolderID:      cfg.FolderID,
 		Level:         cfg.Level,
 		BatchSize:     cfg.BatchSize,

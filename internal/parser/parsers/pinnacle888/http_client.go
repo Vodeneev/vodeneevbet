@@ -295,11 +295,37 @@ func (c *Client) GetOddsEvents(oddsURL string, sportID int64, isLive bool) ([]by
 		return nil, fmt.Errorf("odds_url not configured")
 	}
 
-	// Build URL with parameters
-	u, err := url.Parse(oddsURL)
+	// Parse odds URL to extract path
+	oddsURLParsed, err := url.Parse(oddsURL)
 	if err != nil {
 		return nil, fmt.Errorf("parse odds_url: %w", err)
 	}
+
+	// Use resolved base URL from mirror instead of hardcoded domain
+	resolvedBaseURL := c.getResolvedBaseURL()
+	if resolvedBaseURL == "" {
+		resolvedBaseURL = c.baseURL
+	}
+	if resolvedBaseURL == "" {
+		resolvedBaseURL = "https://guest.api.arcadia.pinnacle.com"
+	}
+
+	// Parse resolved base URL to extract scheme and host
+	resolvedParsed, err := url.Parse(resolvedBaseURL)
+	if err != nil {
+		return nil, fmt.Errorf("parse resolved base URL: %w", err)
+	}
+
+	// Build URL using resolved domain but keeping path from odds_url
+	u := &url.URL{
+		Scheme: resolvedParsed.Scheme,
+		Host:   resolvedParsed.Host,
+		Path:   oddsURLParsed.Path,
+	}
+	
+	// Log the URL construction for debugging
+	fmt.Printf("Pinnacle888: Using resolved domain %s%s for odds endpoint (original: %s)\n", 
+		resolvedParsed.Scheme+"://"+resolvedParsed.Host, oddsURLParsed.Path, oddsURL)
 
 	// Set query parameters
 	queryParams := u.Query()
@@ -318,7 +344,9 @@ func (c *Client) GetOddsEvents(oddsURL string, sportID int64, isLive bool) ([]by
 	queryParams.Set("periodNum", "0,8,39,3,4,5,6,7")
 	queryParams.Set("_", fmt.Sprintf("%d", time.Now().UnixMilli()))
 
-	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, u.Scheme+"://"+u.Host+u.Path, nil)
+	// Build full URL
+	fullURL := u.String()
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, fullURL, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request for odds events: %w", err)
 	}

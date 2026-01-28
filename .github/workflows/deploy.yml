@@ -122,8 +122,11 @@ jobs:
           # Compose automatically reads .env from the project directory
           # Используем base64 для безопасной передачи JSON через .env файл
           if [ -n "${YC_SERVICE_ACCOUNT_KEY_JSON:-}" ]; then
-            # Кодируем JSON в base64 для безопасной передачи через .env файл
-            YC_SERVICE_ACCOUNT_KEY_JSON_B64=$(printf '%s' "${YC_SERVICE_ACCOUNT_KEY_JSON}" | base64 -w 0)
+            # Минифицируем JSON (убираем все пробелы и переносы строк) перед кодированием в base64
+            # Это необходимо, чтобы избежать проблем с парсингом JSON после декодирования
+            YC_SERVICE_ACCOUNT_KEY_JSON_MINIFIED=$(printf '%s' "${YC_SERVICE_ACCOUNT_KEY_JSON}" | tr -d '\n' | sed 's/[[:space:]]*//g')
+            # Кодируем минифицированный JSON в base64 для безопасной передачи через .env файл
+            YC_SERVICE_ACCOUNT_KEY_JSON_B64=$(printf '%s' "${YC_SERVICE_ACCOUNT_KEY_JSON_MINIFIED}" | base64 -w 0)
             printf "IMAGE_OWNER=%s\nIMAGE_TAG=%s\nYC_SERVICE_ACCOUNT_KEY_JSON_B64=%s\nYC_FOLDER_ID=%s\nYC_LOG_GROUP_NAME=%s\n" \
               "${IMAGE_OWNER}" "${IMAGE_TAG}" "${YC_SERVICE_ACCOUNT_KEY_JSON_B64}" "${YC_FOLDER_ID:-}" "${YC_LOG_GROUP_NAME:-default}" > .env
           else
@@ -243,8 +246,11 @@ jobs:
           POSTGRES_DSN_ESCAPED="${POSTGRES_DSN//\'/\'\"\'\"\'}"
           # Используем base64 для безопасной передачи JSON через .env файл
           if [ -n "${YC_SERVICE_ACCOUNT_KEY_JSON:-}" ]; then
-            # Кодируем JSON в base64 для безопасной передачи через .env файл
-            YC_SERVICE_ACCOUNT_KEY_JSON_B64=$(printf '%s' "${YC_SERVICE_ACCOUNT_KEY_JSON}" | base64 -w 0)
+            # Минифицируем JSON (убираем все пробелы и переносы строк) перед кодированием в base64
+            # Это необходимо, чтобы избежать проблем с парсингом JSON после декодирования
+            YC_SERVICE_ACCOUNT_KEY_JSON_MINIFIED=$(printf '%s' "${YC_SERVICE_ACCOUNT_KEY_JSON}" | tr -d '\n' | sed 's/[[:space:]]*//g')
+            # Кодируем минифицированный JSON в base64 для безопасной передачи через .env файл
+            YC_SERVICE_ACCOUNT_KEY_JSON_B64=$(printf '%s' "${YC_SERVICE_ACCOUNT_KEY_JSON_MINIFIED}" | base64 -w 0)
             printf "IMAGE_OWNER=%s\nIMAGE_TAG=%s\nTELEGRAM_BOT_TOKEN=%s\nTELEGRAM_CHAT_ID=%s\nPOSTGRES_DSN=%s\nYC_SERVICE_ACCOUNT_KEY_JSON_B64=%s\nYC_FOLDER_ID=%s\nYC_LOG_GROUP_NAME=%s\n" \
               "${IMAGE_OWNER}" "${IMAGE_TAG}" "${TELEGRAM_BOT_TOKEN:-}" "${TELEGRAM_CHAT_ID:-}" "${POSTGRES_DSN_ESCAPED:-}" "${YC_SERVICE_ACCOUNT_KEY_JSON_B64}" "${YC_FOLDER_ID:-}" "${YC_LOG_GROUP_NAME:-default}" > .env
           else

@@ -12,8 +12,8 @@ import (
 
 	"github.com/yandex-cloud/go-genproto/yandex/cloud/logging/v1"
 	ycsdk "github.com/yandex-cloud/go-sdk"
-	"github.com/yandex-cloud/go-sdk/iamkey"
 	logingestion "github.com/yandex-cloud/go-sdk/gen/logingestion"
+	"github.com/yandex-cloud/go-sdk/iamkey"
 	"google.golang.org/protobuf/types/known/structpb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
@@ -104,11 +104,11 @@ func NewYandexLoggingHandler(config YandexLoggingConfig) (*YandexLoggingHandler,
 	// 1. Service Account Key файл (через YC_SERVICE_ACCOUNT_KEY_FILE или YC_SERVICE_ACCOUNT_KEY_JSON)
 	// 2. Instance Metadata Service (если работает на VM с привязанным service account)
 	var creds ycsdk.Credentials
-	
+
 	// Проверяем наличие Service Account Key файла
 	saKeyFile := os.Getenv("YC_SERVICE_ACCOUNT_KEY_FILE")
 	saKeyJSON := os.Getenv("YC_SERVICE_ACCOUNT_KEY_JSON")
-	
+
 	if saKeyJSON != "" {
 		// Используем Service Account Key из переменной окружения (JSON строка)
 		key, err := iamkey.ReadFromJSONBytes([]byte(saKeyJSON))
@@ -133,7 +133,7 @@ func NewYandexLoggingHandler(config YandexLoggingConfig) (*YandexLoggingHandler,
 		// Используем Instance Metadata Service (работает только на VM с привязанным service account)
 		creds = ycsdk.InstanceServiceAccount()
 	}
-	
+
 	sdk, err := ycsdk.Build(context.Background(), ycsdk.Config{
 		Credentials: creds,
 	})

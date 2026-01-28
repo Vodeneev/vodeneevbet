@@ -12,6 +12,7 @@ import (
 
 	"github.com/yandex-cloud/go-genproto/yandex/cloud/logging/v1"
 	ycsdk "github.com/yandex-cloud/go-sdk"
+	"github.com/yandex-cloud/go-sdk/iamkey"
 	logingestion "github.com/yandex-cloud/go-sdk/gen/logingestion"
 	"google.golang.org/protobuf/types/known/structpb"
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -99,10 +100,42 @@ func NewYandexLoggingHandler(config YandexLoggingConfig) (*YandexLoggingHandler,
 	}
 
 	// Инициализируем Yandex Cloud SDK
-	// Используем Instance Metadata Service для автоматического получения и обновления токенов
-	// Это работает только на VM в Yandex Cloud
+	// Пытаемся использовать разные способы аутентификации в порядке приоритета:
+	// 1. Service Account Key файл (через YC_SERVICE_ACCOUNT_KEY_FILE или YC_SERVICE_ACCOUNT_KEY_JSON)
+	// 2. Instance Metadata Service (если работает на VM с привязанным service account)
+	var creds ycsdk.Credentials
+	
+	// Проверяем наличие Service Account Key файла
+	saKeyFile := os.Getenv("YC_SERVICE_ACCOUNT_KEY_FILE")
+	saKeyJSON := os.Getenv("YC_SERVICE_ACCOUNT_KEY_JSON")
+	
+	if saKeyJSON != "" {
+		// Используем Service Account Key из переменной окружения (JSON строка)
+		key, err := iamkey.ReadFromJSONBytes([]byte(saKeyJSON))
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse service account key from YC_SERVICE_ACCOUNT_KEY_JSON: %w", err)
+		}
+		creds, err = ycsdk.ServiceAccountKey(key)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create credentials from service account key: %w", err)
+		}
+	} else if saKeyFile != "" {
+		// Используем Service Account Key из файла
+		key, err := iamkey.ReadFromJSONFile(saKeyFile)
+		if err != nil {
+			return nil, fmt.Errorf("failed to read service account key from file %s: %w", saKeyFile, err)
+		}
+		creds, err = ycsdk.ServiceAccountKey(key)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create credentials from service account key: %w", err)
+		}
+	} else {
+		// Используем Instance Metadata Service (работает только на VM с привязанным service account)
+		creds = ycsdk.InstanceServiceAccount()
+	}
+	
 	sdk, err := ycsdk.Build(context.Background(), ycsdk.Config{
-		Credentials: ycsdk.InstanceServiceAccount(),
+		Credentials: creds,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize Yandex Cloud SDK: %w", err)

@@ -115,21 +115,21 @@ func buildMatchFromCompactEvent(leagueName string, eventData interface{}, isLive
 		return nil
 	}
 
-	// Parse event: [eventID, awayTeam, homeTeam, status, startTime, ..., markets, ...]
-	// Note: Pinnacle888 API returns teams in reverse order: [away, home]
+	// Parse event: [eventID, homeTeam, awayTeam, status, startTime, ..., markets, ...]
+	// Note: Pinnacle888 API returns teams in normal order: [home, away]
 	eventID, ok := event[0].(float64)
 	if !ok {
 		return nil
 	}
 
-	// Teams are in reverse order in API: event[1] = away, event[2] = home
+	// Teams are in normal order: event[1] = home, event[2] = away
 	// But these may be in Russian. Check for English names at event[24] and event[25]
-	awayTeam, ok := event[1].(string)
+	homeTeam, ok := event[1].(string)
 	if !ok {
 		return nil
 	}
 
-	homeTeam, ok := event[2].(string)
+	awayTeam, ok := event[2].(string)
 	if !ok {
 		return nil
 	}
@@ -137,11 +137,11 @@ func buildMatchFromCompactEvent(leagueName string, eventData interface{}, isLive
 	// Prefer English team names if available (at indices 24-25)
 	// This ensures proper match merging with other bookmakers
 	if len(event) > 25 {
-		if engAway, ok := event[24].(string); ok && engAway != "" {
-			awayTeam = engAway
-		}
-		if engHome, ok := event[25].(string); ok && engHome != "" {
+		if engHome, ok := event[24].(string); ok && engHome != "" {
 			homeTeam = engHome
+		}
+		if engAway, ok := event[25].(string); ok && engAway != "" {
+			awayTeam = engAway
 		}
 	}
 
@@ -241,15 +241,15 @@ func parseCompactMarkets(matchID string, eventID int64, marketsData interface{})
 	// period0[2] = moneyline (1x2)
 	// period0[3] = other markets
 
-	// Parse moneyline (1x2) - period0[2] is [awayOdds, drawOdds, homeOdds, ...]
-	// Note: Pinnacle888 API returns odds in reverse order: [away, draw, home]
+	// Parse moneyline (1x2) - period0[2] is [homeOdds, drawOdds, awayOdds, ...]
+	// Note: Pinnacle888 API returns odds in normal order: [home, draw, away]
 	if len(period0) > 2 {
 		moneylineData := period0[2]
 		if moneyline, ok := moneylineData.([]interface{}); ok && len(moneyline) >= 3 {
-			// Format: [awayOdds, drawOdds, homeOdds, ...] - REVERSED ORDER!
-			awayOdds := parseOdds(moneyline[0])
+			// Format: [homeOdds, drawOdds, awayOdds, ...] - normal order
+			homeOdds := parseOdds(moneyline[0])
 			drawOdds := parseOdds(moneyline[1])
-			homeOdds := parseOdds(moneyline[2])
+			awayOdds := parseOdds(moneyline[2])
 
 			eventID := fmt.Sprintf("%s_pinnacle888_main_match", matchID)
 			event := models.Event{
@@ -312,7 +312,7 @@ func parseCompactMarkets(matchID string, eventID int64, marketsData interface{})
 		if handicaps, ok := handicapData.([]interface{}); ok {
 			for _, h := range handicaps {
 				if handicap, ok := h.([]interface{}); ok && len(handicap) >= 5 {
-					// Note: Pinnacle888 API returns handicap data in reverse order
+					// Note: Pinnacle888 API returns handicap data: [awayLine, homeLine, ..., awayOdds, homeOdds]
 					// handicap[0] = awayLine, handicap[1] = homeLine
 					// handicap[3] = awayOdds, handicap[4] = homeOdds
 					awayLine := parseFloat(handicap[0])

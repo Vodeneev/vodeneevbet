@@ -289,15 +289,20 @@ func NewClient(baseURL, mirrorURL, apiKey, deviceUUID string, timeout time.Durat
 			client.resolvedMu.Unlock()
 			// Use resolved URL as baseURL
 			client.baseURL = resolved
-			
+
 			// Try to get final domain after JavaScript redirects for odds endpoint
 			// The resolved URL might redirect further to the actual domain
+			fmt.Printf("Pinnacle888: Attempting to resolve final odds domain from %s\n", resolved)
 			finalDomain, err := getFinalDomainFromResolved(resolved, timeout)
-			if err == nil && finalDomain != "" {
+			if err != nil {
+				fmt.Printf("Pinnacle888: Failed to resolve final odds domain: %v, using fallback\n", err)
+			} else if finalDomain != "" {
 				client.resolvedMu.Lock()
 				client.oddsDomain = finalDomain
 				client.resolvedMu.Unlock()
 				fmt.Printf("Pinnacle888: Resolved odds domain: %s\n", finalDomain)
+			} else {
+				fmt.Printf("Pinnacle888: No domain resolved, using fallback\n")
 			}
 		}
 	}
@@ -379,17 +384,17 @@ func (c *Client) GetOddsEvents(oddsPath string, sportID int64, isLive bool) ([]b
 		if !strings.HasPrefix(oddsPathStr, "/") {
 			oddsPathStr = "/" + oddsPathStr
 		}
-		
+
 		// Try to get resolved odds domain from mirror
 		c.resolvedMu.RLock()
 		oddsDomain := c.oddsDomain
 		c.resolvedMu.RUnlock()
-		
+
 		if oddsDomain == "" {
 			// Fallback to default domain
 			oddsDomain = "www.gentleflame47.xyz"
 		}
-		
+
 		u = &url.URL{
 			Scheme: "https",
 			Host:   oddsDomain,

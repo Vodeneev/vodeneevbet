@@ -31,6 +31,9 @@ type Client struct {
 	resolvedURL       string // Cached resolved URL
 	oddsDomain        string // Cached odds domain (resolved from mirror)
 	resolvedMu        sync.RWMutex
+	resolveTimeout    time.Duration // Timeout for mirror resolution
+	lastResolveTime   time.Time     // When we last resolved the mirror
+	resolveInterval   time.Duration // How often to check if resolution is needed
 }
 
 // resolveMirror resolves the actual URL from mirror link
@@ -410,73 +413,176 @@ func NewClient(baseURL, mirrorURL, apiKey, deviceUUID string, timeout time.Durat
 		httpClient:        &http.Client{Timeout: timeout, Transport: transport},
 		proxyList:         proxyList,
 		currentProxyIndex: 0,
+		resolveTimeout:    timeout,
+		resolveInterval:   5 * time.Minute, // Check every 5 minutes if resolution is needed
 	}
 
-	// Resolve mirror URL if provided
-	if mirrorURL != "" {
-		resolved, err := resolveMirror(mirrorURL, timeout)
-		if err != nil {
-			fmt.Printf("Pinnacle888: Warning: failed to resolve mirror %s: %v, using baseURL %s\n", mirrorURL, err, baseURL)
-		} else {
-			client.resolvedMu.Lock()
-			client.resolvedURL = resolved
-			client.resolvedMu.Unlock()
-			// Use resolved URL as baseURL
-			client.baseURL = resolved
-
-			// Extract domain from resolved URL for odds endpoint
-			// The resolved URL might be an IP address or a domain (e.g., https://www.crimsonhaven46.xyz/en/standard/home)
-			fmt.Printf("Pinnacle888: Resolved mirror URL: %s\n", resolved)
-			parsed, err := url.Parse(resolved)
-			if err == nil {
-				domain := parsed.Host
-				// Remove port if present
-				if idx := strings.Index(domain, ":"); idx != -1 {
-					domain = domain[:idx]
-				}
-
-				// Check if it's an IP address
-				if isIPAddress(domain) {
-					// If it's an IP address, try to get domain from JavaScript redirects
-					fmt.Printf("Pinnacle888: Resolved URL is IP address %s, attempting to resolve domain via JavaScript...\n", domain)
-					finalDomain, err := getFinalDomainFromResolved(resolved, timeout)
-					if err != nil {
-						fmt.Printf("Pinnacle888: Failed to resolve domain from IP via JavaScript: %v, using IP address directly\n", err)
-						// Use IP address directly as fallback
-						client.resolvedMu.Lock()
-						client.oddsDomain = domain
-						client.resolvedMu.Unlock()
-						fmt.Printf("Pinnacle888: Using IP address %s for odds endpoint\n", domain)
-					} else if finalDomain != "" {
-						client.resolvedMu.Lock()
-						client.oddsDomain = finalDomain
-						client.resolvedMu.Unlock()
-						fmt.Printf("Pinnacle888: Resolved odds domain from JavaScript: %s\n", finalDomain)
-					} else {
-						// Use IP address as fallback
-						client.resolvedMu.Lock()
-						client.oddsDomain = domain
-						client.resolvedMu.Unlock()
-						fmt.Printf("Pinnacle888: Using IP address %s for odds endpoint (fallback)\n", domain)
-					}
-				} else {
-					// It's already a domain (e.g., www.crimsonhaven46.xyz), use it directly
-					client.resolvedMu.Lock()
-					client.oddsDomain = domain
-					client.resolvedMu.Unlock()
-					fmt.Printf("Pinnacle888: Using resolved domain %s for odds endpoint\n", domain)
-				}
-			} else {
-				fmt.Printf("Pinnacle888: Failed to parse resolved URL %s: %v, using fallback\n", resolved, err)
-			}
-		}
-	}
+	// Don't resolve immediately - do lazy resolution when needed
+	// This avoids blocking startup and allows re-resolution when URL stops working
 
 	return client
 }
 
+// checkURLHealth checks if a URL is accessible
+func (c *Client) checkURLHealth(urlStr string) bool {
+	req, err := http.NewRequest(http.MethodHead, urlStr, nil)
+	if err != nil {
+		return false
+	}
+	req.Header.Set("User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36")
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	req = req.WithContext(ctx)
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return false
+	}
+	defer resp.Body.Close()
+
+	// Consider 2xx and 3xx as healthy
+	return resp.StatusCode >= 200 && resp.StatusCode < 400
+}
+
+// ensureResolved ensures that mirror URL is resolved and cached
+// It only resolves if:
+// 1. Not resolved yet, OR
+// 2. Last resolution was more than resolveInterval ago AND URL is not healthy
+func (c *Client) ensureResolved() error {
+	if c.mirrorURL == "" {
+		return nil
+	}
+
+	c.resolvedMu.RLock()
+	hasResolved := c.resolvedURL != ""
+	lastResolve := c.lastResolveTime
+	resolvedURL := c.resolvedURL
+	c.resolvedMu.RUnlock()
+
+	// If we have a resolved URL, check if it's still healthy
+	if hasResolved {
+		// Check if enough time has passed since last resolution
+		if time.Since(lastResolve) < c.resolveInterval {
+			// Too soon to check again, use cached URL
+			return nil
+		}
+
+		// Check if current URL is still healthy
+		if c.checkURLHealth(resolvedURL) {
+			// URL is still working, update last check time
+			c.resolvedMu.Lock()
+			c.lastResolveTime = time.Now()
+			c.resolvedMu.Unlock()
+			return nil
+		}
+
+		// URL is not healthy, need to re-resolve
+		fmt.Printf("Pinnacle888: Cached URL %s is not responding, re-resolving mirror...\n", resolvedURL)
+	}
+
+	// Resolve mirror URL
+	resolved, err := resolveMirror(c.mirrorURL, c.resolveTimeout)
+	if err != nil {
+		if hasResolved {
+			// If we had a cached URL but re-resolution failed, log warning but keep using cached URL
+			fmt.Printf("Pinnacle888: Warning: failed to re-resolve mirror %s: %v, keeping cached URL %s\n", c.mirrorURL, err, resolvedURL)
+			return nil
+		}
+		return fmt.Errorf("failed to resolve mirror: %w", err)
+	}
+
+	// Update cached resolved URL
+	c.resolvedMu.Lock()
+	c.resolvedURL = resolved
+	c.lastResolveTime = time.Now()
+	c.baseURL = resolved
+	c.resolvedMu.Unlock()
+
+	fmt.Printf("Pinnacle888: Resolved mirror URL: %s\n", resolved)
+
+	// Extract domain from resolved URL for odds endpoint
+	parsed, err := url.Parse(resolved)
+	if err == nil {
+		domain := parsed.Host
+		// Remove port if present
+		if idx := strings.Index(domain, ":"); idx != -1 {
+			domain = domain[:idx]
+		}
+
+		// Check if it's an IP address
+		if isIPAddress(domain) {
+			// If it's an IP address, try to get domain from JavaScript redirects
+			fmt.Printf("Pinnacle888: Resolved URL is IP address %s, attempting to resolve domain via JavaScript...\n", domain)
+			finalDomain, err := getFinalDomainFromResolved(resolved, c.resolveTimeout)
+			if err != nil {
+				fmt.Printf("Pinnacle888: Failed to resolve domain from IP via JavaScript: %v, using IP address directly\n", err)
+				c.resolvedMu.Lock()
+				c.oddsDomain = domain
+				c.resolvedMu.Unlock()
+				fmt.Printf("Pinnacle888: Using IP address %s for odds endpoint\n", domain)
+			} else if finalDomain != "" {
+				c.resolvedMu.Lock()
+				c.oddsDomain = finalDomain
+				c.resolvedMu.Unlock()
+				fmt.Printf("Pinnacle888: Resolved odds domain from JavaScript: %s\n", finalDomain)
+			} else {
+				c.resolvedMu.Lock()
+				c.oddsDomain = domain
+				c.resolvedMu.Unlock()
+				fmt.Printf("Pinnacle888: Using IP address %s for odds endpoint (fallback)\n", domain)
+			}
+		} else {
+			// It's already a domain, use it directly
+			c.resolvedMu.Lock()
+			c.oddsDomain = domain
+			c.resolvedMu.Unlock()
+			fmt.Printf("Pinnacle888: Using resolved domain %s for odds endpoint\n", domain)
+		}
+	}
+
+	return nil
+}
+
+// shouldReResolve checks if an error indicates that we should re-resolve the mirror URL
+func (c *Client) shouldReResolve(err error, statusCode int) bool {
+	if err != nil {
+		errStr := err.Error()
+		// Check for connection errors that might indicate URL is down
+		if strings.Contains(errStr, "connection refused") ||
+			strings.Contains(errStr, "no such host") ||
+			strings.Contains(errStr, "timeout") ||
+			strings.Contains(errStr, "network is unreachable") {
+			return true
+		}
+	}
+	// Check for HTTP errors that might indicate URL changed
+	if statusCode >= 400 && statusCode < 500 {
+		// 4xx errors might indicate URL changed or resource not found
+		return true
+	}
+	return false
+}
+
+// clearResolvedURL clears the cached resolved URL to force re-resolution
+func (c *Client) clearResolvedURL() {
+	c.resolvedMu.Lock()
+	defer c.resolvedMu.Unlock()
+	if c.resolvedURL != "" {
+		fmt.Printf("Pinnacle888: Clearing cached URL %s to force re-resolution\n", c.resolvedURL)
+		c.resolvedURL = ""
+		c.oddsDomain = ""
+	}
+}
+
 // getResolvedBaseURL returns the resolved base URL (from mirror or direct)
+// It ensures the URL is resolved before returning
 func (c *Client) getResolvedBaseURL() string {
+	// Ensure mirror is resolved (lazy resolution)
+	if err := c.ensureResolved(); err != nil {
+		fmt.Printf("Pinnacle888: Warning: failed to ensure resolved URL: %v\n", err)
+	}
+
 	c.resolvedMu.RLock()
 	defer c.resolvedMu.RUnlock()
 	if c.resolvedURL != "" {
@@ -550,6 +656,11 @@ func (c *Client) GetOddsEvents(oddsPath string, sportID int64, isLive bool) ([]b
 			oddsPathStr = "/" + oddsPathStr
 		}
 
+		// Ensure mirror is resolved to get odds domain
+		if err := c.ensureResolved(); err != nil {
+			fmt.Printf("Pinnacle888: Warning: failed to ensure resolved URL: %v\n", err)
+		}
+
 		// Try to get resolved odds domain from mirror
 		c.resolvedMu.RLock()
 		oddsDomain := c.oddsDomain
@@ -604,7 +715,12 @@ func (c *Client) GetOddsEvents(oddsPath string, sportID int64, isLive bool) ([]b
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("request: %w", err)
+		// If request failed, check if we should re-resolve mirror
+		if c.shouldReResolve(err, 0) {
+			fmt.Printf("Pinnacle888: Request to odds endpoint failed: %v, clearing cached URL for re-resolution\n", err)
+			c.clearResolvedURL()
+		}
+		return nil, fmt.Errorf("request failed: %w", err)
 	}
 	defer resp.Body.Close()
 
@@ -615,6 +731,13 @@ func (c *Client) GetOddsEvents(oddsPath string, sportID int64, isLive bool) ([]b
 			previewLen = len(b)
 		}
 		fmt.Printf("Pinnacle888: Odds events API returned status %d, body preview: %s\n", resp.StatusCode, string(b[:previewLen]))
+
+		// If we got error that might indicate URL changed, clear cached URL
+		if c.shouldReResolve(nil, resp.StatusCode) {
+			fmt.Printf("Pinnacle888: HTTP error %d, clearing cached URL to force re-resolution on next request\n", resp.StatusCode)
+			c.clearResolvedURL()
+		}
+
 		return nil, fmt.Errorf("unexpected status %d: %s", resp.StatusCode, string(b))
 	}
 
@@ -651,9 +774,23 @@ func (c *Client) getJSONDirect(path string, out any) error {
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
+		// Check if error indicates URL might be down
+		if c.shouldReResolve(err, 0) {
+			c.clearResolvedURL()
+		}
 		return fmt.Errorf("request: %w", err)
 	}
 	defer resp.Body.Close()
+
+	// Check response status before handling
+	if resp.StatusCode >= 400 {
+		// Read body for error details
+		b, _ := io.ReadAll(resp.Body)
+		if c.shouldReResolve(nil, resp.StatusCode) {
+			c.clearResolvedURL()
+		}
+		return fmt.Errorf("unexpected status %d: %s", resp.StatusCode, string(b))
+	}
 
 	return c.handleResponse(resp, out)
 }

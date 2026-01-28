@@ -8,6 +8,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"os"
 	"sync"
 	"time"
@@ -198,43 +199,33 @@ func (h *YandexLoggingHandler) flush() {
 
 // sendLogs отправляет логи в Yandex Cloud Logging через REST API
 // Использует формат API, совместимый с командой yc logging write
-// API endpoint: https://ingester.logging.yandexcloud.net/write
-// Документация: https://yandex.cloud/en/docs/logging/api-ref/grpc/log_ingestion_service/
+// Формат: параметры передаются через form-data (application/x-www-form-urlencoded)
 func (h *YandexLoggingHandler) sendLogs(entries []LogEntry) error {
 	// Формируем URL для API
-	// Используем endpoint для записи логов через HTTP API
-	// Примечание: если HTTP API не работает, можно использовать gRPC API через SDK
-	// или вызывать CLI команду yc logging write через exec
-	url := "https://ingester.logging.yandexcloud.net/write"
+	apiURL := "https://ingester.logging.yandexcloud.net/write"
 
 	// Отправляем каждый лог отдельно
 	for _, entry := range entries {
-		// Формируем payload в формате, который ожидает API
-		payload := map[string]interface{}{
-			"message": entry.Message,
-			"level":   entry.Level,
-		}
-
-		// Добавляем дополнительные поля из payload
+		// Формируем form data (как в команде yc logging write)
+		formData := url.Values{}
+		formData.Set("message", entry.Message)
+		formData.Set("level", entry.Level)
+		
+		// Добавляем JSON payload если есть
 		if len(entry.Payload) > 0 {
-			payload["json_payload"] = entry.Payload
+			jsonPayloadBytes, err := json.Marshal(entry.Payload)
+			if err == nil {
+				formData.Set("json_payload", string(jsonPayloadBytes))
+			}
 		}
 
-		jsonData, err := json.Marshal(payload)
+		// Добавляем параметры группы и каталога в query string
+		reqURL, err := url.Parse(apiURL)
 		if err != nil {
 			continue
 		}
-
-		req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonData))
-		if err != nil {
-			continue
-		}
-
-		req.Header.Set("Content-Type", "application/json")
-		req.Header.Set("Authorization", "Bearer "+h.config.IAMToken)
-
-		// Добавляем параметры в query string
-		q := req.URL.Query()
+		
+		q := reqURL.Query()
 		if h.config.GroupID != "" {
 			q.Set("groupId", h.config.GroupID)
 		} else if h.config.GroupName != "" {
@@ -245,7 +236,16 @@ func (h *YandexLoggingHandler) sendLogs(entries []LogEntry) error {
 		if h.config.FolderID != "" {
 			q.Set("folderId", h.config.FolderID)
 		}
-		req.URL.RawQuery = q.Encode()
+		reqURL.RawQuery = q.Encode()
+
+		// Создаем запрос с form data в теле
+		req, err := http.NewRequest("POST", reqURL.String(), bytes.NewBufferString(formData.Encode()))
+		if err != nil {
+			continue
+		}
+
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		req.Header.Set("Authorization", "Bearer "+h.config.IAMToken)
 
 		resp, err := h.client.Do(req)
 		if err != nil {

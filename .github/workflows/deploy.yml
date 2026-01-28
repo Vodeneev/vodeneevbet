@@ -122,17 +122,13 @@ jobs:
           # Compose automatically reads .env from the project directory
           # Используем base64 для безопасной передачи JSON через .env файл
           if [ -n "${YC_SERVICE_ACCOUNT_KEY_JSON:-}" ]; then
-            # Минифицируем JSON перед кодированием в base64
-            # Используем jq для правильной минификации (сохраняет пробелы внутри строк)
-            if command -v jq >/dev/null 2>&1; then
-              YC_SERVICE_ACCOUNT_KEY_JSON_MINIFIED=$(printf '%s' "${YC_SERVICE_ACCOUNT_KEY_JSON}" | jq -c .)
-            else
-              # Fallback: убираем только переносы строк и лишние пробелы между токенами
-              # Но сохраняем пробелы внутри строковых значений
-              YC_SERVICE_ACCOUNT_KEY_JSON_MINIFIED=$(printf '%s' "${YC_SERVICE_ACCOUNT_KEY_JSON}" | tr -d '\n\r' | sed 's/[[:space:]]\+/ /g' | sed 's/ *\([{}:,\[\]]\) */\1/g')
-            fi
-            # Кодируем минифицированный JSON в base64 для безопасной передачи через .env файл
-            YC_SERVICE_ACCOUNT_KEY_JSON_B64=$(printf '%s' "${YC_SERVICE_ACCOUNT_KEY_JSON_MINIFIED}" | base64 -w 0)
+            # Убираем только форматирующие переносы строк (между токенами JSON)
+            # Но сохраняем экранированные \n внутри строковых значений
+            # Используем простой подход: заменяем переносы строк на пробелы, но только между токенами
+            # Это безопаснее, чем пытаться минифицировать через jq (может быть проблема с управляющими символами)
+            YC_SERVICE_ACCOUNT_KEY_JSON_CLEANED=$(printf '%s' "${YC_SERVICE_ACCOUNT_KEY_JSON}" | tr '\n\r' ' ' | sed 's/  */ /g')
+            # Кодируем очищенный JSON в base64 для безопасной передачи через .env файл
+            YC_SERVICE_ACCOUNT_KEY_JSON_B64=$(printf '%s' "${YC_SERVICE_ACCOUNT_KEY_JSON_CLEANED}" | base64 -w 0)
             printf "IMAGE_OWNER=%s\nIMAGE_TAG=%s\nYC_SERVICE_ACCOUNT_KEY_JSON_B64=%s\nYC_FOLDER_ID=%s\nYC_LOG_GROUP_NAME=%s\n" \
               "${IMAGE_OWNER}" "${IMAGE_TAG}" "${YC_SERVICE_ACCOUNT_KEY_JSON_B64}" "${YC_FOLDER_ID:-}" "${YC_LOG_GROUP_NAME:-default}" > .env
           else
@@ -252,9 +248,18 @@ jobs:
           POSTGRES_DSN_ESCAPED="${POSTGRES_DSN//\'/\'\"\'\"\'}"
           # Используем base64 для безопасной передачи JSON через .env файл
           if [ -n "${YC_SERVICE_ACCOUNT_KEY_JSON:-}" ]; then
-            # Минифицируем JSON (убираем все пробелы и переносы строк) перед кодированием в base64
-            # Это необходимо, чтобы избежать проблем с парсингом JSON после декодирования
-            YC_SERVICE_ACCOUNT_KEY_JSON_MINIFIED=$(printf '%s' "${YC_SERVICE_ACCOUNT_KEY_JSON}" | tr -d '\n' | sed 's/[[:space:]]*//g')
+            # Минифицируем JSON перед кодированием в base64
+            # Используем jq для правильной минификации (сохраняет пробелы внутри строк)
+            if command -v jq >/dev/null 2>&1; then
+              # jq может обработать JSON с неэкранированными управляющими символами
+              # Используем -R (raw input) и -s (slurp) для обработки многострочного JSON
+              # Но сначала проверим, что JSON валидный, передав его через stdin
+              YC_SERVICE_ACCOUNT_KEY_JSON_MINIFIED=$(printf '%s' "${YC_SERVICE_ACCOUNT_KEY_JSON}" | jq -c . 2>/dev/null || echo "${YC_SERVICE_ACCOUNT_KEY_JSON}" | jq -R -s 'fromjson | tojson' 2>/dev/null || printf '%s' "${YC_SERVICE_ACCOUNT_KEY_JSON}")
+            else
+              # Fallback: просто убираем переносы строк между токенами, но не трогаем содержимое строк
+              # Это безопаснее, чем удалять все пробелы
+              YC_SERVICE_ACCOUNT_KEY_JSON_MINIFIED=$(printf '%s' "${YC_SERVICE_ACCOUNT_KEY_JSON}" | tr -d '\n\r')
+            fi
             # Кодируем минифицированный JSON в base64 для безопасной передачи через .env файл
             YC_SERVICE_ACCOUNT_KEY_JSON_B64=$(printf '%s' "${YC_SERVICE_ACCOUNT_KEY_JSON_MINIFIED}" | base64 -w 0)
             printf "IMAGE_OWNER=%s\nIMAGE_TAG=%s\nTELEGRAM_BOT_TOKEN=%s\nTELEGRAM_CHAT_ID=%s\nPOSTGRES_DSN=%s\nYC_SERVICE_ACCOUNT_KEY_JSON_B64=%s\nYC_FOLDER_ID=%s\nYC_LOG_GROUP_NAME=%s\n" \

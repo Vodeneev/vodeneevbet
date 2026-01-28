@@ -122,9 +122,15 @@ jobs:
           # Compose automatically reads .env from the project directory
           # Используем base64 для безопасной передачи JSON через .env файл
           if [ -n "${YC_SERVICE_ACCOUNT_KEY_JSON:-}" ]; then
-            # Минифицируем JSON (убираем все пробелы и переносы строк) перед кодированием в base64
-            # Это необходимо, чтобы избежать проблем с парсингом JSON после декодирования
-            YC_SERVICE_ACCOUNT_KEY_JSON_MINIFIED=$(printf '%s' "${YC_SERVICE_ACCOUNT_KEY_JSON}" | tr -d '\n' | sed 's/[[:space:]]*//g')
+            # Минифицируем JSON перед кодированием в base64
+            # Используем jq для правильной минификации (сохраняет пробелы внутри строк)
+            if command -v jq >/dev/null 2>&1; then
+              YC_SERVICE_ACCOUNT_KEY_JSON_MINIFIED=$(printf '%s' "${YC_SERVICE_ACCOUNT_KEY_JSON}" | jq -c .)
+            else
+              # Fallback: убираем только переносы строк и лишние пробелы между токенами
+              # Но сохраняем пробелы внутри строковых значений
+              YC_SERVICE_ACCOUNT_KEY_JSON_MINIFIED=$(printf '%s' "${YC_SERVICE_ACCOUNT_KEY_JSON}" | tr -d '\n\r' | sed 's/[[:space:]]\+/ /g' | sed 's/ *\([{}:,\[\]]\) */\1/g')
+            fi
             # Кодируем минифицированный JSON в base64 для безопасной передачи через .env файл
             YC_SERVICE_ACCOUNT_KEY_JSON_B64=$(printf '%s' "${YC_SERVICE_ACCOUNT_KEY_JSON_MINIFIED}" | base64 -w 0)
             printf "IMAGE_OWNER=%s\nIMAGE_TAG=%s\nYC_SERVICE_ACCOUNT_KEY_JSON_B64=%s\nYC_FOLDER_ID=%s\nYC_LOG_GROUP_NAME=%s\n" \

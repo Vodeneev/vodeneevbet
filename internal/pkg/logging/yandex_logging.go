@@ -200,13 +200,29 @@ func NewYandexLoggingHandler(config YandexLoggingConfig) (*YandexLoggingHandler,
 			FolderId: config.FolderID,
 		}
 		listResp, err := logGroupClient.List(ctx, listReq)
-		if err == nil {
+		if err != nil {
+			// Если не удалось получить список групп, логируем ошибку, но продолжаем
+			fmt.Fprintf(os.Stderr, "Warning: failed to list log groups: %v\n", err)
+		} else {
 			// Ищем группу с нужным именем
+			found := false
 			for _, group := range listResp.Groups {
 				if group.Name == config.GroupName {
 					groupID = group.Id
+					found = true
+					fmt.Fprintf(os.Stderr, "Found log group '%s' with ID: %s\n", config.GroupName, groupID)
 					break
 				}
+			}
+			if !found {
+				fmt.Fprintf(os.Stderr, "Warning: log group '%s' not found in folder %s. Available groups: ", config.GroupName, config.FolderID)
+				for i, group := range listResp.Groups {
+					if i > 0 {
+						fmt.Fprintf(os.Stderr, ", ")
+					}
+					fmt.Fprintf(os.Stderr, "%s", group.Name)
+				}
+				fmt.Fprintf(os.Stderr, "\n")
 			}
 		}
 	}
@@ -215,11 +231,14 @@ func NewYandexLoggingHandler(config YandexLoggingConfig) (*YandexLoggingHandler,
 		destination.Destination = &logging.Destination_LogGroupId{
 			LogGroupId: groupID,
 		}
+		fmt.Fprintf(os.Stderr, "Using log group ID: %s\n", groupID)
 	} else if config.FolderID != "" {
 		// Если не удалось найти группу, используем folder_id как fallback
+		// Но это может не работать, если в каталоге несколько групп
 		destination.Destination = &logging.Destination_FolderId{
 			FolderId: config.FolderID,
 		}
+		fmt.Fprintf(os.Stderr, "Warning: using folder_id as destination (log group not found by name). This may cause Permission Denied if multiple groups exist.\n")
 	} else {
 		return nil, fmt.Errorf("either group_id, group_name with folder_id, or folder_id must be specified")
 	}

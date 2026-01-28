@@ -3,7 +3,6 @@ package pinnacle888
 import (
 	"context"
 	"fmt"
-	"log"
 	"os"
 	"sort"
 	"strconv"
@@ -168,14 +167,7 @@ func (p *Parser) Start(ctx context.Context) error {
 
 // ParseOnce triggers a single parsing run (periodic parsing)
 func (p *Parser) ParseOnce(ctx context.Context) error {
-	log.Printf("Pinnacle888: Starting periodic parse...")
-	err := p.runOnce(ctx)
-	if err != nil {
-		log.Printf("Pinnacle888: Periodic parse failed: %v", err)
-	} else {
-		log.Printf("Pinnacle888: Periodic parse completed successfully")
-	}
-	return err
+	return p.runOnce(ctx)
 }
 
 func (p *Parser) Stop() error { return nil }

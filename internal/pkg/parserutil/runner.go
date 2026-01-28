@@ -55,14 +55,9 @@ func RunParsers(ctx context.Context, parsers []interfaces.Parser, parserFunc Par
 			}
 
 			err := parserFunc(ctx, p)
-			if err != nil {
-				if ctx.Err() == nil {
-					// Error occurred but context is still valid
-					onError(p, err)
-				} else {
-					// Context was cancelled/timed out
-					log.Printf("%s parser: context cancelled/timeout (ctx.Err: %v, func error: %v)", p.GetName(), ctx.Err(), err)
-				}
+			if err != nil && ctx.Err() == nil {
+				// Error occurred but context is still valid
+				onError(p, err)
 			}
 		}()
 	}

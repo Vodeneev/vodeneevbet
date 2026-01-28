@@ -334,9 +334,9 @@ func (c *Client) GetOddsEvents(oddsPath string, sportID int64, isLive bool) ([]b
 		Host:   resolvedParsed.Host,
 		Path:   oddsPathStr,
 	}
-	
+
 	// Log the URL construction for debugging
-	fmt.Printf("Pinnacle888: Using resolved domain %s%s for odds endpoint\n", 
+	fmt.Printf("Pinnacle888: Using resolved domain %s%s for odds endpoint\n",
 		resolvedParsed.Scheme+"://"+resolvedParsed.Host, oddsPathStr)
 
 	// Set query parameters

@@ -439,24 +439,26 @@ func (h *YandexLoggingHandler) sendLogs(entries []LogEntry) error {
 		Entries:     logEntries,
 	}
 
-	// Добавляем метки в каждую запись лога для удобной фильтрации в Yandex Cloud Logging
-	// Метки project, service, cluster будут отображаться в интерфейсе
+	// Добавляем метки в JSON payload каждой записи как обычные поля
+	// Это позволит фильтровать логи по этим полям в Yandex Cloud Logging
+	// НЕ используем специальные поля project/service/cluster, чтобы избежать конфликтов с путями ресурсов
 	for _, logEntry := range logEntries {
+		// Создаем или получаем существующий JSON payload
 		if logEntry.JsonPayload == nil {
 			logEntry.JsonPayload = &structpb.Struct{
 				Fields: make(map[string]*structpb.Value),
 			}
 		}
 
-		// Добавляем метки в JSON payload
+		// Добавляем метки как обычные поля в JSON (с префиксом для избежания конфликтов)
 		if h.config.ProjectLabel != "" {
-			logEntry.JsonPayload.Fields["project"] = structpb.NewStringValue(h.config.ProjectLabel)
+			logEntry.JsonPayload.Fields["log_project"] = structpb.NewStringValue(h.config.ProjectLabel)
 		}
 		if h.config.ServiceLabel != "" {
-			logEntry.JsonPayload.Fields["service"] = structpb.NewStringValue(h.config.ServiceLabel)
+			logEntry.JsonPayload.Fields["log_service"] = structpb.NewStringValue(h.config.ServiceLabel)
 		}
 		if h.config.ClusterLabel != "" {
-			logEntry.JsonPayload.Fields["cluster"] = structpb.NewStringValue(h.config.ClusterLabel)
+			logEntry.JsonPayload.Fields["log_cluster"] = structpb.NewStringValue(h.config.ClusterLabel)
 		}
 	}
 

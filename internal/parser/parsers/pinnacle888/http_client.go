@@ -28,6 +28,7 @@ type Client struct {
 	currentProxyIndex int
 	proxyMu           sync.Mutex
 	resolvedURL       string // Cached resolved URL
+	oddsDomain        string // Cached odds domain (resolved from mirror)
 	resolvedMu        sync.RWMutex
 }
 
@@ -181,6 +182,62 @@ func resolveMirrorWithJS(mirrorURL string, timeout time.Duration) (string, error
 	return "", fmt.Errorf("failed to resolve mirror URL: %s", mirrorURL)
 }
 
+// getFinalDomainFromResolved tries to get the final domain after JavaScript redirects
+// This is used to find the actual odds domain from the resolved mirror URL
+func getFinalDomainFromResolved(resolvedURL string, timeout time.Duration) (string, error) {
+	// Try JavaScript resolution to get final URL after all redirects
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+
+	opts := append(chromedp.DefaultExecAllocatorOptions[:],
+		chromedp.Flag("headless", true),
+		chromedp.Flag("disable-gpu", true),
+		chromedp.Flag("disable-dev-shm-usage", true),
+		chromedp.Flag("no-sandbox", true),
+		chromedp.UserAgent("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36"),
+	)
+
+	allocCtx, cancel := chromedp.NewExecAllocator(ctx, opts...)
+	defer cancel()
+
+	ctx, cancel = chromedp.NewContext(allocCtx, chromedp.WithLogf(func(format string, v ...interface{}) {
+		// Suppress chromedp logs unless debugging
+		if os.Getenv("PINNACLE888_DEBUG") == "1" {
+			fmt.Printf("chromedp: "+format, v...)
+		}
+	}))
+	defer cancel()
+
+	var finalURL string
+
+	// Navigate and wait for page to load (including JavaScript redirects)
+	err := chromedp.Run(ctx,
+		chromedp.Navigate(resolvedURL),
+		chromedp.Sleep(5*time.Second), // Wait longer for JavaScript redirects
+		chromedp.Location(&finalURL),
+	)
+
+	if err != nil {
+		return "", fmt.Errorf("chromedp navigation: %w", err)
+	}
+
+	if finalURL != "" && finalURL != resolvedURL {
+		// Parse final URL to extract domain
+		parsed, err := url.Parse(finalURL)
+		if err != nil {
+			return "", fmt.Errorf("parse final URL: %w", err)
+		}
+		domain := parsed.Host
+		// Remove port if present
+		if idx := strings.Index(domain, ":"); idx != -1 {
+			domain = domain[:idx]
+		}
+		return domain, nil
+	}
+
+	return "", fmt.Errorf("no redirect detected")
+}
+
 func NewClient(baseURL, mirrorURL, apiKey, deviceUUID string, timeout time.Duration, proxyList []string) *Client {
 	// Allow env overrides to avoid committing secrets into configs.
 	if apiKey == "" {
@@ -232,6 +289,16 @@ func NewClient(baseURL, mirrorURL, apiKey, deviceUUID string, timeout time.Durat
 			client.resolvedMu.Unlock()
 			// Use resolved URL as baseURL
 			client.baseURL = resolved
+			
+			// Try to get final domain after JavaScript redirects for odds endpoint
+			// The resolved URL might redirect further to the actual domain
+			finalDomain, err := getFinalDomainFromResolved(resolved, timeout)
+			if err == nil && finalDomain != "" {
+				client.resolvedMu.Lock()
+				client.oddsDomain = finalDomain
+				client.resolvedMu.Unlock()
+				fmt.Printf("Pinnacle888: Resolved odds domain: %s\n", finalDomain)
+			}
 		}
 	}
 
@@ -307,19 +374,29 @@ func (c *Client) GetOddsEvents(oddsPath string, sportID int64, isLive bool) ([]b
 			return nil, fmt.Errorf("parse odds_url: %w", err)
 		}
 	} else {
-		// Relative path provided - use default odds domain
+		// Relative path provided - try to use resolved odds domain, fallback to default
 		oddsPathStr := oddsPath
 		if !strings.HasPrefix(oddsPathStr, "/") {
 			oddsPathStr = "/" + oddsPathStr
 		}
-		// Odds endpoint is on a different domain than the main API
+		
+		// Try to get resolved odds domain from mirror
+		c.resolvedMu.RLock()
+		oddsDomain := c.oddsDomain
+		c.resolvedMu.RUnlock()
+		
+		if oddsDomain == "" {
+			// Fallback to default domain
+			oddsDomain = "www.gentleflame47.xyz"
+		}
+		
 		u = &url.URL{
 			Scheme: "https",
-			Host:   "www.gentleflame47.xyz",
+			Host:   oddsDomain,
 			Path:   oddsPathStr,
 		}
 	}
-	
+
 	// Log the URL construction for debugging
 	fmt.Printf("Pinnacle888: Using odds endpoint: %s%s\n", u.Scheme+"://"+u.Host, u.Path)
 

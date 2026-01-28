@@ -8,6 +8,9 @@ services:
     restart: unless-stopped
     # Run both parsers (enabled_parsers in production.yaml: ["fonbet", "pinnacle"])
     command: ["-config", "/app/configs/production.yaml"]
+    network_mode: host
+    # Используем network_mode: host для доступа к Instance Metadata Service (169.254.169.254)
+    # Это необходимо для автоматического получения IAM токенов через Instance Metadata Service
     expose:
       - "8080"
     environment:

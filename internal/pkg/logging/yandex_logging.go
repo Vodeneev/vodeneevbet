@@ -206,20 +206,7 @@ func (h *YandexLoggingHandler) sendLogs(entries []LogEntry) error {
 
 	// Отправляем каждый лог отдельно
 	for _, entry := range entries {
-		// Формируем form data (как в команде yc logging write)
-		formData := url.Values{}
-		formData.Set("message", entry.Message)
-		formData.Set("level", entry.Level)
-		
-		// Добавляем JSON payload если есть
-		if len(entry.Payload) > 0 {
-			jsonPayloadBytes, err := json.Marshal(entry.Payload)
-			if err == nil {
-				formData.Set("json_payload", string(jsonPayloadBytes))
-			}
-		}
-
-		// Добавляем параметры группы и каталога в query string
+		// Формируем URL с параметрами группы и каталога в query string
 		reqURL, err := url.Parse(apiURL)
 		if err != nil {
 			continue
@@ -238,6 +225,19 @@ func (h *YandexLoggingHandler) sendLogs(entries []LogEntry) error {
 		}
 		reqURL.RawQuery = q.Encode()
 
+		// Формируем form data (точно как в команде yc logging write и curl)
+		formData := url.Values{}
+		formData.Set("message", entry.Message)
+		formData.Set("level", entry.Level)
+		
+		// Добавляем JSON payload если есть
+		if len(entry.Payload) > 0 {
+			jsonPayloadBytes, err := json.Marshal(entry.Payload)
+			if err == nil {
+				formData.Set("json_payload", string(jsonPayloadBytes))
+			}
+		}
+
 		// Создаем запрос с form data в теле (точно как в curl)
 		reqBody := formData.Encode()
 		req, err := http.NewRequest("POST", reqURL.String(), bytes.NewBufferString(reqBody))
@@ -247,7 +247,6 @@ func (h *YandexLoggingHandler) sendLogs(entries []LogEntry) error {
 
 		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 		req.Header.Set("Authorization", "Bearer "+h.config.IAMToken)
-		req.Header.Set("User-Agent", "vodeneevbet-logging/1.0")
 
 		resp, err := h.client.Do(req)
 		if err != nil {

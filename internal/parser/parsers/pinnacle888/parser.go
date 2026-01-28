@@ -3,6 +3,7 @@ package pinnacle888
 import (
 	"context"
 	"fmt"
+	"log"
 	"os"
 	"sort"
 	"strconv"
@@ -153,21 +154,28 @@ func (p *Parser) runOnce(ctx context.Context) error {
 }
 
 func (p *Parser) Start(ctx context.Context) error {
-	fmt.Println("Starting Pinnacle888 parser (on-demand mode - parsing triggered by /matches requests)...")
+	fmt.Println("Starting Pinnacle888 parser (background mode - periodic parsing runs automatically)...")
 
 	// Run once at startup to have initial data
 	if err := p.runOnce(ctx); err != nil {
 		return err
 	}
 
-	// Just wait for context cancellation (no background parsing)
+	// Wait for context cancellation (periodic parsing is handled by main.go)
 	<-ctx.Done()
 	return nil
 }
 
-// ParseOnce triggers a single parsing run (on-demand parsing)
+// ParseOnce triggers a single parsing run (periodic parsing)
 func (p *Parser) ParseOnce(ctx context.Context) error {
-	return p.runOnce(ctx)
+	log.Printf("Pinnacle888: Starting periodic parse...")
+	err := p.runOnce(ctx)
+	if err != nil {
+		log.Printf("Pinnacle888: Periodic parse failed: %v", err)
+	} else {
+		log.Printf("Pinnacle888: Periodic parse completed successfully")
+	}
+	return err
 }
 
 func (p *Parser) Stop() error { return nil }

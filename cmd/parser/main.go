@@ -77,13 +77,13 @@ func run() error {
 		log.Fatalf("parser: health.port must be specified in config")
 	}
 	healthAddr := health.AddrFor(port)
-	
+
 	// Use async_parsing_timeout from config, default to 60s if not specified
 	asyncParsingTimeout := appConfig.Health.AsyncParsingTimeout
 	if asyncParsingTimeout <= 0 {
 		asyncParsingTimeout = 60 * time.Second
 	}
-	
+
 	health.Run(ctx, healthAddr, "parser", nil, appConfig.Health.ReadHeaderTimeout, asyncParsingTimeout)
 
 	log.Println("Starting parsers...")

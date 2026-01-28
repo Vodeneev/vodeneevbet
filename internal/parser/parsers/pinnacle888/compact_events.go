@@ -224,10 +224,9 @@ func buildMatchFromCompactEvent(leagueName string, eventData interface{}, isLive
 		// Quick check: parse moneyline to detect order
 		if marketsMap, ok := marketsData.(map[string]interface{}); ok {
 			if period0, ok := marketsMap["0"].([]interface{}); ok && len(period0) > 2 {
-				if moneylineData, ok := period0[2].([]interface{}); ok && len(moneylineData) >= 3 {
+				if moneylineData, ok := period0[2].([]interface{}); ok && len(moneylineData) >= 2 {
 					odds0 := parseOdds(moneylineData[0])
 					odds1 := parseOdds(moneylineData[1])
-					odds2 := parseOdds(moneylineData[2])
 
 					// Heuristic: if first < second AND first is reasonable (not too high),
 					// it might be [home, away, draw] instead of [away, home, draw]

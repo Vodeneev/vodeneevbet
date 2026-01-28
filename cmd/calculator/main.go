@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
@@ -14,6 +15,7 @@ import (
 
 	"github.com/Vodeneev/vodeneevbet/internal/calculator/calculator"
 	"github.com/Vodeneev/vodeneevbet/internal/pkg/config"
+	"github.com/Vodeneev/vodeneevbet/internal/pkg/logging"
 	"github.com/Vodeneev/vodeneevbet/internal/pkg/storage"
 )
 
@@ -43,20 +45,32 @@ func main() {
 		log.Fatalf("Failed to load config: %v", err)
 	}
 
+	// Настраиваем логирование с поддержкой Yandex Cloud Logging
+	_, err = logging.SetupLogger(&cfg.Logging, "calculator")
+	if err != nil {
+		log.Printf("Warning: failed to setup logging: %v, continuing with default logger", err)
+	} else {
+		slog.Info("Logging initialized", "service", "calculator")
+	}
+
 	fmt.Println("Config loaded successfully")
 
 	if cfg.ValueCalculator.ParserURL == "" {
+		slog.Error("parser_url is required in config")
 		log.Fatalf("calculator: parser_url is required in config")
 	}
+	slog.Info("Using parser URL", "url", cfg.ValueCalculator.ParserURL)
 	log.Printf("calculator: using parser URL %s", cfg.ValueCalculator.ParserURL)
 
 	if token := os.Getenv("TELEGRAM_BOT_TOKEN"); token != "" {
 		cfg.ValueCalculator.TelegramBotToken = token
+		slog.Info("Using Telegram bot token from environment")
 		log.Println("calculator: using Telegram bot token from environment")
 	}
 	if chatIDStr := os.Getenv("TELEGRAM_CHAT_ID"); chatIDStr != "" {
 		if chatID, err := strconv.ParseInt(chatIDStr, 10, 64); err == nil {
 			cfg.ValueCalculator.TelegramChatID = chatID
+			slog.Info("Using Telegram chat ID from environment", "chat_id", chatID)
 			log.Printf("calculator: using Telegram chat ID from environment: %d", chatID)
 		}
 	}
@@ -112,6 +126,7 @@ func main() {
 
 	go func() {
 		<-sigChan
+		slog.Info("Received shutdown signal, stopping calculator...")
 		log.Println("Received shutdown signal, stopping calculator...")
 		cancel()
 	}()
@@ -140,16 +155,21 @@ func main() {
 		_ = srv.Shutdown(shutdownCtx)
 	}()
 	go func() {
+		slog.Info("HTTP server listening", "addr", healthAddr)
 		log.Printf("calculator: http server listening on %s", healthAddr)
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			slog.Error("HTTP server error", "error", err)
 			log.Printf("calculator: http server error: %v", err)
 		}
 	}()
 
+	slog.Info("Starting Value Bet Calculator...")
 	log.Println("Starting Value Bet Calculator...")
 	if err := valueCalculator.Start(ctx); err != nil {
+		slog.Error("Calculator failed", "error", err)
 		log.Fatalf("Calculator failed: %v", err)
 	}
 
+	slog.Info("Value Bet Calculator stopped")
 	log.Println("Value Bet Calculator stopped")
 }

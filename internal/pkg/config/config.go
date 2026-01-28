@@ -13,6 +13,7 @@ type Config struct {
 	Parser          ParserConfig          `yaml:"parser"`
 	ValueCalculator ValueCalculatorConfig `yaml:"value_calculator"`
 	Health          HealthConfig          `yaml:"health"`
+	Logging         LoggingConfig         `yaml:"logging"`
 }
 
 type PostgresConfig struct {
@@ -78,6 +79,17 @@ type HealthConfig struct {
 	ReadHeaderTimeout   time.Duration `yaml:"read_header_timeout"`   // HTTP server read header timeout (default: 5s)
 	Port                int           `yaml:"port"`                  // HTTP server listen port (default: 8080)
 	AsyncParsingTimeout time.Duration `yaml:"async_parsing_timeout"` // Timeout for async parsing triggered by /matches endpoint (default: 10s)
+}
+
+type LoggingConfig struct {
+	Enabled       bool          `yaml:"enabled"`        // Включить отправку в Yandex Cloud Logging
+	GroupName     string        `yaml:"group_name"`     // Имя лог-группы (например, "default")
+	GroupID       string        `yaml:"group_id"`       // ID лог-группы (альтернатива group_name)
+	IAMToken      string        `yaml:"iam_token"`      // IAM токен (можно задать через YC_IAM_TOKEN env)
+	FolderID      string        `yaml:"folder_id"`      // ID каталога (можно задать через YC_FOLDER_ID env)
+	Level         string        `yaml:"level"`          // Минимальный уровень логирования (DEBUG, INFO, WARN, ERROR)
+	BatchSize     int           `yaml:"batch_size"`     // Размер батча для отправки (по умолчанию 10)
+	FlushInterval time.Duration `yaml:"flush_interval"` // Интервал отправки батча (по умолчанию 5s)
 }
 
 func Load(configPath string) (*Config, error) {

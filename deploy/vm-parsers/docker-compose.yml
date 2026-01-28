@@ -20,6 +20,10 @@ services:
       # Example: http://proxy.example.com:8080
       # With auth: http://user:password@proxy.example.com:8080
       - PINNACLE_PROXY=${PINNACLE_PROXY:-}
+      # Yandex Cloud Logging settings
+      - YC_IAM_TOKEN=${YC_IAM_TOKEN:-}
+      - YC_FOLDER_ID=${YC_FOLDER_ID:-}
+      - YC_LOG_GROUP_NAME=${YC_LOG_GROUP_NAME:-default}
     volumes:
       - ./configs:/app/configs:ro
       # configs/production.yaml uses ../keys/... (relative to /app/configs), which resolves to /app/keys/...

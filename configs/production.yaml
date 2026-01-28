@@ -87,3 +87,14 @@ value_calculator:
   alert_threshold: 30.0            # Send Telegram alerts only for diffs >= 30%
   telegram_bot_token: ""          # Telegram bot token (set via TELEGRAM_BOT_TOKEN env var)
   telegram_chat_id: 0              # Telegram chat ID to send notifications (set via TELEGRAM_CHAT_ID env var)
+
+logging:
+  # Yandex Cloud Logging settings
+  enabled: true                    # Enable sending logs to Yandex Cloud Logging
+  group_name: "default"            # Log group name (can be set via YC_LOG_GROUP_NAME env var)
+  group_id: ""                     # Log group ID (alternative to group_name, can be set via YC_LOG_GROUP_ID env var)
+  iam_token: ""                    # IAM token (set via YC_IAM_TOKEN env var)
+  folder_id: ""                    # Folder ID (can be set via YC_FOLDER_ID env var)
+  level: "INFO"                    # Minimum log level: DEBUG, INFO, WARN, ERROR (default: INFO)
+  batch_size: 10                   # Batch size for sending logs (default: 10)
+  flush_interval: 5s               # Interval for flushing log batch (default: 5s)

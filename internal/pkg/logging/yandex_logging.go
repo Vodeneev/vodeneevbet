@@ -107,10 +107,25 @@ func NewYandexLoggingHandler(config YandexLoggingConfig) (*YandexLoggingHandler,
 
 	// Проверяем наличие Service Account Key файла
 	saKeyFile := os.Getenv("YC_SERVICE_ACCOUNT_KEY_FILE")
-	saKeyJSON := os.Getenv("YC_SERVICE_ACCOUNT_KEY_JSON")
+	saKeyJSONB64 := os.Getenv("YC_SERVICE_ACCOUNT_KEY_JSON_B64")
+	saKeyJSON := os.Getenv("YC_SERVICE_ACCOUNT_KEY_JSON") // Fallback для обратной совместимости
 
-	if saKeyJSON != "" {
-		// Используем Service Account Key из переменной окружения (JSON строка)
+	if saKeyJSONB64 != "" {
+		// Используем Service Account Key из переменной окружения (base64-encoded JSON)
+		saKeyJSONBytes, err := base64.StdEncoding.DecodeString(saKeyJSONB64)
+		if err != nil {
+			return nil, fmt.Errorf("failed to decode base64 service account key: %w", err)
+		}
+		key, err := iamkey.ReadFromJSONBytes(saKeyJSONBytes)
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse service account key from YC_SERVICE_ACCOUNT_KEY_JSON_B64: %w", err)
+		}
+		creds, err = ycsdk.ServiceAccountKey(key)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create credentials from service account key: %w", err)
+		}
+	} else if saKeyJSON != "" {
+		// Используем Service Account Key из переменной окружения (JSON строка) - для обратной совместимости
 		// Убираем возможные экранированные кавычки и переносы строк из .env файла
 		saKeyJSON = strings.ReplaceAll(saKeyJSON, "\\\"", "\"")
 		saKeyJSON = strings.ReplaceAll(saKeyJSON, "\\n", "\n")

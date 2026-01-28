@@ -21,8 +21,8 @@ services:
       # With auth: http://user:password@proxy.example.com:8080
       - PINNACLE_PROXY=${PINNACLE_PROXY:-}
       # Yandex Cloud Logging settings
-      # Service Account Key для автоматического обновления токенов (JSON строка или путь к файлу)
-      - YC_SERVICE_ACCOUNT_KEY_JSON=${YC_SERVICE_ACCOUNT_KEY_JSON:-}
+      # Service Account Key для автоматического обновления токенов (base64-encoded JSON или путь к файлу)
+      - YC_SERVICE_ACCOUNT_KEY_JSON_B64=${YC_SERVICE_ACCOUNT_KEY_JSON_B64:-}
       - YC_SERVICE_ACCOUNT_KEY_FILE=${YC_SERVICE_ACCOUNT_KEY_FILE:-}
       - YC_FOLDER_ID=${YC_FOLDER_ID:-}
       - YC_LOG_GROUP_NAME=${YC_LOG_GROUP_NAME:-default}

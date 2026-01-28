@@ -74,6 +74,7 @@ jobs:
       GHCR_TOKEN: ${{ secrets.GHCR_TOKEN }}
       YC_SERVICE_ACCOUNT_KEY_JSON: ${{ secrets.YC_SERVICE_ACCOUNT_KEY_JSON }}
       YC_FOLDER_ID: ${{ secrets.YC_FOLDER_ID }}
+      YC_LOG_GROUP_ID: ${{ secrets.YC_LOG_GROUP_ID }}
       YC_LOG_GROUP_NAME: ${{ secrets.YC_LOG_GROUP_NAME || 'default' }}
     steps:
       - name: Checkout
@@ -115,7 +116,7 @@ jobs:
           printf %s "${GHCR_TOKEN}" | ssh "${VM_USER}@${VM_HOST}" "sudo docker login ghcr.io -u \"${GHCR_USERNAME}\" --password-stdin"
 
           # Run the deploy script on the VM via stdin (avoid nested quote escaping).
-          ssh "${VM_USER}@${VM_HOST}" "REMOTE_DIR='${REMOTE_DIR}' IMAGE_OWNER='${IMAGE_OWNER}' IMAGE_TAG='${IMAGE_TAG}' YC_SERVICE_ACCOUNT_KEY_JSON='${YC_SERVICE_ACCOUNT_KEY_JSON:-}' YC_FOLDER_ID='${YC_FOLDER_ID:-}' YC_LOG_GROUP_NAME='${YC_LOG_GROUP_NAME:-default}' bash -s" <<'EOF'
+          ssh "${VM_USER}@${VM_HOST}" "REMOTE_DIR='${REMOTE_DIR}' IMAGE_OWNER='${IMAGE_OWNER}' IMAGE_TAG='${IMAGE_TAG}' YC_SERVICE_ACCOUNT_KEY_JSON='${YC_SERVICE_ACCOUNT_KEY_JSON:-}' YC_FOLDER_ID='${YC_FOLDER_ID:-}' YC_LOG_GROUP_ID='${YC_LOG_GROUP_ID:-}' YC_LOG_GROUP_NAME='${YC_LOG_GROUP_NAME:-default}' bash -s" <<'EOF'
           set -euo pipefail
           cd "${REMOTE_DIR}"
 
@@ -129,11 +130,11 @@ jobs:
             YC_SERVICE_ACCOUNT_KEY_JSON_CLEANED=$(printf '%s' "${YC_SERVICE_ACCOUNT_KEY_JSON}" | tr '\n\r' ' ' | sed 's/  */ /g')
             # Кодируем очищенный JSON в base64 для безопасной передачи через .env файл
             YC_SERVICE_ACCOUNT_KEY_JSON_B64=$(printf '%s' "${YC_SERVICE_ACCOUNT_KEY_JSON_CLEANED}" | base64 -w 0)
-            printf "IMAGE_OWNER=%s\nIMAGE_TAG=%s\nYC_SERVICE_ACCOUNT_KEY_JSON_B64=%s\nYC_FOLDER_ID=%s\nYC_LOG_GROUP_NAME=%s\n" \
-              "${IMAGE_OWNER}" "${IMAGE_TAG}" "${YC_SERVICE_ACCOUNT_KEY_JSON_B64}" "${YC_FOLDER_ID:-}" "${YC_LOG_GROUP_NAME:-default}" > .env
+            printf "IMAGE_OWNER=%s\nIMAGE_TAG=%s\nYC_SERVICE_ACCOUNT_KEY_JSON_B64=%s\nYC_FOLDER_ID=%s\nYC_LOG_GROUP_ID=%s\nYC_LOG_GROUP_NAME=%s\n" \
+              "${IMAGE_OWNER}" "${IMAGE_TAG}" "${YC_SERVICE_ACCOUNT_KEY_JSON_B64}" "${YC_FOLDER_ID:-}" "${YC_LOG_GROUP_ID:-}" "${YC_LOG_GROUP_NAME:-default}" > .env
           else
-            printf "IMAGE_OWNER=%s\nIMAGE_TAG=%s\nYC_FOLDER_ID=%s\nYC_LOG_GROUP_NAME=%s\n" \
-              "${IMAGE_OWNER}" "${IMAGE_TAG}" "${YC_FOLDER_ID:-}" "${YC_LOG_GROUP_NAME:-default}" > .env
+            printf "IMAGE_OWNER=%s\nIMAGE_TAG=%s\nYC_FOLDER_ID=%s\nYC_LOG_GROUP_ID=%s\nYC_LOG_GROUP_NAME=%s\n" \
+              "${IMAGE_OWNER}" "${IMAGE_TAG}" "${YC_FOLDER_ID:-}" "${YC_LOG_GROUP_ID:-}" "${YC_LOG_GROUP_NAME:-default}" > .env
           fi
 
           # Prefer Compose v2 (docker compose). docker-compose v1 is incompatible with newer Docker versions (e.g. Docker 27+).
@@ -198,6 +199,7 @@ jobs:
       POSTGRES_DSN: ${{ secrets.POSTGRES_DSN }}
       YC_SERVICE_ACCOUNT_KEY_JSON: ${{ secrets.YC_SERVICE_ACCOUNT_KEY_JSON }}
       YC_FOLDER_ID: ${{ secrets.YC_FOLDER_ID }}
+      YC_LOG_GROUP_ID: ${{ secrets.YC_LOG_GROUP_ID }}
       YC_LOG_GROUP_NAME: ${{ secrets.YC_LOG_GROUP_NAME || 'default' }}
     steps:
       - name: Checkout
@@ -239,7 +241,7 @@ jobs:
           printf %s "${GHCR_TOKEN}" | ssh "${VM_USER}@${VM_HOST}" "sudo docker login ghcr.io -u \"${GHCR_USERNAME}\" --password-stdin"
 
           # Run the deploy script on the VM via stdin (avoid nested quote escaping).
-          ssh "${VM_USER}@${VM_HOST}" "REMOTE_DIR='${REMOTE_DIR}' IMAGE_OWNER='${IMAGE_OWNER}' IMAGE_TAG='${IMAGE_TAG}' TELEGRAM_BOT_TOKEN='${TELEGRAM_BOT_TOKEN:-}' TELEGRAM_CHAT_ID='${TELEGRAM_CHAT_ID:-}' POSTGRES_DSN='${POSTGRES_DSN:-}' YC_SERVICE_ACCOUNT_KEY_JSON='${YC_SERVICE_ACCOUNT_KEY_JSON:-}' YC_FOLDER_ID='${YC_FOLDER_ID:-}' YC_LOG_GROUP_NAME='${YC_LOG_GROUP_NAME:-default}' bash -s" <<'EOF'
+          ssh "${VM_USER}@${VM_HOST}" "REMOTE_DIR='${REMOTE_DIR}' IMAGE_OWNER='${IMAGE_OWNER}' IMAGE_TAG='${IMAGE_TAG}' TELEGRAM_BOT_TOKEN='${TELEGRAM_BOT_TOKEN:-}' TELEGRAM_CHAT_ID='${TELEGRAM_CHAT_ID:-}' POSTGRES_DSN='${POSTGRES_DSN:-}' YC_SERVICE_ACCOUNT_KEY_JSON='${YC_SERVICE_ACCOUNT_KEY_JSON:-}' YC_FOLDER_ID='${YC_FOLDER_ID:-}' YC_LOG_GROUP_ID='${YC_LOG_GROUP_ID:-}' YC_LOG_GROUP_NAME='${YC_LOG_GROUP_NAME:-default}' bash -s" <<'EOF'
           set -euo pipefail
           cd "${REMOTE_DIR}"
 
@@ -255,11 +257,11 @@ jobs:
             YC_SERVICE_ACCOUNT_KEY_JSON_CLEANED=$(printf '%s' "${YC_SERVICE_ACCOUNT_KEY_JSON}" | tr '\n\r' ' ' | sed 's/  */ /g')
             # Кодируем очищенный JSON в base64 для безопасной передачи через .env файл
             YC_SERVICE_ACCOUNT_KEY_JSON_B64=$(printf '%s' "${YC_SERVICE_ACCOUNT_KEY_JSON_CLEANED}" | base64 -w 0)
-            printf "IMAGE_OWNER=%s\nIMAGE_TAG=%s\nTELEGRAM_BOT_TOKEN=%s\nTELEGRAM_CHAT_ID=%s\nPOSTGRES_DSN=%s\nYC_SERVICE_ACCOUNT_KEY_JSON_B64=%s\nYC_FOLDER_ID=%s\nYC_LOG_GROUP_NAME=%s\n" \
-              "${IMAGE_OWNER}" "${IMAGE_TAG}" "${TELEGRAM_BOT_TOKEN:-}" "${TELEGRAM_CHAT_ID:-}" "${POSTGRES_DSN_ESCAPED:-}" "${YC_SERVICE_ACCOUNT_KEY_JSON_B64}" "${YC_FOLDER_ID:-}" "${YC_LOG_GROUP_NAME:-default}" > .env
+            printf "IMAGE_OWNER=%s\nIMAGE_TAG=%s\nTELEGRAM_BOT_TOKEN=%s\nTELEGRAM_CHAT_ID=%s\nPOSTGRES_DSN=%s\nYC_SERVICE_ACCOUNT_KEY_JSON_B64=%s\nYC_FOLDER_ID=%s\nYC_LOG_GROUP_ID=%s\nYC_LOG_GROUP_NAME=%s\n" \
+              "${IMAGE_OWNER}" "${IMAGE_TAG}" "${TELEGRAM_BOT_TOKEN:-}" "${TELEGRAM_CHAT_ID:-}" "${POSTGRES_DSN_ESCAPED:-}" "${YC_SERVICE_ACCOUNT_KEY_JSON_B64}" "${YC_FOLDER_ID:-}" "${YC_LOG_GROUP_ID:-}" "${YC_LOG_GROUP_NAME:-default}" > .env
           else
-            printf "IMAGE_OWNER=%s\nIMAGE_TAG=%s\nTELEGRAM_BOT_TOKEN=%s\nTELEGRAM_CHAT_ID=%s\nPOSTGRES_DSN=%s\nYC_FOLDER_ID=%s\nYC_LOG_GROUP_NAME=%s\n" \
-              "${IMAGE_OWNER}" "${IMAGE_TAG}" "${TELEGRAM_BOT_TOKEN:-}" "${TELEGRAM_CHAT_ID:-}" "${POSTGRES_DSN_ESCAPED:-}" "${YC_FOLDER_ID:-}" "${YC_LOG_GROUP_NAME:-default}" > .env
+            printf "IMAGE_OWNER=%s\nIMAGE_TAG=%s\nTELEGRAM_BOT_TOKEN=%s\nTELEGRAM_CHAT_ID=%s\nPOSTGRES_DSN=%s\nYC_FOLDER_ID=%s\nYC_LOG_GROUP_ID=%s\nYC_LOG_GROUP_NAME=%s\n" \
+              "${IMAGE_OWNER}" "${IMAGE_TAG}" "${TELEGRAM_BOT_TOKEN:-}" "${TELEGRAM_CHAT_ID:-}" "${POSTGRES_DSN_ESCAPED:-}" "${YC_FOLDER_ID:-}" "${YC_LOG_GROUP_ID:-}" "${YC_LOG_GROUP_NAME:-default}" > .env
           fi
 
           # Prefer Compose v2 (docker compose). docker-compose v1 is incompatible with newer Docker versions (e.g. Docker 27+).

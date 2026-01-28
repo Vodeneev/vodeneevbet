@@ -44,7 +44,7 @@ parser:
   pinnacle888:
     base_url: ""       # Optional: direct base URL (if mirror_url is not provided)
     mirror_url: "https://bit.ly/pinnacle_mirror"  # Mirror URL to resolve actual baseURL
-    odds_url: "https://www.gentleflame47.xyz/sports-service/sv/euro/odds"  # URL for odds endpoint (sports-service/sv/euro/odds)
+    odds_url: "/sports-service/sv/euro/odds"  # Path for odds endpoint (domain will be resolved from mirror_url)
     api_key: ""        # can be set via ENV PINNACLE888_API_KEY
     device_uuid: ""    # can be set via ENV PINNACLE888_DEVICE_UUID
     matchup_ids: []    # example: [1621112306, 1621112308]

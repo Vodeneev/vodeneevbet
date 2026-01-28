@@ -290,15 +290,10 @@ func (c *Client) GetSportStraightMarkets(sportID int64) ([]Market, error) {
 
 // GetOddsEvents gets events from the odds endpoint (sports-service/sv/euro/odds)
 // This endpoint returns structured JSON with clear home/away team information
-func (c *Client) GetOddsEvents(oddsURL string, sportID int64, isLive bool) ([]byte, error) {
-	if oddsURL == "" {
+// oddsPath can be either a full URL or a relative path (e.g., "/sports-service/sv/euro/odds")
+func (c *Client) GetOddsEvents(oddsPath string, sportID int64, isLive bool) ([]byte, error) {
+	if oddsPath == "" {
 		return nil, fmt.Errorf("odds_url not configured")
-	}
-
-	// Parse odds URL to extract path
-	oddsURLParsed, err := url.Parse(oddsURL)
-	if err != nil {
-		return nil, fmt.Errorf("parse odds_url: %w", err)
 	}
 
 	// Use resolved base URL from mirror instead of hardcoded domain
@@ -316,16 +311,33 @@ func (c *Client) GetOddsEvents(oddsURL string, sportID int64, isLive bool) ([]by
 		return nil, fmt.Errorf("parse resolved base URL: %w", err)
 	}
 
+	// Determine path: if oddsPath is a full URL, extract path; otherwise use it as-is
+	var oddsPathStr string
+	if strings.HasPrefix(oddsPath, "http://") || strings.HasPrefix(oddsPath, "https://") {
+		// Full URL provided - extract path for backward compatibility
+		oddsURLParsed, err := url.Parse(oddsPath)
+		if err != nil {
+			return nil, fmt.Errorf("parse odds_url: %w", err)
+		}
+		oddsPathStr = oddsURLParsed.Path
+	} else {
+		// Relative path provided - use as-is
+		oddsPathStr = oddsPath
+		if !strings.HasPrefix(oddsPathStr, "/") {
+			oddsPathStr = "/" + oddsPathStr
+		}
+	}
+
 	// Build URL using resolved domain but keeping path from odds_url
 	u := &url.URL{
 		Scheme: resolvedParsed.Scheme,
 		Host:   resolvedParsed.Host,
-		Path:   oddsURLParsed.Path,
+		Path:   oddsPathStr,
 	}
 	
 	// Log the URL construction for debugging
-	fmt.Printf("Pinnacle888: Using resolved domain %s%s for odds endpoint (original: %s)\n", 
-		resolvedParsed.Scheme+"://"+resolvedParsed.Host, oddsURLParsed.Path, oddsURL)
+	fmt.Printf("Pinnacle888: Using resolved domain %s%s for odds endpoint\n", 
+		resolvedParsed.Scheme+"://"+resolvedParsed.Host, oddsPathStr)
 
 	// Set query parameters
 	queryParams := u.Query()

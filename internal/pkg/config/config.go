@@ -47,7 +47,7 @@ type PinnacleConfig struct {
 type Pinnacle888Config struct {
 	BaseURL         string   `yaml:"base_url"`
 	MirrorURL       string   `yaml:"mirror_url"` // Mirror URL to resolve actual baseURL
-	OddsURL         string   `yaml:"odds_url"`   // URL for odds endpoint (sports-service/sv/euro/odds)
+	OddsURL         string   `yaml:"odds_url"`   // Path for odds endpoint (e.g., "/sports-service/sv/euro/odds"), domain resolved from mirror_url
 	APIKey          string   `yaml:"api_key"`
 	DeviceUUID      string   `yaml:"device_uuid"`
 	MatchupIDs      []int64  `yaml:"matchup_ids"`

@@ -55,12 +55,12 @@ type LogEntry struct {
 // NewYandexLoggingHandler создает новый handler для Yandex Cloud Logging
 func NewYandexLoggingHandler(config YandexLoggingConfig) (*YandexLoggingHandler, error) {
 	// Получаем IAM токен из env, если не указан в конфиге
+	// Если токен не указан, будем использовать Instance Metadata Service
 	if config.IAMToken == "" {
 		config.IAMToken = os.Getenv("YC_IAM_TOKEN")
 	}
-	if config.IAMToken == "" {
-		return nil, fmt.Errorf("IAM token is required (set YC_IAM_TOKEN env var or in config)")
-	}
+	// Примечание: если токен не указан, используем Instance Metadata Service
+	// Это работает только на VM в Yandex Cloud
 
 	// Получаем folder_id из env, если не указан в конфиге
 	if config.FolderID == "" {
@@ -105,8 +105,21 @@ func NewYandexLoggingHandler(config YandexLoggingConfig) (*YandexLoggingHandler,
 	}
 
 	// Инициализируем Yandex Cloud SDK
+	// Используем Instance Metadata Service для автоматического обновления токенов,
+	// если приложение работает на VM в Yandex Cloud
+	// Если IAM токен указан явно, используем его (для локальной разработки или других случаев)
+	var creds ycsdk.Credentials
+	if config.IAMToken != "" {
+		// Используем явно указанный IAM токен
+		creds = ycsdk.NewIAMTokenCredentials(config.IAMToken)
+	} else {
+		// Используем Instance Metadata Service для автоматического получения и обновления токенов
+		// Это работает только на VM в Yandex Cloud
+		creds = ycsdk.InstanceServiceAccount()
+	}
+	
 	sdk, err := ycsdk.Build(context.Background(), ycsdk.Config{
-		Credentials: ycsdk.NewIAMTokenCredentials(config.IAMToken),
+		Credentials: creds,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize Yandex Cloud SDK: %w", err)

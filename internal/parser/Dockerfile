@@ -44,7 +44,6 @@ RUN apt-get update && \
     apt-get update && \
     apt-get install -y --no-install-recommends \
     google-chrome-stable \
-    && ln -s /usr/bin/google-chrome-stable /usr/bin/google-chrome \
     && rm -rf /var/lib/apt/lists/*
 
 # Create non-root user

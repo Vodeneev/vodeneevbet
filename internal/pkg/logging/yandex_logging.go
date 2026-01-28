@@ -117,6 +117,27 @@ func NewYandexLoggingHandler(config YandexLoggingConfig) (*YandexLoggingHandler,
 		if err != nil {
 			return nil, fmt.Errorf("failed to decode base64 service account key: %w", err)
 		}
+		// Очищаем декодированный JSON от форматирующих переносов строк и пробелов
+		// Это необходимо, так как base64 может содержать форматированный JSON с переносами строк
+		// Используем json.Compact для минификации JSON (сохраняет экранированные \n в строках)
+		var jsonObj interface{}
+		if err := json.Unmarshal(saKeyJSONBytes, &jsonObj); err != nil {
+			// Если JSON невалидный, пробуем очистить от форматирующих символов
+			cleaned := strings.ReplaceAll(string(saKeyJSONBytes), "\r\n", " ")
+			cleaned = strings.ReplaceAll(cleaned, "\n", " ")
+			cleaned = strings.ReplaceAll(cleaned, "\r", " ")
+			// Убираем множественные пробелы
+			for strings.Contains(cleaned, "  ") {
+				cleaned = strings.ReplaceAll(cleaned, "  ", " ")
+			}
+			saKeyJSONBytes = []byte(cleaned)
+		} else {
+			// JSON валидный, минифицируем его
+			saKeyJSONBytes, err = json.Marshal(jsonObj)
+			if err != nil {
+				return nil, fmt.Errorf("failed to marshal cleaned JSON: %w", err)
+			}
+		}
 		key, err := iamkey.ReadFromJSONBytes(saKeyJSONBytes)
 		if err != nil {
 			return nil, fmt.Errorf("failed to parse service account key from YC_SERVICE_ACCOUNT_KEY_JSON_B64: %w", err)

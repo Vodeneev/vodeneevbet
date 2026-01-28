@@ -72,8 +72,6 @@ func HandleParse(w http.ResponseWriter, r *http.Request) {
 		parser := p.(interfaces.Parser)
 
 		startTime := time.Now()
-		log.Printf("Manual parse triggered for %s", parser.GetName())
-		
 		err := parser.ParseOnce(ctx)
 		duration := time.Since(startTime)
 
@@ -84,9 +82,7 @@ func HandleParse(w http.ResponseWriter, r *http.Request) {
 		}
 		if err != nil {
 			result["error"] = err.Error()
-			log.Printf("Manual parse failed for %s: %v (took %v)", parser.GetName(), err, duration)
-		} else {
-			log.Printf("Manual parse completed for %s (took %v)", parser.GetName(), duration)
+			log.Printf("Manual parse failed for %s: %v", parser.GetName(), err)
 		}
 		results = append(results, result)
 	}

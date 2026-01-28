@@ -439,26 +439,30 @@ func (h *YandexLoggingHandler) sendLogs(entries []LogEntry) error {
 		Entries:     logEntries,
 	}
 
-	// Добавляем метки в JSON payload каждой записи как обычные поля
-	// Это позволит фильтровать логи по этим полям в Yandex Cloud Logging
-	// НЕ используем специальные поля project/service/cluster, чтобы избежать конфликтов с путями ресурсов
-	for _, logEntry := range logEntries {
-		// Создаем или получаем существующий JSON payload
-		if logEntry.JsonPayload == nil {
-			logEntry.JsonPayload = &structpb.Struct{
-				Fields: make(map[string]*structpb.Value),
-			}
-		}
-
-		// Добавляем метки как обычные поля в JSON (с префиксом для избежания конфликтов)
+	// Добавляем метки через LogEntryDefaults для всех записей в батче
+	// Это более эффективно, чем добавлять метки в каждую запись отдельно
+	// Используем имена полей, которые не конфликтуют с системными метками Yandex Cloud
+	// Системные метки project/service/cluster используются для построения пути к ресурсу,
+	// поэтому используем альтернативные имена для пользовательских меток
+	if h.config.ProjectLabel != "" || h.config.ServiceLabel != "" || h.config.ClusterLabel != "" {
+		defaultsPayload := make(map[string]interface{})
 		if h.config.ProjectLabel != "" {
-			logEntry.JsonPayload.Fields["log_project"] = structpb.NewStringValue(h.config.ProjectLabel)
+			defaultsPayload["project_name"] = h.config.ProjectLabel
 		}
 		if h.config.ServiceLabel != "" {
-			logEntry.JsonPayload.Fields["log_service"] = structpb.NewStringValue(h.config.ServiceLabel)
+			defaultsPayload["service_name"] = h.config.ServiceLabel
 		}
 		if h.config.ClusterLabel != "" {
-			logEntry.JsonPayload.Fields["log_cluster"] = structpb.NewStringValue(h.config.ClusterLabel)
+			defaultsPayload["cluster_name"] = h.config.ClusterLabel
+		}
+
+		if len(defaultsPayload) > 0 {
+			defaultsPayloadStruct, err := structpb.NewStruct(defaultsPayload)
+			if err == nil {
+				req.Defaults = &logging.LogEntryDefaults{
+					JsonPayload: defaultsPayloadStruct,
+				}
+			}
 		}
 	}
 

@@ -111,6 +111,9 @@ func NewYandexLoggingHandler(config YandexLoggingConfig) (*YandexLoggingHandler,
 
 	if saKeyJSON != "" {
 		// Используем Service Account Key из переменной окружения (JSON строка)
+		// Убираем возможные экранированные кавычки и переносы строк из .env файла
+		saKeyJSON = strings.ReplaceAll(saKeyJSON, "\\\"", "\"")
+		saKeyJSON = strings.ReplaceAll(saKeyJSON, "\\n", "\n")
 		key, err := iamkey.ReadFromJSONBytes([]byte(saKeyJSON))
 		if err != nil {
 			return nil, fmt.Errorf("failed to parse service account key from YC_SERVICE_ACCOUNT_KEY_JSON: %w", err)

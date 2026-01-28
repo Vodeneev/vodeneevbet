@@ -238,6 +238,13 @@ func runParsers(ctx context.Context, ps []parsers.Parser, appConfig *pkgconfig.C
 }
 
 func startPeriodicParsing(ctx context.Context, parsers []interfaces.Parser, interval time.Duration, timeout time.Duration) {
+	// Log which parsers are registered for periodic parsing
+	parserNames := make([]string, len(parsers))
+	for i, p := range parsers {
+		parserNames[i] = p.GetName()
+	}
+	log.Printf("Registered %d parsers for periodic parsing: %v", len(parsers), parserNames)
+
 	// Helper function to create async parsing options with error handling
 	createAsyncOpts := func() parserutil.RunOptions {
 		opts := parserutil.AsyncRunOptions()
@@ -258,7 +265,7 @@ func startPeriodicParsing(ctx context.Context, parsers []interfaces.Parser, inte
 				log.Println("Stopping periodic parsing...")
 				return
 			case <-ticker.C:
-				log.Printf("Running periodic parsing (interval: %v)...", interval)
+				log.Printf("Running periodic parsing (interval: %v) for %d parsers...", interval, len(parsers))
 				runParsingOnce(parsers, timeout, createAsyncOpts())
 			}
 		}
@@ -269,7 +276,15 @@ func runParsingOnce(parsers []interfaces.Parser, timeout time.Duration, opts par
 	parseCtx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 
+	log.Printf("Calling ParseOnce() for %d parsers with timeout %v", len(parsers), timeout)
 	_ = parserutil.RunParsers(parseCtx, parsers, func(ctx context.Context, p interfaces.Parser) error {
-		return p.ParseOnce(ctx)
+		log.Printf("Invoking ParseOnce() for parser: %s", p.GetName())
+		err := p.ParseOnce(ctx)
+		if err != nil {
+			log.Printf("ParseOnce() returned error for %s: %v", p.GetName(), err)
+		} else {
+			log.Printf("ParseOnce() completed successfully for %s", p.GetName())
+		}
+		return err
 	}, opts)
 }

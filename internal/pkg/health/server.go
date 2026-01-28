@@ -14,6 +14,8 @@ import (
 func init() {
 	// Set the GetMatches function for handlers
 	handlers.SetGetMatchesFunc(GetMatches)
+	// Set the GetParsers function for handlers
+	handlers.SetGetParsersFunc(GetParsers)
 }
 
 func Run(ctx context.Context, addr string, service string, storage interfaces.Storage, readHeaderTimeout time.Duration, parsingTimeout time.Duration) {
@@ -30,6 +32,9 @@ func Run(ctx context.Context, addr string, service string, storage interfaces.St
 
 	// Matches endpoint
 	mux.HandleFunc("/matches", handlers.HandleMatches)
+
+	// Manual parse endpoint
+	mux.HandleFunc("/parse", handlers.HandleParse)
 
 	if readHeaderTimeout <= 0 {
 		log.Fatalf("health: read_header_timeout must be specified in config")

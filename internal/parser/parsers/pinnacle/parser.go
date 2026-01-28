@@ -196,7 +196,7 @@ func (p *Parser) processAll(ctx context.Context) error {
 			// Strictly exclude live matches: if startTime is in the past or equal to now, skip it
 			if !st.After(now) || st.After(maxStart) {
 				if !st.After(now) {
-					logToFile(fmt.Sprintf("Filtered live match: %s (start: %s, now: %s)\n", mu.ID, st.Format(time.RFC3339), now.Format(time.RFC3339)))
+					logToFile(fmt.Sprintf("Filtered live match: %d (start: %s, now: %s)\n", mu.ID, st.Format(time.RFC3339), now.Format(time.RFC3339)))
 				}
 				filteredByTime++
 				continue

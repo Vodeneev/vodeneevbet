@@ -262,7 +262,7 @@ func (p *Parser) processAll(ctx context.Context) error {
 				if !st.After(now) {
 					// Live match - include only if configured
 					if !p.cfg.Parser.Pinnacle888.IncludeLive {
-						logToFile(fmt.Sprintf("Filtered live match: %s (start: %s, now: %s)\n", mu.ID, st.Format(time.RFC3339), now.Format(time.RFC3339)))
+						logToFile(fmt.Sprintf("Filtered live match: %d (start: %s, now: %s)\n", mu.ID, st.Format(time.RFC3339), now.Format(time.RFC3339)))
 						filteredByTime++
 						continue
 					}
@@ -834,6 +834,21 @@ func americanToDecimal(american int) float64 {
 		return 1 + float64(american)/100.0
 	}
 	return 1 + 100.0/float64(-american)
+}
+
+func formatLine(points float64) string {
+	// For totals lines we keep unsigned.
+	return strconv.FormatFloat(points, 'f', -1, 64)
+}
+
+func formatSignedLine(points float64) string {
+	if points == 0 {
+		return "0"
+	}
+	if points > 0 {
+		return "+" + strconv.FormatFloat(points, 'f', -1, 64)
+	}
+	return strconv.FormatFloat(points, 'f', -1, 64)
 }
 
 func newOutcome(eventID, outcomeType, param string, odds float64) models.Outcome {

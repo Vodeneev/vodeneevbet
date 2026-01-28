@@ -122,27 +122,38 @@ func buildMatchFromCompactEvent(leagueName string, eventData interface{}, isLive
 		return nil
 	}
 
-	// Teams are in normal order: event[1] = home, event[2] = away
-	// But these may be in Russian. Check for English names at event[24] and event[25]
-	homeTeam, ok := event[1].(string)
+	// Teams order may vary: sometimes event[1] = home, event[2] = away
+	// Sometimes it's reversed. We'll try to detect based on odds later.
+	// For now, try both orders and see which matches better
+	team1, ok := event[1].(string)
 	if !ok {
 		return nil
 	}
 
-	awayTeam, ok := event[2].(string)
+	team2, ok := event[2].(string)
 	if !ok {
 		return nil
 	}
 
-	// Prefer English team names if available (at indices 24-25)
-	// This ensures proper match merging with other bookmakers
+	// Get English names if available (at indices 24-25)
+	var engTeam1, engTeam2 string
 	if len(event) > 25 {
-		if engHome, ok := event[24].(string); ok && engHome != "" {
-			homeTeam = engHome
+		if eng1, ok := event[24].(string); ok && eng1 != "" {
+			engTeam1 = eng1
 		}
-		if engAway, ok := event[25].(string); ok && engAway != "" {
-			awayTeam = engAway
+		if eng2, ok := event[25].(string); ok && eng2 != "" {
+			engTeam2 = eng2
 		}
+	}
+
+	// Use English names if available, otherwise use original
+	homeTeam := team1
+	awayTeam := team2
+	if engTeam1 != "" {
+		homeTeam = engTeam1
+	}
+	if engTeam2 != "" {
+		awayTeam = engTeam2
 	}
 
 	// Status: 1 = live, 0 = upcoming/pre-match
@@ -188,7 +199,7 @@ func buildMatchFromCompactEvent(leagueName string, eventData interface{}, isLive
 		marketsData = event[8]
 	}
 
-	// Build match
+	// Build match (teams may be swapped later if inversion detected)
 	matchID := models.CanonicalMatchID(homeTeam, awayTeam, startTime)
 
 	match := &models.Match{
@@ -206,8 +217,41 @@ func buildMatchFromCompactEvent(leagueName string, eventData interface{}, isLive
 	}
 
 	// Parse markets if available
+	// Try to detect if we need to invert teams/odds based on odds pattern
+	// The API may return odds in different orders: [away, home, draw] or [home, away, draw]
+	invertTeams := false
 	if marketsData != nil {
-		events := parseCompactMarkets(matchID, int64(eventID), marketsData)
+		// Quick check: parse moneyline to detect order
+		if marketsMap, ok := marketsData.(map[string]interface{}); ok {
+			if period0, ok := marketsMap["0"].([]interface{}); ok && len(period0) > 2 {
+				if moneylineData, ok := period0[2].([]interface{}); ok && len(moneylineData) >= 3 {
+					odds0 := parseOdds(moneylineData[0])
+					odds1 := parseOdds(moneylineData[1])
+					odds2 := parseOdds(moneylineData[2])
+
+					// Heuristic: if first < second AND first is reasonable (not too high),
+					// it might be [home, away, draw] instead of [away, home, draw]
+					// Also check: draw odds are usually between 2.5-5.0, and often middle value
+					// If odds1 is in draw range and odds0 < odds1, likely [home, away, draw]
+					if odds0 < odds1 && odds0 > 0 && odds1 > 0 && odds1 > 2.0 && odds1 < 6.0 {
+						// Check if odds1 could be draw (middle value, reasonable range)
+						// If odds0 is very low (< 2.0) and odds1 is in draw range, likely home/draw
+						if odds0 < 2.0 {
+							invertTeams = true
+							// Swap teams
+							homeTeam, awayTeam = awayTeam, homeTeam
+							// Recreate matchID with correct order
+							matchID = models.CanonicalMatchID(homeTeam, awayTeam, startTime)
+							match.ID = matchID
+							match.Name = fmt.Sprintf("%s vs %s", homeTeam, awayTeam)
+							match.HomeTeam = homeTeam
+							match.AwayTeam = awayTeam
+						}
+					}
+				}
+			}
+		}
+		events := parseCompactMarkets(matchID, int64(eventID), marketsData, invertTeams)
 		match.Events = events
 	}
 
@@ -220,7 +264,8 @@ func parseCompactEventsLegacy(data []byte) ([]*models.Match, error) {
 }
 
 // parseCompactMarkets parses markets from compact format
-func parseCompactMarkets(matchID string, eventID int64, marketsData interface{}) []models.Event {
+// invertTeams: if true, swap home/away teams and their corresponding odds
+func parseCompactMarkets(matchID string, eventID int64, marketsData interface{}, invertTeams bool) []models.Event {
 	var events []models.Event
 	now := time.Now()
 
@@ -241,15 +286,24 @@ func parseCompactMarkets(matchID string, eventID int64, marketsData interface{})
 	// period0[2] = moneyline (1x2)
 	// period0[3] = other markets
 
-	// Parse moneyline (1x2) - period0[2] is [homeOdds, drawOdds, awayOdds, ...]
-	// Note: Pinnacle888 API returns odds in normal order: [home, draw, away]
+	// Parse moneyline (1x2) - period0[2] format varies
+	// Try both orders: [away, home, draw] (default) or [home, away, draw] (if inverted)
 	if len(period0) > 2 {
 		moneylineData := period0[2]
 		if moneyline, ok := moneylineData.([]interface{}); ok && len(moneyline) >= 3 {
-			// Format: [homeOdds, drawOdds, awayOdds, ...] - normal order
-			homeOdds := parseOdds(moneyline[0])
-			drawOdds := parseOdds(moneyline[1])
-			awayOdds := parseOdds(moneyline[2])
+			var homeOdds, awayOdds, drawOdds float64
+
+			if invertTeams {
+				// Order: [home, away, draw]
+				homeOdds = parseOdds(moneyline[0])
+				awayOdds = parseOdds(moneyline[1])
+				drawOdds = parseOdds(moneyline[2])
+			} else {
+				// Order: [away, home, draw] - default
+				awayOdds = parseOdds(moneyline[0])
+				homeOdds = parseOdds(moneyline[1])
+				drawOdds = parseOdds(moneyline[2])
+			}
 
 			eventID := fmt.Sprintf("%s_pinnacle888_main_match", matchID)
 			event := models.Event{
@@ -312,13 +366,21 @@ func parseCompactMarkets(matchID string, eventID int64, marketsData interface{})
 		if handicaps, ok := handicapData.([]interface{}); ok {
 			for _, h := range handicaps {
 				if handicap, ok := h.([]interface{}); ok && len(handicap) >= 5 {
-					// Note: Pinnacle888 API returns handicap data: [awayLine, homeLine, ..., awayOdds, homeOdds]
-					// handicap[0] = awayLine, handicap[1] = homeLine
-					// handicap[3] = awayOdds, handicap[4] = homeOdds
-					awayLine := parseFloat(handicap[0])
-					homeLine := parseFloat(handicap[1])
-					awayOdds := parseOdds(handicap[3])
-					homeOdds := parseOdds(handicap[4])
+					var homeLine, awayLine, homeOdds, awayOdds float64
+
+					if invertTeams {
+						// Order: [homeLine, awayLine, ..., homeOdds, awayOdds]
+						homeLine = parseFloat(handicap[0])
+						awayLine = parseFloat(handicap[1])
+						homeOdds = parseOdds(handicap[3])
+						awayOdds = parseOdds(handicap[4])
+					} else {
+						// Order: [awayLine, homeLine, ..., awayOdds, homeOdds] - default
+						awayLine = parseFloat(handicap[0])
+						homeLine = parseFloat(handicap[1])
+						awayOdds = parseOdds(handicap[3])
+						homeOdds = parseOdds(handicap[4])
+					}
 
 					if homeOdds > 0 || awayOdds > 0 {
 						eventID := fmt.Sprintf("%s_pinnacle888_main_match", matchID)

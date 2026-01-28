@@ -13,8 +13,8 @@ import (
 
 	"github.com/yandex-cloud/go-genproto/yandex/cloud/logging/v1"
 	ycsdk "github.com/yandex-cloud/go-sdk"
-	"github.com/yandex-cloud/go-sdk/iamkey"
 	logingestion "github.com/yandex-cloud/go-sdk/gen/logingestion"
+	"github.com/yandex-cloud/go-sdk/iamkey"
 	"google.golang.org/protobuf/types/known/structpb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )

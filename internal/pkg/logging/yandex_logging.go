@@ -238,14 +238,16 @@ func (h *YandexLoggingHandler) sendLogs(entries []LogEntry) error {
 		}
 		reqURL.RawQuery = q.Encode()
 
-		// Создаем запрос с form data в теле
-		req, err := http.NewRequest("POST", reqURL.String(), bytes.NewBufferString(formData.Encode()))
+		// Создаем запрос с form data в теле (точно как в curl)
+		reqBody := formData.Encode()
+		req, err := http.NewRequest("POST", reqURL.String(), bytes.NewBufferString(reqBody))
 		if err != nil {
 			continue
 		}
 
 		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 		req.Header.Set("Authorization", "Bearer "+h.config.IAMToken)
+		req.Header.Set("User-Agent", "vodeneevbet-logging/1.0")
 
 		resp, err := h.client.Do(req)
 		if err != nil {
@@ -258,8 +260,9 @@ func (h *YandexLoggingHandler) sendLogs(entries []LogEntry) error {
 		resp.Body.Close()
 
 		if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
-			// Логируем ошибку, но продолжаем работу
-			fmt.Fprintf(os.Stderr, "Yandex Cloud Logging error: status %d, body: %s\n", resp.StatusCode, string(body))
+			// Логируем ошибку с подробностями для диагностики
+			fmt.Fprintf(os.Stderr, "Yandex Cloud Logging error: status %d, body: %s, url: %s\n", 
+				resp.StatusCode, string(body), reqURL.String())
 		}
 	}
 

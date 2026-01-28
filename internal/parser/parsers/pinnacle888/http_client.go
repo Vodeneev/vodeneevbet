@@ -288,54 +288,48 @@ func (c *Client) GetSportStraightMarkets(sportID int64) ([]Market, error) {
 	return out, nil
 }
 
-// GetLiveEvents gets live events in compact format from the events endpoint
-func (c *Client) GetLiveEvents(eventsURL string, sportID int64) ([]byte, error) {
-	if eventsURL == "" {
-		return nil, fmt.Errorf("events_url not configured")
+// GetOddsEvents gets events from the odds endpoint (sports-service/sv/euro/odds)
+// This endpoint returns structured JSON with clear home/away team information
+func (c *Client) GetOddsEvents(oddsURL string, sportID int64, isLive bool) ([]byte, error) {
+	if oddsURL == "" {
+		return nil, fmt.Errorf("odds_url not configured")
 	}
-
-	// For compact events API, always use URL from config as-is
-	// Don't use mirror URL resolution as it may return HTML instead of JSON
-	var finalURL string
-	finalURL = eventsURL
 
 	// Build URL with parameters
-	u, err := url.Parse(finalURL)
+	u, err := url.Parse(oddsURL)
 	if err != nil {
-		return nil, fmt.Errorf("parse final events_url: %w", err)
+		return nil, fmt.Errorf("parse odds_url: %w", err)
 	}
 
-	// Set query parameters for live events
-	// Only include essential parameters - many UI filters can be omitted
+	// Set query parameters
 	queryParams := u.Query()
-	
-	// Essential parameters
-	queryParams.Set("sp", fmt.Sprintf("%d", sportID))        // Sport ID (required)
-	queryParams.Set("tm", "0")                              // Time = 0 (all, including live)
-	queryParams.Set("ot", "1")                              // Order type = 1 for live (vs 2 for line)
-	queryParams.Set("locale", "en_US")                      // Locale for team names matching
-	
-	// Important optional parameters
-	queryParams.Set("mk", "2")                              // Market type
-	queryParams.Set("pimo", "0,1,8,39,2,3,6,7,4,5")        // Market IDs
-	queryParams.Set("pn", "-1")                             // Page Number = -1 (all pages)
-	
-	// Timestamp for cache busting (may help with some APIs)
+	queryParams.Set("sportId", fmt.Sprintf("%d", sportID))
+	if isLive {
+		queryParams.Set("isLive", "true")
+	} else {
+		queryParams.Set("isLive", "false")
+	}
+	queryParams.Set("isHlE", "true")
+	queryParams.Set("oddsType", "2")
+	queryParams.Set("version", "0")
+	queryParams.Set("timeStamp", fmt.Sprintf("%d", time.Now().UnixMilli()))
+	queryParams.Set("language", "en_US")
+	queryParams.Set("locale", "en_US")
+	queryParams.Set("periodNum", "0,8,39,3,4,5,6,7")
 	queryParams.Set("_", fmt.Sprintf("%d", time.Now().UnixMilli()))
 
 	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, u.Scheme+"://"+u.Host+u.Path, nil)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create request for live events: %w", err)
+		return nil, fmt.Errorf("failed to create request for odds events: %w", err)
 	}
 	req.URL.RawQuery = queryParams.Encode()
 
-	// Set essential headers for live events API
-	// Use English language to match Fonbet team names for proper match merging
+	// Set headers
 	req.Header.Set("Accept", "application/json, text/plain, */*")
 	req.Header.Set("Accept-Language", "en,en-US;q=0.9")
 	req.Header.Set("Accept-Encoding", "gzip, deflate, br, zstd")
-	req.Header.Set("User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 YaBrowser/25.12.0.0 Safari/537.36")
-	req.Header.Set("Referer", u.Scheme+"://"+u.Host+"/en/compact/sports/soccer")
+	req.Header.Set("User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36")
+	req.Header.Set("Referer", u.Scheme+"://"+u.Host+"/")
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
@@ -349,104 +343,13 @@ func (c *Client) GetLiveEvents(eventsURL string, sportID int64) ([]byte, error) 
 		if len(b) < previewLen {
 			previewLen = len(b)
 		}
-		fmt.Printf("Pinnacle888: Live events API returned status %d, body preview: %s\n", resp.StatusCode, string(b[:previewLen]))
+		fmt.Printf("Pinnacle888: Odds events API returned status %d, body preview: %s\n", resp.StatusCode, string(b[:previewLen]))
 		return nil, fmt.Errorf("unexpected status %d: %s", resp.StatusCode, string(b))
 	}
 
 	body, err := readBodyMaybeGzip(resp)
 	if err != nil {
 		return nil, err
-	}
-
-	// Log response preview for debugging
-	if len(body) > 0 {
-		previewLen := 200
-		if len(body) < previewLen {
-			previewLen = len(body)
-		}
-		fmt.Printf("Pinnacle888: Live events API response (%d bytes), preview: %s\n", len(body), string(body[:previewLen]))
-	}
-
-	return body, nil
-}
-
-// GetLineEvents gets pre-match/line events in compact format from the events endpoint
-func (c *Client) GetLineEvents(eventsURL string, sportID int64) ([]byte, error) {
-	if eventsURL == "" {
-		return nil, fmt.Errorf("events_url not configured")
-	}
-
-	// For compact events API, always use URL from config as-is
-	// Don't use mirror URL resolution as it may return HTML instead of JSON
-	var finalURL string
-	finalURL = eventsURL
-
-	// Build URL with parameters
-	u, err := url.Parse(finalURL)
-	if err != nil {
-		return nil, fmt.Errorf("parse final events_url: %w", err)
-	}
-
-	// Set query parameters for pre-match/line events
-	// Only include essential parameters - many UI filters can be omitted
-	queryParams := u.Query()
-	
-	// Essential parameters
-	queryParams.Set("sp", fmt.Sprintf("%d", sportID))        // Sport ID (required)
-	queryParams.Set("tm", "0")                              // Time = 0 (all, including future)
-	queryParams.Set("ot", "2")                              // Order type = 2 for line/pre-match (vs 1 for live)
-	queryParams.Set("locale", "en_US")                      // Locale for team names matching
-	
-	// Important optional parameters
-	queryParams.Set("mk", "0")                              // Market type
-	queryParams.Set("pimo", "0,1,8,39,2,3,6,7,4,5")        // Market IDs
-	queryParams.Set("pn", "-1")                             // Page Number = -1 (all pages)
-	
-	// Timestamp for cache busting (may help with some APIs)
-	queryParams.Set("_", fmt.Sprintf("%d", time.Now().UnixMilli()))
-
-	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, u.Scheme+"://"+u.Host+u.Path, nil)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create request for line events: %w", err)
-	}
-	req.URL.RawQuery = queryParams.Encode()
-
-	// Set essential headers for pre-match events API
-	// Use English language to match Fonbet team names for proper match merging
-	req.Header.Set("Accept", "application/json, text/plain, */*")
-	req.Header.Set("Accept-Language", "en,en-US;q=0.9")
-	req.Header.Set("Accept-Encoding", "gzip, deflate, br, zstd")
-	req.Header.Set("User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 YaBrowser/25.12.0.0 Safari/537.36")
-	req.Header.Set("Referer", u.Scheme+"://"+u.Host+"/en/compact/sports/soccer")
-
-	resp, err := c.httpClient.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("request: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		b, _ := io.ReadAll(resp.Body)
-		previewLen := 500
-		if len(b) < previewLen {
-			previewLen = len(b)
-		}
-		fmt.Printf("Pinnacle888: Line events API returned status %d, body preview: %s\n", resp.StatusCode, string(b[:previewLen]))
-		return nil, fmt.Errorf("unexpected status %d: %s", resp.StatusCode, string(b))
-	}
-
-	body, err := readBodyMaybeGzip(resp)
-	if err != nil {
-		return nil, err
-	}
-
-	// Log response preview for debugging
-	if len(body) > 0 {
-		previewLen := 200
-		if len(body) < previewLen {
-			previewLen = len(body)
-		}
-		fmt.Printf("Pinnacle888: Line events API response (%d bytes), preview: %s\n", len(body), string(body[:previewLen]))
 	}
 
 	return body, nil

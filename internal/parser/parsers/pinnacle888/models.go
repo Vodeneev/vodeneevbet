@@ -48,3 +48,80 @@ type Price struct {
 	Points      *float64 `json:"points,omitempty"`
 	Price       int      `json:"price"` // American odds
 }
+
+// Models for new odds endpoint (sports-service/sv/euro/odds)
+type OddsResponse struct {
+	SportID int64    `json:"sportId"`
+	Version int64    `json:"version"`
+	Leagues []League `json:"leagues"`
+}
+
+type League struct {
+	SportID    int64   `json:"sportId"`
+	ID         int64   `json:"id"`
+	Name       string  `json:"name"`
+	LeagueCode string  `json:"leagueCode"`
+	Container  string  `json:"container"`
+	Events     []Event `json:"events"`
+}
+
+type Event struct {
+	ID                int64                 `json:"id"`
+	ParentID          int64                 `json:"parentId"`
+	Time              int64                 `json:"time"` // Unix timestamp in milliseconds
+	Participants      []EventParticipant    `json:"participants"`
+	Periods           map[string]PeriodData `json:"periods"`
+	HomeTeamType      int                   `json:"homeTeamType"`
+	AwayTeamType      int                   `json:"awayTeamType"`
+	ParlayRestriction int                   `json:"parlayRestriction"`
+	RotNum            string                `json:"rotNum"`
+	ResultingUnit     string                `json:"resultingUnit"`
+	HasLiveStream     bool                  `json:"hasLiveStream"`
+	HasScoreboard     bool                  `json:"hasScoreboard"`
+	Live              bool                  `json:"live"`
+}
+
+type EventParticipant struct {
+	Name        string `json:"name"`
+	EnglishName string `json:"englishName"`
+	Type        string `json:"type"` // "HOME" or "AWAY"
+	Fav         bool   `json:"fav"`
+}
+
+type PeriodData struct {
+	Handicap         []HandicapMarket `json:"handicap"`
+	OverUnder        []TotalMarket    `json:"overUnder"`
+	MoneyLine        MoneyLineMarket  `json:"moneyLine"`
+	IndexMainLineHdp int              `json:"indexMainLineHdp"`
+	IndexMainLineOU  int              `json:"indexMainLineOU"`
+}
+
+type HandicapMarket struct {
+	LineID      int64  `json:"lineId"`
+	IsAlt       bool   `json:"isAlt"`
+	HomeSpread  string `json:"homeSpread"`
+	AwaySpread  string `json:"awaySpread"`
+	HomeOdds    string `json:"homeOdds"`
+	AwayOdds    string `json:"awayOdds"`
+	Offline     bool   `json:"offline"`
+	Unavailable bool   `json:"unavailable"`
+}
+
+type TotalMarket struct {
+	LineID      int64  `json:"lineId"`
+	IsAlt       bool   `json:"isAlt"`
+	OverOdds    string `json:"overOdds"`
+	UnderOdds   string `json:"underOdds"`
+	Points      string `json:"points"`
+	Offline     bool   `json:"offline"`
+	Unavailable bool   `json:"unavailable"`
+}
+
+type MoneyLineMarket struct {
+	LineID      int64  `json:"lineId"`
+	HomePrice   string `json:"homePrice"`
+	AwayPrice   string `json:"awayPrice"`
+	DrawPrice   string `json:"drawPrice"`
+	Offline     bool   `json:"offline"`
+	Unavailable bool   `json:"unavailable"`
+}

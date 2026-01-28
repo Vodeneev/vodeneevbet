@@ -90,7 +90,7 @@ func (p *Parser) runOnce(ctx context.Context) error {
 	var liveErr, prematchErr error
 
 	// Fetch live matches asynchronously
-	if p.cfg.Parser.Pinnacle888.IncludeLive && p.cfg.Parser.Pinnacle888.EventsURL != "" {
+	if p.cfg.Parser.Pinnacle888.IncludeLive && p.cfg.Parser.Pinnacle888.OddsURL != "" {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
@@ -105,7 +105,7 @@ func (p *Parser) runOnce(ctx context.Context) error {
 	}
 
 	// Fetch pre-match matches asynchronously
-	if p.cfg.Parser.Pinnacle888.IncludePrematch && p.cfg.Parser.Pinnacle888.EventsURL != "" {
+	if p.cfg.Parser.Pinnacle888.IncludePrematch && p.cfg.Parser.Pinnacle888.OddsURL != "" {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
@@ -352,55 +352,48 @@ func (p *Parser) processAll(ctx context.Context) error {
 	return nil
 }
 
-// processLiveMatches processes live matches from compact events endpoint
+// processLiveMatches processes live matches from odds endpoint
 // Returns matches and error
 func (p *Parser) processLiveMatches(ctx context.Context) ([]*models.Match, error) {
 	// Sport ID 29 is Soccer
 	sportID := int64(29)
 
-	// Get live events data
-	data, err := p.client.GetLiveEvents(p.cfg.Parser.Pinnacle888.EventsURL, sportID)
-	if err != nil {
-		return nil, fmt.Errorf("get live events: %w", err)
+	if p.cfg.Parser.Pinnacle888.OddsURL == "" {
+		return nil, fmt.Errorf("odds_url not configured")
 	}
 
-	// Parse compact events format (only live events)
-	matches, err := parseCompactEvents(data, true, false)
+	data, err := p.client.GetOddsEvents(p.cfg.Parser.Pinnacle888.OddsURL, sportID, true)
 	if err != nil {
-		return nil, fmt.Errorf("parse compact events: %w", err)
+		return nil, fmt.Errorf("get odds events (live): %w", err)
+	}
+
+	matches, err := parseOddsResponse(data)
+	if err != nil {
+		return nil, fmt.Errorf("parse odds response: %w", err)
 	}
 
 	fmt.Printf("Pinnacle888: Found %d live matches\n", len(matches))
 	return matches, nil
 }
 
-// processLineMatches processes pre-match/line matches from compact events endpoint
+// processLineMatches processes pre-match/line matches from odds endpoint
 // Returns matches and error
 func (p *Parser) processLineMatches(ctx context.Context) ([]*models.Match, error) {
 	// Sport ID 29 is Soccer
 	sportID := int64(29)
 
-	// Get pre-match events data
-	data, err := p.client.GetLineEvents(p.cfg.Parser.Pinnacle888.EventsURL, sportID)
-	if err != nil {
-		return nil, fmt.Errorf("get line events: %w", err)
+	if p.cfg.Parser.Pinnacle888.OddsURL == "" {
+		return nil, fmt.Errorf("odds_url not configured")
 	}
 
-	// Log response preview for debugging
-	if len(data) > 0 {
-		previewLen := 200
-		if len(data) < previewLen {
-			previewLen = len(data)
-		}
-		fmt.Printf("Pinnacle888: Line events response preview (%d bytes): %s\n", len(data), string(data[:previewLen]))
-	} else {
-		fmt.Printf("Pinnacle888: Line events response is empty\n")
+	data, err := p.client.GetOddsEvents(p.cfg.Parser.Pinnacle888.OddsURL, sportID, false)
+	if err != nil {
+		return nil, fmt.Errorf("get odds events (pre-match): %w", err)
 	}
 
-	// Parse compact events format (only pre-match events)
-	matches, err := parseCompactEvents(data, false, true)
+	matches, err := parseOddsResponse(data)
 	if err != nil {
-		return nil, fmt.Errorf("parse compact events: %w", err)
+		return nil, fmt.Errorf("parse odds response: %w", err)
 	}
 
 	fmt.Printf("Pinnacle888: Found %d pre-match matches\n", len(matches))

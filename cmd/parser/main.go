@@ -256,9 +256,10 @@ func startPeriodicParsing(ctx context.Context, parsers []interfaces.Parser, inte
 
 	// Start periodic parsing loop
 	ticker := time.NewTicker(interval)
-	defer ticker.Stop()
 
 	go func() {
+		defer ticker.Stop()
+		log.Printf("Periodic parsing goroutine started, will run every %v", interval)
 		for {
 			select {
 			case <-ctx.Done():

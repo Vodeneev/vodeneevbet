@@ -1,17 +1,21 @@
 package logging
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"log/slog"
-	"net/http"
-	"net/url"
 	"os"
+	"strings"
 	"sync"
 	"time"
+
+	"github.com/yandex-cloud/go-genproto/yandex/cloud/logging/v1"
+	ycsdk "github.com/yandex-cloud/go-sdk"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials"
+	"google.golang.org/protobuf/types/known/structpb"
+	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 // YandexLoggingConfig содержит настройки для отправки логов в Yandex Cloud Logging
@@ -29,13 +33,16 @@ type YandexLoggingConfig struct {
 // YandexLoggingHandler реализует slog.Handler для отправки логов в Yandex Cloud Logging
 type YandexLoggingHandler struct {
 	config      YandexLoggingConfig
-	client      *http.Client
+	sdk         *ycsdk.SDK
+	client      logging.LogIngestionServiceClient
 	buffer      []LogEntry
 	bufferMutex sync.Mutex
 	ticker      *time.Ticker
 	done        chan struct{}
 	wg          sync.WaitGroup
 	level       slog.Level
+	destination *logging.Destination
+	groupName   string // Сохраняем имя группы для использования в запросах
 }
 
 // LogEntry представляет одну запись лога для отправки в Cloud Logging
@@ -98,15 +105,83 @@ func NewYandexLoggingHandler(config YandexLoggingConfig) (*YandexLoggingHandler,
 		level = slog.LevelInfo
 	}
 
+	// Инициализируем Yandex Cloud SDK
+	sdk, err := ycsdk.Build(context.Background(), ycsdk.Config{
+		Credentials: ycsdk.NewIAMTokenCredentials(config.IAMToken),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to initialize Yandex Cloud SDK: %w", err)
+	}
+
+	// Создаем gRPC соединение напрямую
+	// Endpoint для логирования: logging.api.cloud.yandex.net:443
+	ctx := context.Background()
+	conn, err := grpc.DialContext(
+		ctx,
+		"logging.api.cloud.yandex.net:443",
+		grpc.WithTransportCredentials(credentials.NewTLS(nil)),
+		grpc.WithPerRPCCredentials(&iamTokenCredentials{token: config.IAMToken}),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create gRPC connection: %w", err)
+	}
+
+	// Создаем клиент для отправки логов
+	client := logging.NewLogIngestionServiceClient(conn)
+
+	// Определяем destination (лог-группу)
+	// Если указан group_id, используем его напрямую
+	// Если указано только group_name, нужно найти group_id через LogGroupService
+	destination := &logging.Destination{}
+	groupID := config.GroupID
+
+	if groupID == "" && config.GroupName != "" && config.FolderID != "" {
+		// Пытаемся найти группу по имени через LogGroupService
+		logGroupClient := sdk.Logging().LogGroup()
+		listReq := &logging.ListLogGroupsRequest{
+			FolderId: config.FolderID,
+		}
+		listResp, err := logGroupClient.List(ctx, listReq)
+		if err == nil {
+			// Ищем группу с нужным именем
+			for _, group := range listResp.Groups {
+				if group.Name == config.GroupName {
+					groupID = group.Id
+					break
+				}
+			}
+		}
+	}
+
+	if groupID != "" {
+		destination.Destination = &logging.Destination_LogGroupId{
+			LogGroupId: groupID,
+		}
+	} else if config.FolderID != "" {
+		// Если не удалось найти группу, используем folder_id как fallback
+		destination.Destination = &logging.Destination_FolderId{
+			FolderId: config.FolderID,
+		}
+	} else {
+		return nil, fmt.Errorf("either group_id, group_name with folder_id, or folder_id must be specified")
+	}
+
+	// Определяем имя группы для использования в запросах
+	groupName := config.GroupName
+	if groupName == "" {
+		groupName = "default"
+	}
+
 	handler := &YandexLoggingHandler{
-		config: config,
-		client: &http.Client{
-			Timeout: 10 * time.Second,
-		},
-		buffer: make([]LogEntry, 0, config.BatchSize),
-		ticker: time.NewTicker(config.FlushInterval),
-		done:   make(chan struct{}),
-		level:  level,
+		config:      config,
+		sdk:         sdk,
+		client:      client,
+		buffer:      make([]LogEntry, 0, config.BatchSize),
+		ticker:      time.NewTicker(config.FlushInterval),
+		done:        make(chan struct{}),
+		level:       level,
+		destination: destination,
+		groupName:   groupName,
 	}
 
 	// Запускаем горутину для периодической отправки батчей
@@ -197,75 +272,95 @@ func (h *YandexLoggingHandler) flush() {
 	}
 }
 
-// sendLogs отправляет логи в Yandex Cloud Logging через REST API
-// Использует формат API, совместимый с командой yc logging write
-// Формат: параметры передаются через form-data (application/x-www-form-urlencoded)
+// sendLogs отправляет логи в Yandex Cloud Logging через gRPC API
 func (h *YandexLoggingHandler) sendLogs(entries []LogEntry) error {
-	// Формируем URL для API
-	apiURL := "https://ingester.logging.yandexcloud.net/write"
+	if len(entries) == 0 {
+		return nil
+	}
 
-	// Отправляем каждый лог отдельно
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	// Преобразуем записи логов в формат API
+	logEntries := make([]*logging.IncomingLogEntry, 0, len(entries))
 	for _, entry := range entries {
-		// Формируем URL с параметрами группы и каталога в query string
-		reqURL, err := url.Parse(apiURL)
-		if err != nil {
-			continue
-		}
-		
-		q := reqURL.Query()
-		if h.config.GroupID != "" {
-			q.Set("groupId", h.config.GroupID)
-		} else if h.config.GroupName != "" {
-			q.Set("groupName", h.config.GroupName)
-		} else {
-			q.Set("groupName", "default")
-		}
-		if h.config.FolderID != "" {
-			q.Set("folderId", h.config.FolderID)
-		}
-		reqURL.RawQuery = q.Encode()
+		// Преобразуем timestamp
+		timestamp := timestamppb.New(entry.Timestamp)
 
-		// Формируем form data (точно как в команде yc logging write и curl)
-		formData := url.Values{}
-		formData.Set("message", entry.Message)
-		formData.Set("level", entry.Level)
-		
-		// Добавляем JSON payload если есть
+		// Преобразуем уровень логирования
+		level := logging.LogLevel_LEVEL_UNSPECIFIED
+		switch strings.ToUpper(entry.Level) {
+		case "DEBUG":
+			level = logging.LogLevel_DEBUG
+		case "INFO":
+			level = logging.LogLevel_INFO
+		case "WARN":
+			level = logging.LogLevel_WARN
+		case "ERROR":
+			level = logging.LogLevel_ERROR
+		default:
+			level = logging.LogLevel_INFO
+		}
+
+		// Преобразуем payload в structpb.Struct
+		var jsonPayload *structpb.Struct
 		if len(entry.Payload) > 0 {
-			jsonPayloadBytes, err := json.Marshal(entry.Payload)
+			jsonBytes, err := json.Marshal(entry.Payload)
 			if err == nil {
-				formData.Set("json_payload", string(jsonPayloadBytes))
+				var jsonMap map[string]interface{}
+				if err := json.Unmarshal(jsonBytes, &jsonMap); err == nil {
+					jsonPayload, _ = structpb.NewStruct(jsonMap)
+				}
 			}
 		}
 
-		// Создаем запрос с form data в теле (точно как в curl)
-		reqBody := formData.Encode()
-		req, err := http.NewRequest("POST", reqURL.String(), bytes.NewBufferString(reqBody))
-		if err != nil {
-			continue
+		// Создаем запись лога
+		logEntry := &logging.IncomingLogEntry{
+			Timestamp: timestamp,
+			Level:     level,
+			Message:   entry.Message,
 		}
 
-		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-		req.Header.Set("Authorization", "Bearer "+h.config.IAMToken)
-
-		resp, err := h.client.Do(req)
-		if err != nil {
-			// Продолжаем отправку остальных логов даже при ошибке
-			continue
+		// Добавляем JSON payload если есть
+		if jsonPayload != nil {
+			logEntry.JsonPayload = jsonPayload
 		}
 
-		// Читаем тело ответа для диагностики
-		body, _ := io.ReadAll(resp.Body)
-		resp.Body.Close()
+		logEntries = append(logEntries, logEntry)
+	}
 
-		if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
-			// Логируем ошибку с подробностями для диагностики
-			fmt.Fprintf(os.Stderr, "Yandex Cloud Logging error: status %d, body: %s, url: %s\n", 
-				resp.StatusCode, string(body), reqURL.String())
-		}
+	// Отправляем логи батчем
+	// Если указано имя группы, нужно найти её ID или использовать folder_id
+	req := &logging.WriteRequest{
+		Destination: h.destination,
+		Entries:     logEntries,
+	}
+
+	// Если указано имя группы, но не указан ID, пытаемся найти группу по имени
+	// Для этого нужно использовать LogGroupService, но пока используем folder_id
+	// и надеемся, что API сможет найти группу по имени внутри каталога
+
+	_, err := h.client.Write(ctx, req)
+	if err != nil {
+		return fmt.Errorf("failed to write logs: %w", err)
 	}
 
 	return nil
+}
+
+// iamTokenCredentials реализует credentials.PerRPCCredentials для передачи IAM токена
+type iamTokenCredentials struct {
+	token string
+}
+
+func (c *iamTokenCredentials) GetRequestMetadata(ctx context.Context, uri ...string) (map[string]string, error) {
+	return map[string]string{
+		"authorization": "Bearer " + c.token,
+	}, nil
+}
+
+func (c *iamTokenCredentials) RequireTransportSecurity() bool {
+	return true
 }
 
 // Close закрывает handler и отправляет оставшиеся логи

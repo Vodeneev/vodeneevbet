@@ -120,8 +120,16 @@ jobs:
           cd "${REMOTE_DIR}"
 
           # Compose automatically reads .env from the project directory
-          printf "IMAGE_OWNER=%s\nIMAGE_TAG=%s\nYC_SERVICE_ACCOUNT_KEY_JSON=%s\nYC_FOLDER_ID=%s\nYC_LOG_GROUP_NAME=%s\n" \
-            "${IMAGE_OWNER}" "${IMAGE_TAG}" "${YC_SERVICE_ACCOUNT_KEY_JSON:-}" "${YC_FOLDER_ID:-}" "${YC_LOG_GROUP_NAME:-default}" > .env
+          # JSON должен быть в одной строке для .env файла (убираем все переносы строк)
+          if [ -n "${YC_SERVICE_ACCOUNT_KEY_JSON:-}" ]; then
+            # Убираем все переносы строк и экранируем кавычки для .env файла
+            YC_SERVICE_ACCOUNT_KEY_JSON_ESCAPED=$(printf '%s' "${YC_SERVICE_ACCOUNT_KEY_JSON}" | tr -d '\n' | sed 's/"/\\"/g')
+            printf "IMAGE_OWNER=%s\nIMAGE_TAG=%s\nYC_SERVICE_ACCOUNT_KEY_JSON=\"%s\"\nYC_FOLDER_ID=%s\nYC_LOG_GROUP_NAME=%s\n" \
+              "${IMAGE_OWNER}" "${IMAGE_TAG}" "${YC_SERVICE_ACCOUNT_KEY_JSON_ESCAPED}" "${YC_FOLDER_ID:-}" "${YC_LOG_GROUP_NAME:-default}" > .env
+          else
+            printf "IMAGE_OWNER=%s\nIMAGE_TAG=%s\nYC_FOLDER_ID=%s\nYC_LOG_GROUP_NAME=%s\n" \
+              "${IMAGE_OWNER}" "${IMAGE_TAG}" "${YC_FOLDER_ID:-}" "${YC_LOG_GROUP_NAME:-default}" > .env
+          fi
 
           # Prefer Compose v2 (docker compose). docker-compose v1 is incompatible with newer Docker versions (e.g. Docker 27+).
           export COMPOSE_PROJECT_NAME=vodeneevbet_parsers
@@ -233,8 +241,16 @@ jobs:
           # Compose automatically reads .env from the project directory
           # Escape special characters in DSN for safe storage in .env file
           POSTGRES_DSN_ESCAPED="${POSTGRES_DSN//\'/\'\"\'\"\'}"
-          printf "IMAGE_OWNER=%s\nIMAGE_TAG=%s\nTELEGRAM_BOT_TOKEN=%s\nTELEGRAM_CHAT_ID=%s\nPOSTGRES_DSN=%s\nYC_SERVICE_ACCOUNT_KEY_JSON=%s\nYC_FOLDER_ID=%s\nYC_LOG_GROUP_NAME=%s\n" \
-            "${IMAGE_OWNER}" "${IMAGE_TAG}" "${TELEGRAM_BOT_TOKEN:-}" "${TELEGRAM_CHAT_ID:-}" "${POSTGRES_DSN_ESCAPED:-}" "${YC_SERVICE_ACCOUNT_KEY_JSON:-}" "${YC_FOLDER_ID:-}" "${YC_LOG_GROUP_NAME:-default}" > .env
+          # JSON должен быть в одной строке для .env файла (убираем все переносы строк)
+          if [ -n "${YC_SERVICE_ACCOUNT_KEY_JSON:-}" ]; then
+            # Убираем все переносы строк и экранируем кавычки для .env файла
+            YC_SERVICE_ACCOUNT_KEY_JSON_ESCAPED=$(printf '%s' "${YC_SERVICE_ACCOUNT_KEY_JSON}" | tr -d '\n' | sed 's/"/\\"/g')
+            printf "IMAGE_OWNER=%s\nIMAGE_TAG=%s\nTELEGRAM_BOT_TOKEN=%s\nTELEGRAM_CHAT_ID=%s\nPOSTGRES_DSN=%s\nYC_SERVICE_ACCOUNT_KEY_JSON=\"%s\"\nYC_FOLDER_ID=%s\nYC_LOG_GROUP_NAME=%s\n" \
+              "${IMAGE_OWNER}" "${IMAGE_TAG}" "${TELEGRAM_BOT_TOKEN:-}" "${TELEGRAM_CHAT_ID:-}" "${POSTGRES_DSN_ESCAPED:-}" "${YC_SERVICE_ACCOUNT_KEY_JSON_ESCAPED}" "${YC_FOLDER_ID:-}" "${YC_LOG_GROUP_NAME:-default}" > .env
+          else
+            printf "IMAGE_OWNER=%s\nIMAGE_TAG=%s\nTELEGRAM_BOT_TOKEN=%s\nTELEGRAM_CHAT_ID=%s\nPOSTGRES_DSN=%s\nYC_FOLDER_ID=%s\nYC_LOG_GROUP_NAME=%s\n" \
+              "${IMAGE_OWNER}" "${IMAGE_TAG}" "${TELEGRAM_BOT_TOKEN:-}" "${TELEGRAM_CHAT_ID:-}" "${POSTGRES_DSN_ESCAPED:-}" "${YC_FOLDER_ID:-}" "${YC_LOG_GROUP_NAME:-default}" > .env
+          fi
 
           # Prefer Compose v2 (docker compose). docker-compose v1 is incompatible with newer Docker versions (e.g. Docker 27+).
           export COMPOSE_PROJECT_NAME=vodeneevbet_core

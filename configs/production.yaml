@@ -97,3 +97,7 @@ logging:
   level: "INFO"                    # Minimum log level: DEBUG, INFO, WARN, ERROR (default: INFO)
   batch_size: 10                   # Batch size for sending logs (default: 10)
   flush_interval: 5s               # Interval for flushing log batch (default: 5s)
+  # Labels for filtering in Yandex Cloud Logging interface
+  project_label: ""                # Project name label (default: "vodeneevbet", can be set via YC_LOG_PROJECT_LABEL env var)
+  service_label: ""                # Service name label (default: service name from code, can be set via YC_LOG_SERVICE_LABEL env var)
+  cluster_label: ""                # Cluster/folder name label (default: "production", can be set via YC_LOG_CLUSTER_LABEL env var)

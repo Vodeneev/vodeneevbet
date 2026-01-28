@@ -20,6 +20,14 @@ func SetupLogger(cfg *config.LoggingConfig, serviceName string) (*slog.Logger, e
 		Level:         cfg.Level,
 		BatchSize:     cfg.BatchSize,
 		FlushInterval: cfg.FlushInterval,
+		ProjectLabel:  cfg.ProjectLabel,
+		ServiceLabel:  cfg.ServiceLabel,
+		ClusterLabel:  cfg.ClusterLabel,
+	}
+
+	// Если ServiceLabel не указан, используем имя сервиса из параметра
+	if loggingConfig.ServiceLabel == "" {
+		loggingConfig.ServiceLabel = serviceName
 	}
 	return setupLoggerWithConfig(loggingConfig, serviceName)
 }

@@ -28,6 +28,10 @@ type YandexLoggingConfig struct {
 	Level         string        `yaml:"level"`          // Минимальный уровень логирования (DEBUG, INFO, WARN, ERROR)
 	BatchSize     int           `yaml:"batch_size"`     // Размер батча для отправки (по умолчанию 10)
 	FlushInterval time.Duration `yaml:"flush_interval"` // Интервал отправки батча (по умолчанию 5s)
+	// Метки для логирования (отображаются в Yandex Cloud Logging)
+	ProjectLabel string `yaml:"project_label"` // Название проекта (по умолчанию cloud_id)
+	ServiceLabel string `yaml:"service_label"` // Название сервиса (по умолчанию log_group_id)
+	ClusterLabel string `yaml:"cluster_label"` // Название кластера/каталога (по умолчанию folder_id)
 }
 
 // YandexLoggingHandler реализует slog.Handler для отправки логов в Yandex Cloud Logging
@@ -75,6 +79,17 @@ func NewYandexLoggingHandler(config YandexLoggingConfig) (*YandexLoggingHandler,
 		if envGroupID := os.Getenv("YC_LOG_GROUP_ID"); envGroupID != "" {
 			config.GroupID = envGroupID
 		}
+	}
+
+	// Получаем метки из env, если не указаны в конфиге
+	if config.ProjectLabel == "" {
+		config.ProjectLabel = os.Getenv("YC_LOG_PROJECT_LABEL")
+	}
+	if config.ServiceLabel == "" {
+		config.ServiceLabel = os.Getenv("YC_LOG_SERVICE_LABEL")
+	}
+	if config.ClusterLabel == "" {
+		config.ClusterLabel = os.Getenv("YC_LOG_CLUSTER_LABEL")
 	}
 
 	// Устанавливаем значения по умолчанию
@@ -261,6 +276,17 @@ func NewYandexLoggingHandler(config YandexLoggingConfig) (*YandexLoggingHandler,
 		groupName:   groupName,
 	}
 
+	// Устанавливаем значения по умолчанию для меток, если не указаны
+	if handler.config.ProjectLabel == "" {
+		handler.config.ProjectLabel = "vodeneevbet"
+	}
+	if handler.config.ServiceLabel == "" {
+		handler.config.ServiceLabel = "unknown"
+	}
+	if handler.config.ClusterLabel == "" {
+		handler.config.ClusterLabel = "production"
+	}
+
 	// Запускаем горутину для периодической отправки батчей
 	handler.wg.Add(1)
 	go handler.flushLoop()
@@ -411,6 +437,27 @@ func (h *YandexLoggingHandler) sendLogs(entries []LogEntry) error {
 	req := &logging.WriteRequest{
 		Destination: h.destination,
 		Entries:     logEntries,
+	}
+
+	// Добавляем метки в каждую запись лога для удобной фильтрации в Yandex Cloud Logging
+	// Метки project, service, cluster будут отображаться в интерфейсе
+	for _, logEntry := range logEntries {
+		if logEntry.JsonPayload == nil {
+			logEntry.JsonPayload = &structpb.Struct{
+				Fields: make(map[string]*structpb.Value),
+			}
+		}
+
+		// Добавляем метки в JSON payload
+		if h.config.ProjectLabel != "" {
+			logEntry.JsonPayload.Fields["project"] = structpb.NewStringValue(h.config.ProjectLabel)
+		}
+		if h.config.ServiceLabel != "" {
+			logEntry.JsonPayload.Fields["service"] = structpb.NewStringValue(h.config.ServiceLabel)
+		}
+		if h.config.ClusterLabel != "" {
+			logEntry.JsonPayload.Fields["cluster"] = structpb.NewStringValue(h.config.ClusterLabel)
+		}
 	}
 
 	// Если указано имя группы, но не указан ID, пытаемся найти группу по имени

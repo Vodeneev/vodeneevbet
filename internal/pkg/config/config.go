@@ -89,6 +89,10 @@ type LoggingConfig struct {
 	Level         string        `yaml:"level"`          // Минимальный уровень логирования (DEBUG, INFO, WARN, ERROR)
 	BatchSize     int           `yaml:"batch_size"`     // Размер батча для отправки (по умолчанию 10)
 	FlushInterval time.Duration `yaml:"flush_interval"` // Интервал отправки батча (по умолчанию 5s)
+	// Метки для логирования (отображаются в Yandex Cloud Logging)
+	ProjectLabel string `yaml:"project_label"` // Название проекта (по умолчанию "vodeneevbet")
+	ServiceLabel string `yaml:"service_label"` // Название сервиса (по умолчанию имя сервиса из кода)
+	ClusterLabel string `yaml:"cluster_label"` // Название кластера/каталога (по умолчанию "production")
 }
 
 func Load(configPath string) (*Config, error) {

@@ -27,6 +27,10 @@ services:
       - YC_FOLDER_ID=${YC_FOLDER_ID:-}
       - YC_LOG_GROUP_ID=${YC_LOG_GROUP_ID:-}
       - YC_LOG_GROUP_NAME=${YC_LOG_GROUP_NAME:-default}
+      # Labels for filtering in Yandex Cloud Logging interface
+      - YC_LOG_PROJECT_LABEL=${YC_LOG_PROJECT_LABEL:-vodeneevbet}
+      - YC_LOG_SERVICE_LABEL=${YC_LOG_SERVICE_LABEL:-parser}
+      - YC_LOG_CLUSTER_LABEL=${YC_LOG_CLUSTER_LABEL:-production}
     volumes:
       - ./configs:/app/configs:ro
       # configs/production.yaml uses ../keys/... (relative to /app/configs), which resolves to /app/keys/...

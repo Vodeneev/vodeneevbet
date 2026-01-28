@@ -12,8 +12,7 @@ import (
 
 	"github.com/yandex-cloud/go-genproto/yandex/cloud/logging/v1"
 	ycsdk "github.com/yandex-cloud/go-sdk"
-	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials"
+	logingestion "github.com/yandex-cloud/go-sdk/gen/logingestion"
 	"google.golang.org/protobuf/types/known/structpb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
@@ -34,7 +33,7 @@ type YandexLoggingConfig struct {
 type YandexLoggingHandler struct {
 	config      YandexLoggingConfig
 	sdk         *ycsdk.SDK
-	client      logging.LogIngestionServiceClient
+	client      *logingestion.LogIngestionServiceClient
 	buffer      []LogEntry
 	bufferMutex sync.Mutex
 	ticker      *time.Ticker
@@ -113,21 +112,10 @@ func NewYandexLoggingHandler(config YandexLoggingConfig) (*YandexLoggingHandler,
 		return nil, fmt.Errorf("failed to initialize Yandex Cloud SDK: %w", err)
 	}
 
-	// Создаем gRPC соединение напрямую
-	// Endpoint для логирования: logging.api.cloud.yandex.net:443
-	ctx := context.Background()
-	conn, err := grpc.DialContext(
-		ctx,
-		"logging.api.cloud.yandex.net:443",
-		grpc.WithTransportCredentials(credentials.NewTLS(nil)),
-		grpc.WithPerRPCCredentials(&iamTokenCredentials{token: config.IAMToken}),
-	)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create gRPC connection: %w", err)
-	}
-
-	// Создаем клиент для отправки логов
-	client := logging.NewLogIngestionServiceClient(conn)
+	// Получаем клиент для отправки логов через SDK
+	// SDK знает правильный endpoint для LogIngestionService
+	logIngestion := sdk.LogIngestion()
+	client := logIngestion.LogIngestion()
 
 	// Определяем destination (лог-группу)
 	// Если указан group_id, используем его напрямую
@@ -135,6 +123,7 @@ func NewYandexLoggingHandler(config YandexLoggingConfig) (*YandexLoggingHandler,
 	destination := &logging.Destination{}
 	groupID := config.GroupID
 
+	ctx := context.Background()
 	if groupID == "" && config.GroupName != "" && config.FolderID != "" {
 		// Пытаемся найти группу по имени через LogGroupService
 		logGroupClient := sdk.Logging().LogGroup()
@@ -346,21 +335,6 @@ func (h *YandexLoggingHandler) sendLogs(entries []LogEntry) error {
 	}
 
 	return nil
-}
-
-// iamTokenCredentials реализует credentials.PerRPCCredentials для передачи IAM токена
-type iamTokenCredentials struct {
-	token string
-}
-
-func (c *iamTokenCredentials) GetRequestMetadata(ctx context.Context, uri ...string) (map[string]string, error) {
-	return map[string]string{
-		"authorization": "Bearer " + c.token,
-	}, nil
-}
-
-func (c *iamTokenCredentials) RequireTransportSecurity() bool {
-	return true
 }
 
 // Close закрывает handler и отправляет оставшиеся логи

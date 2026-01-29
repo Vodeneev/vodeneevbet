@@ -632,6 +632,151 @@ func (c *Client) GetSportStraightMarkets(sportID int64) ([]Market, error) {
 	return out, nil
 }
 
+// oddsBasePath returns the base path for sports-service euro from odds URL.
+// e.g. "/sports-service/sv/euro/odds" -> "/sports-service/sv/euro"
+func oddsBasePath(oddsPath string) string {
+	s := strings.TrimSuffix(strings.TrimSuffix(oddsPath, "/"), "/odds")
+	if !strings.HasPrefix(s, "/") {
+		return "/sports-service/sv/euro"
+	}
+	return s
+}
+
+// buildOddsRequestURL builds URL for odds-domain requests (leagues, league odds, event odds).
+func (c *Client) buildOddsRequestURL(oddsPath string, pathSuffix string, query url.Values) (*url.URL, error) {
+	if oddsPath == "" {
+		return nil, fmt.Errorf("odds_url not configured")
+	}
+	pathForBase := oddsPath
+	if strings.HasPrefix(oddsPath, "http://") || strings.HasPrefix(oddsPath, "https://") {
+		parsed, err := url.Parse(oddsPath)
+		if err != nil {
+			return nil, fmt.Errorf("parse odds_url: %w", err)
+		}
+		pathForBase = parsed.Path
+	}
+	base := oddsBasePath(pathForBase)
+	pathStr := base + pathSuffix
+	if !strings.HasPrefix(pathStr, "/") {
+		pathStr = "/" + pathStr
+	}
+
+	var u *url.URL
+	if strings.HasPrefix(oddsPath, "http://") || strings.HasPrefix(oddsPath, "https://") {
+		parsed, _ := url.Parse(oddsPath)
+		u = &url.URL{Scheme: parsed.Scheme, Host: parsed.Host, Path: pathStr, RawQuery: query.Encode()}
+	} else {
+		if err := c.ensureResolved(); err != nil {
+			slog.Debug("Pinnacle888: Warning: failed to ensure resolved URL: %v\n", err)
+		}
+		c.resolvedMu.RLock()
+		oddsDomain := c.oddsDomain
+		c.resolvedMu.RUnlock()
+		if oddsDomain == "" {
+			oddsDomain = "www.gentleflame47.xyz"
+		}
+		u = &url.URL{Scheme: "https", Host: oddsDomain, Path: pathStr, RawQuery: query.Encode()}
+	}
+	return u, nil
+}
+
+// doOddsRequest performs GET with common headers for odds domain.
+func (c *Client) doOddsRequest(u *url.URL) ([]byte, error) {
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, u.String(), nil)
+	if err != nil {
+		return nil, fmt.Errorf("create request: %w", err)
+	}
+	req.Header.Set("Accept", "application/json, text/plain, */*")
+	req.Header.Set("Accept-Language", "en,en-US;q=0.9")
+	req.Header.Set("Accept-Encoding", "gzip, deflate, br, zstd")
+	req.Header.Set("User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36")
+	req.Header.Set("Referer", u.Scheme+"://"+u.Host+"/")
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		if c.shouldReResolve(err, 0) {
+			c.clearResolvedURL()
+		}
+		return nil, fmt.Errorf("request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		b, _ := io.ReadAll(resp.Body)
+		if c.shouldReResolve(nil, resp.StatusCode) {
+			c.clearResolvedURL()
+		}
+		return nil, fmt.Errorf("unexpected status %d: %s", resp.StatusCode, string(b))
+	}
+	return readBodyMaybeGzip(resp)
+}
+
+// GetLeagues fetches leagues for a sport from /sports-service/sv/euro/leagues
+func (c *Client) GetLeagues(oddsPath string, sportID int64) ([]LeagueListItem, error) {
+	q := url.Values{}
+	q.Set("sportId", fmt.Sprintf("%d", sportID))
+	q.Set("locale", "en_US")
+	q.Set("_", fmt.Sprintf("%d", time.Now().UnixMilli()))
+
+	u, err := c.buildOddsRequestURL(oddsPath, "/leagues", q)
+	if err != nil {
+		return nil, err
+	}
+	body, err := c.doOddsRequest(u)
+	if err != nil {
+		return nil, err
+	}
+	var list []LeagueListItem
+	if err := json.Unmarshal(body, &list); err != nil {
+		return nil, fmt.Errorf("unmarshal leagues: %w", err)
+	}
+	return list, nil
+}
+
+// GetLeagueOdds fetches odds for one league from /sports-service/sv/euro/odds/league
+func (c *Client) GetLeagueOdds(oddsPath string, leagueCode string, sportID int64, isLive bool) ([]byte, error) {
+	q := url.Values{}
+	q.Set("sportId", fmt.Sprintf("%d", sportID))
+	q.Set("oddsType", "1")
+	q.Set("version", "0")
+	q.Set("timeStamp", fmt.Sprintf("%d", time.Now().UnixMilli()))
+	q.Set("periodNum", "-1")
+	q.Set("eSportCode", "")
+	q.Set("locale", "en_US")
+	q.Set("leagueCode", leagueCode)
+	q.Set("isHlE", "true")
+	if isLive {
+		q.Set("isLive", "true")
+	} else {
+		q.Set("isLive", "false")
+	}
+	q.Set("eventType", "0")
+	q.Set("_", fmt.Sprintf("%d", time.Now().UnixMilli()))
+
+	u, err := c.buildOddsRequestURL(oddsPath, "/odds/league", q)
+	if err != nil {
+		return nil, err
+	}
+	return c.doOddsRequest(u)
+}
+
+// GetEventOdds fetches full odds for one event from /sports-service/sv/euro/odds/event
+func (c *Client) GetEventOdds(oddsPath string, eventID int64) ([]byte, error) {
+	q := url.Values{}
+	q.Set("eventId", fmt.Sprintf("%d", eventID))
+	q.Set("oddsType", "1")
+	q.Set("version", "0")
+	q.Set("specialVersion", "0")
+	q.Set("locale", "en_US")
+	q.Set("_", fmt.Sprintf("%d", time.Now().UnixMilli()))
+
+	u, err := c.buildOddsRequestURL(oddsPath, "/odds/event", q)
+	if err != nil {
+		return nil, err
+	}
+	return c.doOddsRequest(u)
+}
+
 // GetOddsEvents gets events from the odds endpoint (sports-service/sv/euro/odds)
 // This endpoint returns structured JSON with clear home/away team information
 // oddsPath can be either a full URL or a relative path (e.g., "/sports-service/sv/euro/odds")

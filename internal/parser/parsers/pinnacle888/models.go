@@ -49,6 +49,33 @@ type Price struct {
 	Price       int      `json:"price"` // American odds
 }
 
+// LeagueListItem is a league from /sports-service/sv/euro/leagues
+type LeagueListItem struct {
+	ID            int64  `json:"id"`
+	Name          string `json:"name"`
+	TotalEvents   int    `json:"totalEvents"`
+	FeaturesOrder int    `json:"featuresOrder"`
+	EnglishName   string `json:"englishName"`
+	LeagueCode    string `json:"leagueCode"`
+}
+
+// EventOddsResponse is the response from /sports-service/sv/euro/odds/event
+type EventOddsResponse struct {
+	Info   EventOddsInfo `json:"info"`
+	Normal Event         `json:"normal"`
+}
+
+type EventOddsInfo struct {
+	SportID       int64  `json:"sportId"`
+	SportName     string `json:"sportName"`
+	LeagueCode    string `json:"leagueCode"`
+	LeagueName    string `json:"leagueName"`
+	ResultingUnit string `json:"resultingUnit"`
+	LeagueID      int64  `json:"leagueId"`
+	Container     string `json:"container"`
+	SeriesID      int64  `json:"seriesId"`
+}
+
 // Models for new odds endpoint (sports-service/sv/euro/odds)
 type OddsResponse struct {
 	SportID int64    `json:"sportId"`

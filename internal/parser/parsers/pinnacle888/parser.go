@@ -2,6 +2,7 @@ package pinnacle888
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"os"
@@ -352,52 +353,113 @@ func (p *Parser) processAll(ctx context.Context) error {
 	return nil
 }
 
-// processLiveMatches processes live matches from odds endpoint
-// Returns matches and error
+// processLiveMatches processes live matches: leagues -> league odds (async) -> event odds (async)
 func (p *Parser) processLiveMatches(ctx context.Context) ([]*models.Match, error) {
-	// Sport ID 29 is Soccer
-	sportID := int64(29)
-
-	if p.cfg.Parser.Pinnacle888.OddsURL == "" {
-		return nil, fmt.Errorf("odds_url not configured")
-	}
-
-	data, err := p.client.GetOddsEvents(p.cfg.Parser.Pinnacle888.OddsURL, sportID, true)
-	if err != nil {
-		return nil, fmt.Errorf("get odds events (live): %w", err)
-	}
-
-	matches, err := parseOddsResponse(data)
-	if err != nil {
-		return nil, fmt.Errorf("parse odds response: %w", err)
-	}
-
-	slog.Info(fmt.Sprintf("Pinnacle888: Found live matches %d", len(matches)))
-	return matches, nil
+	return p.processOddsLeaguesFlow(ctx, true)
 }
 
-// processLineMatches processes pre-match/line matches from odds endpoint
-// Returns matches and error
+// processLineMatches processes pre-match matches: leagues -> league odds (async) -> event odds (async)
 func (p *Parser) processLineMatches(ctx context.Context) ([]*models.Match, error) {
-	// Sport ID 29 is Soccer
-	sportID := int64(29)
+	return p.processOddsLeaguesFlow(ctx, false)
+}
 
-	if p.cfg.Parser.Pinnacle888.OddsURL == "" {
+// processOddsLeaguesFlow: 1) get leagues 2) async per league get league odds 3) async per event get event odds
+func (p *Parser) processOddsLeaguesFlow(ctx context.Context, isLive bool) ([]*models.Match, error) {
+	oddsURL := p.cfg.Parser.Pinnacle888.OddsURL
+	if oddsURL == "" {
 		return nil, fmt.Errorf("odds_url not configured")
 	}
+	sportID := int64(29) // Soccer
 
-	data, err := p.client.GetOddsEvents(p.cfg.Parser.Pinnacle888.OddsURL, sportID, false)
+	leagues, err := p.client.GetLeagues(oddsURL, sportID)
 	if err != nil {
-		return nil, fmt.Errorf("get odds events (pre-match): %w", err)
+		return nil, fmt.Errorf("get leagues: %w", err)
 	}
 
-	matches, err := parseOddsResponse(data)
-	if err != nil {
-		return nil, fmt.Errorf("parse odds response: %w", err)
+	// Skip leagues with no events for efficiency
+	var leaguesWithEvents []LeagueListItem
+	for _, l := range leagues {
+		if l.TotalEvents > 0 {
+			leaguesWithEvents = append(leaguesWithEvents, l)
+		}
 	}
 
-	slog.Info(fmt.Sprintf("Pinnacle888: Found pre-match matches %d", len(matches)))
-	return matches, nil
+	const leagueConcurrency = 10
+	const eventConcurrency = 20
+	leagueSem := make(chan struct{}, leagueConcurrency)
+	eventSem := make(chan struct{}, eventConcurrency)
+
+	var matchesMu sync.Mutex
+	var allMatches []*models.Match
+	var wgLeagues sync.WaitGroup
+
+	for _, league := range leaguesWithEvents {
+		select {
+		case <-ctx.Done():
+			return allMatches, ctx.Err()
+		default:
+		}
+
+		wgLeagues.Add(1)
+		league := league
+		go func() {
+			defer wgLeagues.Done()
+			leagueSem <- struct{}{}
+			defer func() { <-leagueSem }()
+
+			data, err := p.client.GetLeagueOdds(oddsURL, league.LeagueCode, sportID, isLive)
+			if err != nil {
+				slog.Debug("Pinnacle888: get league odds", "league", league.LeagueCode, "error", err)
+				return
+			}
+
+			var leagueResp OddsResponse
+			if err := json.Unmarshal(data, &leagueResp); err != nil {
+				slog.Debug("Pinnacle888: parse league odds", "league", league.LeagueCode, "error", err)
+				return
+			}
+
+			for _, lg := range leagueResp.Leagues {
+				for _, ev := range lg.Events {
+					select {
+					case <-ctx.Done():
+						return
+					default:
+					}
+
+					eventSem <- struct{}{}
+					wgLeagues.Add(1)
+					eventID := ev.ID
+					go func() {
+						defer wgLeagues.Done()
+						defer func() { <-eventSem }()
+
+						eventData, err := p.client.GetEventOdds(oddsURL, eventID)
+						if err != nil {
+							slog.Debug("Pinnacle888: get event odds", "eventId", eventID, "error", err)
+							return
+						}
+						match, err := ParseEventOddsResponse(eventData)
+						if err != nil || match == nil {
+							return
+						}
+						matchesMu.Lock()
+						allMatches = append(allMatches, match)
+						matchesMu.Unlock()
+					}()
+				}
+			}
+		}()
+	}
+
+	wgLeagues.Wait()
+
+	liveLabel := "pre-match"
+	if isLive {
+		liveLabel = "live"
+	}
+	slog.Info("Pinnacle888: leagues flow finished", "mode", liveLabel, "matches", len(allMatches))
+	return allMatches, nil
 }
 
 // mergeMatches merges live and pre-match matches, preferring live data when duplicates exist

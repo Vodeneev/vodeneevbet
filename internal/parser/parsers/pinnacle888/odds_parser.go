@@ -9,7 +9,7 @@ import (
 	"github.com/Vodeneev/vodeneevbet/internal/pkg/models"
 )
 
-// parseOddsResponse parses the new odds endpoint response
+// parseOddsResponse parses the new odds endpoint response (league odds: leagues with events)
 func parseOddsResponse(data []byte) ([]*models.Match, error) {
 	var resp OddsResponse
 	if err := json.Unmarshal(data, &resp); err != nil {
@@ -28,6 +28,19 @@ func parseOddsResponse(data []byte) ([]*models.Match, error) {
 	}
 
 	return matches, nil
+}
+
+// ParseEventOddsResponse parses the single-event odds response from /odds/event
+func ParseEventOddsResponse(data []byte) (*models.Match, error) {
+	var resp EventOddsResponse
+	if err := json.Unmarshal(data, &resp); err != nil {
+		return nil, fmt.Errorf("unmarshal event odds response: %w", err)
+	}
+	leagueName := resp.Info.LeagueName
+	if leagueName == "" {
+		leagueName = resp.Info.LeagueCode
+	}
+	return buildMatchFromOddsEvent(leagueName, resp.Normal), nil
 }
 
 // buildMatchFromOddsEvent builds a Match from an OddsResponse Event

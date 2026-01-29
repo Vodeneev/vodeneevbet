@@ -91,17 +91,21 @@ func (p *Parser) runOnce(ctx context.Context) error {
 	var prematchMatches []*models.Match
 	var liveErr, prematchErr error
 
+	slog.Info("Pinnacle888: runOnce started", "include_live", p.cfg.Parser.Pinnacle888.IncludeLive, "include_prematch", p.cfg.Parser.Pinnacle888.IncludePrematch, "odds_url_set", p.cfg.Parser.Pinnacle888.OddsURL != "")
+
 	// Fetch live matches asynchronously
 	if p.cfg.Parser.Pinnacle888.IncludeLive && p.cfg.Parser.Pinnacle888.OddsURL != "" {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
+			slog.Info("Pinnacle888: starting live matches processing")
 			matches, err := p.processLiveMatches(ctx)
 			if err != nil {
 				liveErr = err
-				slog.Error("Failed to process live matches", "error", err)
+				slog.Error("Pinnacle888: failed to process live matches", "error", err)
 			} else {
 				liveMatches = matches
+				slog.Info("Pinnacle888: live matches processed", "count", len(matches))
 			}
 		}()
 	}
@@ -111,12 +115,14 @@ func (p *Parser) runOnce(ctx context.Context) error {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
+			slog.Info("Pinnacle888: starting pre-match matches processing")
 			matches, err := p.processLineMatches(ctx)
 			if err != nil {
 				prematchErr = err
-				slog.Error("Failed to process pre-match matches", "error", err)
+				slog.Error("Pinnacle888: failed to process pre-match matches", "error", err)
 			} else {
 				prematchMatches = matches
+				slog.Info("Pinnacle888: pre-match matches processed", "count", len(matches))
 			}
 		}()
 	}
@@ -371,10 +377,13 @@ func (p *Parser) processOddsLeaguesFlow(ctx context.Context, isLive bool) ([]*mo
 	}
 	sportID := int64(29) // Soccer
 
+	slog.Info("Pinnacle888: starting leagues flow", "mode", map[bool]string{true: "live", false: "pre-match"}[isLive], "oddsURL", oddsURL)
 	leagues, err := p.client.GetLeagues(oddsURL, sportID)
 	if err != nil {
+		slog.Error("Pinnacle888: failed to get leagues", "error", err)
 		return nil, fmt.Errorf("get leagues: %w", err)
 	}
+	slog.Info("Pinnacle888: fetched leagues", "count", len(leagues))
 
 	// Skip leagues with no events for efficiency
 	var leaguesWithEvents []LeagueListItem
@@ -383,6 +392,7 @@ func (p *Parser) processOddsLeaguesFlow(ctx context.Context, isLive bool) ([]*mo
 			leaguesWithEvents = append(leaguesWithEvents, l)
 		}
 	}
+	slog.Info("Pinnacle888: filtering leagues with events", "total", len(leagues), "with_events", len(leaguesWithEvents))
 
 	const leagueConcurrency = 10
 	const eventConcurrency = 20
@@ -458,7 +468,7 @@ func (p *Parser) processOddsLeaguesFlow(ctx context.Context, isLive bool) ([]*mo
 	if isLive {
 		liveLabel = "live"
 	}
-	slog.Info("Pinnacle888: leagues flow finished", "mode", liveLabel, "matches", len(allMatches))
+	slog.Info("Pinnacle888: leagues flow finished", "mode", liveLabel, "matches", len(allMatches), "leagues_processed", len(leaguesWithEvents))
 	return allMatches, nil
 }
 

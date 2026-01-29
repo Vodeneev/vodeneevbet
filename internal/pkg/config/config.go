@@ -55,6 +55,7 @@ type Pinnacle888Config struct {
 	ProxyList       []string `yaml:"proxy_list"`       // List of proxies to try in order
 	IncludeLive     bool     `yaml:"include_live"`     // Include live matches (default: false)
 	IncludePrematch bool     `yaml:"include_prematch"` // Include pre-match/line matches (default: false)
+	LeagueWorkers   int      `yaml:"league_workers"`   // Max concurrent leagues (default: 5); events within a league are processed sequentially
 }
 
 type ValueCalculatorConfig struct {

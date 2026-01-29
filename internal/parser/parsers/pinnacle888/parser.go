@@ -352,7 +352,7 @@ func (p *Parser) processLineMatches(ctx context.Context) ([]*models.Match, error
 	return p.processOddsLeaguesFlow(ctx, false)
 }
 
-// processOddsLeaguesFlow: 1) get leagues 2) async per league get league odds 3) async per event get event odds
+// processOddsLeaguesFlow: 1) get leagues 2) process leagues in batches (N concurrent); per league: GetLeagueOdds then events sequentially (GetEventOdds, no per-event goroutines).
 func (p *Parser) processOddsLeaguesFlow(ctx context.Context, isLive bool) ([]*models.Match, error) {
 	oddsURL := p.cfg.Parser.Pinnacle888.OddsURL
 	if oddsURL == "" {
@@ -377,10 +377,12 @@ func (p *Parser) processOddsLeaguesFlow(ctx context.Context, isLive bool) ([]*mo
 	}
 	slog.Info("Pinnacle888: filtering leagues with events", "total", len(leagues), "with_events", len(leaguesWithEvents))
 
-	const leagueConcurrency = 10
-	const eventConcurrency = 20
-	leagueSem := make(chan struct{}, leagueConcurrency)
-	eventSem := make(chan struct{}, eventConcurrency)
+	// Concurrency from config; events within a league are processed sequentially
+	leagueWorkers := p.cfg.Parser.Pinnacle888.LeagueWorkers
+	if leagueWorkers <= 0 {
+		leagueWorkers = 5
+	}
+	leagueSem := make(chan struct{}, leagueWorkers)
 
 	var matchesMu sync.Mutex
 	var allMatches []*models.Match
@@ -412,6 +414,7 @@ func (p *Parser) processOddsLeaguesFlow(ctx context.Context, isLive bool) ([]*mo
 				return
 			}
 
+			// Events sequentially: no goroutines per event to avoid CPU/disk load
 			for _, lg := range leagueResp.Leagues {
 				for _, ev := range lg.Events {
 					select {
@@ -419,27 +422,18 @@ func (p *Parser) processOddsLeaguesFlow(ctx context.Context, isLive bool) ([]*mo
 						return
 					default:
 					}
-
-					eventSem <- struct{}{}
-					wgLeagues.Add(1)
-					eventID := ev.ID
-					go func() {
-						defer wgLeagues.Done()
-						defer func() { <-eventSem }()
-
-						eventData, err := p.client.GetEventOdds(oddsURL, eventID)
-						if err != nil {
-							slog.Debug("Pinnacle888: get event odds", "eventId", eventID, "error", err)
-							return
-						}
-						match, err := ParseEventOddsResponse(eventData)
-						if err != nil || match == nil {
-							return
-						}
-						matchesMu.Lock()
-						allMatches = append(allMatches, match)
-						matchesMu.Unlock()
-					}()
+					eventData, err := p.client.GetEventOdds(oddsURL, ev.ID)
+					if err != nil {
+						slog.Debug("Pinnacle888: get event odds", "eventId", ev.ID, "error", err)
+						continue
+					}
+					match, err := ParseEventOddsResponse(eventData)
+					if err != nil || match == nil {
+						continue
+					}
+					matchesMu.Lock()
+					allMatches = append(allMatches, match)
+					matchesMu.Unlock()
 				}
 			}
 		}()

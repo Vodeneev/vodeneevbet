@@ -176,7 +176,7 @@ func (c *ValueCalculator) processMatchesAsync(ctx context.Context) {
 
 	matches, err := c.httpClient.GetMatches(reqCtx)
 	if err != nil {
-		slog.Error("Failed to fetch matches for async processing", "error", err)
+		slog.Error("Failed to fetch matches for async processing", "error", err.Error())
 		return
 	}
 
@@ -208,7 +208,7 @@ func (c *ValueCalculator) processMatchesAsync(ctx context.Context) {
 			// Get the last diff for this match+bet combination (excluding current one)
 			lastDiffPercent, lastCalculatedAt, err := c.diffStorage.GetLastDiffBet(ctx, diff.MatchGroupKey, diff.BetKey, diff.CalculatedAt)
 			if err != nil {
-				slog.Warn("Failed to get last diff", "error", err)
+				slog.Warn("Failed to get last diff", "error", err.Error())
 				// Continue anyway - better to send duplicate than miss an alert
 				shouldSendAlert = true
 			} else if lastDiffPercent == 0 || lastCalculatedAt.IsZero() {
@@ -245,7 +245,7 @@ func (c *ValueCalculator) processMatchesAsync(ctx context.Context) {
 		// We store all diffs, not just ones we alert on
 		_, err := c.diffStorage.StoreDiffBet(ctx, &diff)
 		if err != nil {
-			slog.Error("Failed to store diff", "error", err)
+			slog.Error("Failed to store diff", "error", err.Error(), "match", diff.MatchGroupKey, "bet_key", diff.BetKey)
 			// Continue even if storage fails
 		}
 
@@ -253,7 +253,7 @@ func (c *ValueCalculator) processMatchesAsync(ctx context.Context) {
 		if shouldSendAlert {
 			thresholdInt := int(math.Round(alertThreshold))
 			if err := c.notifier.SendDiffAlert(ctx, &diff, thresholdInt); err != nil {
-				slog.Error("Failed to send alert", "threshold", alertThreshold, "error", err)
+				slog.Error("Failed to send alert", "threshold", alertThreshold, "error", err.Error())
 			} else {
 				alertCount++
 				slog.Info("Sent alert", "threshold", alertThreshold, "match", diff.MatchName, "diff_percent", diff.DiffPercent)

@@ -108,7 +108,7 @@ func main() {
 	slog.Debug("Bot token", "token_preview", fmt.Sprintf("%s...%s", botConfig.Token[:10], botConfig.Token[len(botConfig.Token)-4:]))
 
 	u := tgbotapi.NewUpdate(0)
-	u.Timeout = config.UpdateTimeout
+	u.Timeout = botConfig.UpdateTimeout
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()

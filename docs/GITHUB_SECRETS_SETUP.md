@@ -136,11 +136,11 @@ After adding secrets:
 ## Existing Secrets
 
 You already have the following secrets configured (don't touch them):
-- `VM_CORE_HOST` - VM host for core services (IP or hostname)
-- `VM_PARSERS_HOST` - VM host for parsers (IP or hostname)
-- `VM_USER` - SSH user (e.g. `nphne-tuxzcf6w` for Yandex Cloud); default `vodeneevm` if not set
-- `SSH_PRIVATE_KEY` - SSH private key for parsers VM (full PEM body, including `-----BEGIN ...-----`)
-- `SSH_PRIVATE_KEY_CORE` - (optional) SSH private key for core VM; if not set, `SSH_PRIVATE_KEY` is used for both
+- `VM_CORE_HOST` - Core VM IP or hostname (e.g. `158.160.222.217`)
+- `VM_PARSERS_HOST` - Parsers VM IP or hostname (e.g. `158.160.168.187`)
+- `VM_USER` - SSH user for both VMs (e.g. `nphne-tuxzcf6w` for Yandex Cloud); default `vodeneevm` if not set
+- `SSH_PRIVATE_KEY` - SSH private key for **parsers** VM (full PEM, including `-----BEGIN ...-----` / `-----END ...-----`)
+- `SSH_PRIVATE_KEY_CORE` - SSH private key for **core** VM (same PEM format). **Required if core VM uses a different key than parsers.** If not set, `SSH_PRIVATE_KEY` is used for core too (then both VMs must accept the same key).
 - `GHCR_TOKEN` - token for GitHub Container Registry
 - `GHCR_USERNAME` - username for GHCR (optional)
 
@@ -153,6 +153,16 @@ You already have the following secrets configured (don't touch them):
 - Use different passwords for different environments (dev/staging/prod)
 
 ## Troubleshooting
+
+### Error: "Permission denied (publickey)" on Core deploy
+
+Core job uses `SSH_PRIVATE_KEY_CORE` (or `SSH_PRIVATE_KEY` if core secret is not set). If the core VM has a **different** SSH key than the parsers VM:
+
+1. In GitHub: **Settings** → **Secrets and variables** → **Actions**
+2. Add secret **`SSH_PRIVATE_KEY_CORE`** with the **private key that works for the core VM** (the one you use to `ssh` into core, full PEM including `-----BEGIN ...-----` and `-----END ...-----`).
+3. Re-run the workflow.
+
+To get the key: if you connect to core with `ssh -i /path/to/core_key user@core-ip`, use the contents of `core_key` as `SSH_PRIVATE_KEY_CORE`.
 
 ### Error: "postgres DSN is required"
 - Make sure `POSTGRES_DSN` secret is added to GitHub Secrets

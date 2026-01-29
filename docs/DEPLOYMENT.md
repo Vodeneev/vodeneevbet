@@ -5,7 +5,7 @@ The automatic deployment system ensures that the latest version of services is a
 ## Deployment Architecture
 
 - **vm-parsers** (158.160.168.187): Runs Parser Service
-- **vm-core-services** (158.160.200.253): Runs Calculator Service
+- **vm-core-services** (158.160.222.217): Runs Calculator Service
 
 ## Quick Start
 

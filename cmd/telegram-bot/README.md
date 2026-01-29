@@ -24,7 +24,7 @@ Telegram bot wrapper for the `/diffs/top` endpoint with different parameters.
 ```bash
 ./telegram-bot \
   -token "YOUR_BOT_TOKEN" \
-  -calculator-url "http://158.160.200.253" \
+  -calculator-url "http://158.160.222.217" \
   -allowed-users "123456789,987654321"  # Optional: restrict access
 ```
 
@@ -32,7 +32,7 @@ Telegram bot wrapper for the `/diffs/top` endpoint with different parameters.
 
 ```bash
 export TELEGRAM_BOT_TOKEN="YOUR_BOT_TOKEN"
-export CALCULATOR_URL="http://158.160.200.253"
+export CALCULATOR_URL="http://158.160.222.217"
 ./telegram-bot
 ```
 
@@ -103,7 +103,7 @@ docker run -d \
   --name telegram-bot \
   --restart unless-stopped \
   -e TELEGRAM_BOT_TOKEN="YOUR_BOT_TOKEN" \
-  -e CALCULATOR_URL="http://158.160.200.253" \
+  -e CALCULATOR_URL="http://158.160.222.217" \
   telegram-bot
 ```
 
@@ -118,7 +118,7 @@ telegram-bot:
   restart: unless-stopped
   environment:
     - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
-    - CALCULATOR_URL=http://158.160.200.253
+    - CALCULATOR_URL=http://158.160.222.217
 ```
 
 ## Security

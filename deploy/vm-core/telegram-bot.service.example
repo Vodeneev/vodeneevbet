@@ -7,7 +7,7 @@ Type=simple
 User=root
 WorkingDirectory=/opt/vodeneevbet/telegram-bot
 ExecStart=/opt/vodeneevbet/telegram-bot/telegram-bot \
-  -calculator-url "http://158.160.200.253"
+  -calculator-url "http://158.160.222.217"
 Restart=always
 RestartSec=10
 

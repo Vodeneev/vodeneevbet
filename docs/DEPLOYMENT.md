@@ -107,7 +107,28 @@ make start-all
 
 1. **Docker**
 2. **Docker Compose** (plugin `docker compose` or `docker-compose`)
-3. **SSH access** with sudo privileges for user `vodeneevm`
+3. **SSH access** with sudo privileges for the deploy user
+
+### Installing Docker on a New VM (Ubuntu 24.04)
+
+If the VM is fresh and Docker is not installed, run on the server (user must have sudo):
+
+```bash
+# Add Docker's official GPG key and repo, then install
+sudo apt-get update
+sudo apt-get install -y ca-certificates curl
+sudo install -m 0755 -d /etc/apt/keyrings
+sudo curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
+sudo chmod a+r /etc/apt/keyrings/docker.asc
+echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu $(. /etc/os-release && echo "$VERSION_CODENAME") stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+sudo apt-get update
+sudo apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+sudo usermod -aG docker "$USER"
+# Log out and back in (or new SSH session) for group to apply; then verify:
+docker --version && docker compose version
+```
+
+After that, the GitHub Actions deploy (or local `./scripts/deploy/deploy-parsers.sh`) can run `sudo docker compose` successfully.
 
 ### On Local Machine:
 

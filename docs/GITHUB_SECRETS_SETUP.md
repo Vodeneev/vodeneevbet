@@ -136,9 +136,11 @@ After adding secrets:
 ## Existing Secrets
 
 You already have the following secrets configured (don't touch them):
-- `VM_CORE_HOST` - VM host for core services
-- `VM_PARSERS_HOST` - VM host for parsers
-- `SSH_PRIVATE_KEY` - SSH key for VM connection
+- `VM_CORE_HOST` - VM host for core services (IP or hostname)
+- `VM_PARSERS_HOST` - VM host for parsers (IP or hostname)
+- `VM_USER` - SSH user (e.g. `nphne-tuxzcf6w` for Yandex Cloud); default `vodeneevm` if not set
+- `SSH_PRIVATE_KEY` - SSH private key for parsers VM (full PEM body, including `-----BEGIN ...-----`)
+- `SSH_PRIVATE_KEY_CORE` - (optional) SSH private key for core VM; if not set, `SSH_PRIVATE_KEY` is used for both
 - `GHCR_TOKEN` - token for GitHub Container Registry
 - `GHCR_USERNAME` - username for GHCR (optional)
 

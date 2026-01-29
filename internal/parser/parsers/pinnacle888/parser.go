@@ -372,7 +372,7 @@ func (p *Parser) processLiveMatches(ctx context.Context) ([]*models.Match, error
 		return nil, fmt.Errorf("parse odds response: %w", err)
 	}
 
-	slog.Info("Found live matches", "count", len(matches))
+	slog.Info(fmt.Sprintf("Pinnacle888: Found live matches %d", len(matches)))
 	return matches, nil
 }
 
@@ -396,7 +396,7 @@ func (p *Parser) processLineMatches(ctx context.Context) ([]*models.Match, error
 		return nil, fmt.Errorf("parse odds response: %w", err)
 	}
 
-	slog.Info("Found pre-match matches", "count", len(matches))
+	slog.Info(fmt.Sprintf("Pinnacle888: Found pre-match matches %d", len(matches)))
 	return matches, nil
 }
 

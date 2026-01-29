@@ -139,7 +139,7 @@ func (p *BatchProcessor) ProcessSportEvents(sport string) error {
 	groupDuration := time.Since(groupStart)
 	slog.Debug("Event grouping completed", "duration", groupDuration)
 
-	slog.Debug("Found main matches", "count", len(eventsByMatch))
+	slog.Info(fmt.Sprintf("Fonbet: Found main matches %d", len(eventsByMatch)))
 
 	// Process matches in batches with parallel workers
 	processStart := time.Now()
@@ -161,7 +161,7 @@ func (p *BatchProcessor) ProcessSportEvents(sport string) error {
 		totalOutcomes,
 	)
 
-	slog.Info("Successfully processed matches", "sport", sport, "count", processedCount)
+	slog.Info(fmt.Sprintf("Fonbet: Successfully processed matches %d (%s)", processedCount, sport))
 	slog.Debug("Total timing", "fetch", fetchDuration, "parse", parseDuration, "group", groupDuration, "process", processDuration, "total", totalDuration)
 	slog.Debug("Stats", "events", totalEvents, "outcomes", totalOutcomes)
 

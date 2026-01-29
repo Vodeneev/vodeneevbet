@@ -66,7 +66,7 @@ func (p *OptimizedEventProcessor) ProcessSportEvents(sport string) error {
 	groupDuration := time.Since(groupStart)
 	slog.Debug("Event grouping completed", "duration", groupDuration)
 
-	slog.Debug("Found main matches", "count", len(eventsByMatch))
+	slog.Info(fmt.Sprintf("Fonbet: Found main matches %d", len(eventsByMatch)))
 
 	// Process each match with all its events and factors
 	processStart := time.Now()
@@ -110,7 +110,7 @@ func (p *OptimizedEventProcessor) ProcessSportEvents(sport string) error {
 	processDuration := time.Since(processStart)
 
 	totalDuration := time.Since(startTime)
-	slog.Info("Successfully processed matches", "sport", sport, "count", processedCount)
+	slog.Info(fmt.Sprintf("Fonbet: Successfully processed matches %d (%s)", processedCount, sport))
 	slog.Debug("Total timing", "fetch", fetchDuration, "parse", parseDuration, "group", groupDuration, "process", processDuration, "total", totalDuration)
 
 	return nil

@@ -234,7 +234,7 @@ func runParsers(ctx context.Context, ps []parsers.Parser, appConfig *pkgconfig.C
 	// Start periodic background parsing
 	parseInterval := appConfig.Parser.Interval
 	if parseInterval <= 0 {
-		parseInterval = 10 * time.Second
+		parseInterval = 2 * time.Minute
 		slog.Info("parser.interval not set, using default", "interval", parseInterval)
 	} else {
 		slog.Info("Starting periodic parsing", "interval", parseInterval)

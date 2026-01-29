@@ -4,7 +4,7 @@ The automatic deployment system ensures that the latest version of services is a
 
 ## Deployment Architecture
 
-- **vm-parsers** (158.160.221.249): Runs Parser Service
+- **vm-parsers** (158.160.168.187): Runs Parser Service
 - **vm-core-services** (158.160.200.253): Runs Calculator Service
 
 ## Quick Start
@@ -101,6 +101,15 @@ make stop-all
 make start-all
 ```
 
+### Avoid disk full on parser VM
+
+The parser (especially Pinnacle888 with leagues flow) can produce a lot of logs and use `/tmp` (e.g. Chrome for mirror resolution). To avoid filling the disk:
+
+1. **Docker log rotation** — `deploy/vm-parsers/docker-compose.yml` sets `logging.driver: json-file` with `max-size: 50m`, `max-file: 3` so container logs are rotated.
+2. **Parser code** — Only one Pinnacle888 run executes at a time (mutex), and Chrome uses a single `/tmp/pinnacle888_chrome` dir that is cleaned before each run.
+
+If the disk still fills, increase free space or reduce `parser.interval` in config so runs complete before the next tick.
+
 ## Requirements
 
 ### On Remote Machines Must Be Installed:
@@ -161,7 +170,7 @@ Workflow `.github/workflows/deploy.yml`:
 **Solution:**
 1. Check SSH connection: `ssh vm-parsers`
 2. Make sure SSH config is set up correctly
-3. Check port 22 availability: `Test-NetConnection -ComputerName 158.160.221.249 -Port 22`
+3. Check port 22 availability: `Test-NetConnection -ComputerName 158.160.168.187 -Port 22`
 
 ### Problem: "Permission denied"
 

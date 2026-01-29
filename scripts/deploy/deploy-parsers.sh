@@ -12,7 +12,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 cd "$PROJECT_ROOT"
 
-VM_HOST="${VM_HOST:-158.160.197.172}"
+VM_HOST="${VM_HOST:-158.160.168.187}"
 VM_USER="${VM_USER:-vodeneevm}"
 REMOTE_DIR="${REMOTE_DIR:-/opt/vodeneevbet/parsers}"
 

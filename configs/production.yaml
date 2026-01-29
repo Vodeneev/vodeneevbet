@@ -5,7 +5,7 @@ parser:
   
   user_agent: "ValueBetBot/1.0 (https://github.com/Vodeneev/vodeneevbet)"
   timeout: 120s
-  interval: 10s  # Periodic parsing interval (default: 10s if not specified)
+  interval: 2m   # Periodic parsing interval (default: 2m if not specified)
   headers:
     "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8"
     "Accept-Language": "ru-RU,ru;q=0.9,en;q=0.8"
@@ -63,7 +63,7 @@ health:
 
 value_calculator:
   # Data source: use parser's /matches endpoint
-  parser_url: "http://158.160.221.249/parser"  # URL to parser service (e.g. "http://parser:8080" in Docker)
+  parser_url: "http://158.160.168.187/parser"  # URL to parser service (e.g. "http://parser:8080" in Docker)
   
   # Filters for parsers
   sports: ["football"]             # Sports to parse (used by parsers, not calculator)

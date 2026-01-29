@@ -6,6 +6,12 @@ services:
     image: ghcr.io/${IMAGE_OWNER}/vodeneevbet-parser:${IMAGE_TAG}
     container_name: vodeneevbet-parser
     restart: unless-stopped
+    # Limit container log size so stdout/stderr don't fill disk (e.g. on small VMs)
+    logging:
+      driver: json-file
+      options:
+        max-size: "50m"
+        max-file: "3"
     # Run both parsers (enabled_parsers in production.yaml: ["fonbet", "pinnacle"])
     command: ["-config", "/app/configs/production.yaml"]
     expose:

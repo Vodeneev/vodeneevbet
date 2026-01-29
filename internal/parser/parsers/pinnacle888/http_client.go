@@ -20,6 +20,9 @@ import (
 	"github.com/chromedp/chromedp"
 )
 
+// Single Chrome user data dir to avoid accumulating temp dirs (each ~20MB+), which can fill disk on small VMs.
+const pinnacle888ChromeUserDataDir = "/tmp/pinnacle888_chrome"
+
 type Client struct {
 	baseURL           string
 	mirrorURL         string // Mirror URL to resolve actual baseURL
@@ -148,16 +151,20 @@ func resolveMirror(mirrorURL string, timeout time.Duration) (string, error) {
 
 // resolveMirrorWithJS uses headless browser to execute JavaScript and get final URL
 func resolveMirrorWithJS(mirrorURL string, timeout time.Duration) (string, error) {
+	// Reuse single dir and clean before use to avoid filling disk with Chrome temp dirs
+	_ = os.RemoveAll(pinnacle888ChromeUserDataDir)
+
 	// Create context with timeout
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 
-	// Create chromedp context
+	// Create chromedp context (fixed UserDataDir to avoid new temp dir per run)
 	opts := append(chromedp.DefaultExecAllocatorOptions[:],
 		chromedp.Flag("headless", true),
 		chromedp.Flag("disable-gpu", true),
 		chromedp.Flag("disable-dev-shm-usage", true),
 		chromedp.Flag("no-sandbox", true),
+		chromedp.UserDataDir(pinnacle888ChromeUserDataDir),
 		chromedp.UserAgent("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36"),
 	)
 
@@ -246,6 +253,9 @@ func getFinalDomainFromResolved(resolvedURL string, timeout time.Duration) (stri
 		}
 	}
 
+	// Reuse single dir and clean before use to avoid filling disk with Chrome temp dirs
+	_ = os.RemoveAll(pinnacle888ChromeUserDataDir)
+
 	// If it's an IP address, try JavaScript resolution to get final URL after all redirects
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
@@ -255,6 +265,7 @@ func getFinalDomainFromResolved(resolvedURL string, timeout time.Duration) (stri
 		chromedp.Flag("disable-gpu", true),
 		chromedp.Flag("disable-dev-shm-usage", true),
 		chromedp.Flag("no-sandbox", true),
+		chromedp.UserDataDir(pinnacle888ChromeUserDataDir),
 		chromedp.UserAgent("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36"),
 	)
 

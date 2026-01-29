@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
-	"os"
 	"sort"
 	"strconv"
 	"strings"
@@ -18,30 +17,7 @@ import (
 	"github.com/Vodeneev/vodeneevbet/internal/pkg/models"
 )
 
-var (
-	logFileMu sync.Mutex
-	logFile   *os.File
-)
-
-func init() {
-	// Open log file for writing (append mode)
-	var err error
-	logFile, err = os.OpenFile("/tmp/pinnacle888_parser.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
-	if err != nil {
-		// If we can't open log file, just continue without file logging
-		logFile = nil
-	}
-}
-
-func logToFile(msg string) {
-	if logFile == nil {
-		return
-	}
-	logFileMu.Lock()
-	defer logFileMu.Unlock()
-	_, _ = logFile.WriteString(fmt.Sprintf("[%s] %s", time.Now().Format(time.RFC3339), msg))
-	_ = logFile.Sync()
-}
+var runOnceMu sync.Mutex
 
 type Parser struct {
 	cfg     *config.Config
@@ -68,8 +44,15 @@ func NewParser(cfg *config.Config) *Parser {
 	}
 }
 
-// runOnce performs a single parsing run
+// runOnce performs a single parsing run. Only one run executes at a time to avoid
+// overlapping runs (periodic tick every 10s can start a new run before previous finishes),
+// which would spawn thousands of goroutines and fill disk (logs, Chrome temp dirs).
 func (p *Parser) runOnce(ctx context.Context) error {
+	runOnceMu.Lock()
+	defer runOnceMu.Unlock()
+	start := time.Now()
+	defer func() { slog.Info("Pinnacle888: runOnce finished", "duration", time.Since(start)) }()
+
 	// If matchup_ids are provided, run targeted mode.
 	if len(p.cfg.Parser.Pinnacle888.MatchupIDs) > 0 {
 		for _, matchupID := range p.cfg.Parser.Pinnacle888.MatchupIDs {
@@ -269,7 +252,7 @@ func (p *Parser) processAll(ctx context.Context) error {
 				if !st.After(now) {
 					// Live match - include only if configured
 					if !p.cfg.Parser.Pinnacle888.IncludeLive {
-						logToFile(fmt.Sprintf("Filtered live match: %d (start: %s, now: %s)\n", mu.ID, st.Format(time.RFC3339), now.Format(time.RFC3339)))
+						slog.Debug("Pinnacle888: filtered live match", "matchup_id", mu.ID, "start", st.Format(time.RFC3339), "now", now.Format(time.RFC3339))
 						filteredByTime++
 						continue
 					}
@@ -343,7 +326,7 @@ func (p *Parser) processAll(ctx context.Context) error {
 					// Match has already started
 					if !p.cfg.Parser.Pinnacle888.IncludeLive {
 						// Skip live match
-						logToFile(fmt.Sprintf("Double-check filtered live match: %s (start: %s, now: %s)\n", m.ID, matchStartTime.Format(time.RFC3339), checkNow.Format(time.RFC3339)))
+						slog.Debug("Pinnacle888: double-check filtered live match", "match_id", m.ID, "start", matchStartTime.Format(time.RFC3339), "now", checkNow.Format(time.RFC3339))
 						continue
 					}
 					// Include live match

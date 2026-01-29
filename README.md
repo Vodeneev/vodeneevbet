@@ -386,7 +386,7 @@ make deploy-all
 
 ### Архитектура деплоя
 
-- **vm-parsers** (158.160.221.249): Parser Service
+- **vm-parsers** (158.160.168.187): Parser Service
 - **vm-core-services** (158.160.200.253): Calculator Service
 
 ### Управление сервисами

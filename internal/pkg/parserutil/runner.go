@@ -2,7 +2,7 @@ package parserutil
 
 import (
 	"context"
-	"log"
+	"log/slog"
 	"sync"
 
 	"github.com/Vodeneev/vodeneevbet/internal/pkg/interfaces"
@@ -39,7 +39,7 @@ func RunParsers(ctx context.Context, parsers []interfaces.Parser, parserFunc Par
 	onError := opts.OnError
 	if onError == nil {
 		onError = func(p interfaces.Parser, err error) {
-			log.Printf("%s parser failed: %v", p.GetName(), err)
+			slog.Error("Parser failed", "parser", p.GetName(), "error", err)
 		}
 	}
 
@@ -51,7 +51,7 @@ func RunParsers(ctx context.Context, parsers []interfaces.Parser, parserFunc Par
 			defer wg.Done()
 
 			if opts.LogStart {
-				log.Printf("Starting %s parser...", p.GetName())
+				slog.Info("Starting parser", "parser", p.GetName())
 			}
 
 			err := parserFunc(ctx, p)

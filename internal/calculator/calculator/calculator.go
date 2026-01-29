@@ -3,7 +3,7 @@ package calculator
 import (
 	"context"
 	"fmt"
-	"log"
+	"log/slog"
 	"math"
 	"sync"
 	"time"
@@ -55,7 +55,7 @@ func (c *ValueCalculator) Start(ctx context.Context) error {
 
 		c.StartAsync()
 	} else {
-		log.Println("calculator: async processing disabled, running in on-demand mode")
+		slog.Info("Async processing disabled, running in on-demand mode")
 	}
 
 	// Wait for context cancellation
@@ -77,7 +77,7 @@ func (c *ValueCalculator) StartAsync() error {
 
 	// If already running, don't restart
 	if c.asyncTicker != nil && !c.asyncStopped {
-		log.Println("calculator: async processing is already running")
+		slog.Info("Async processing is already running")
 		return nil
 	}
 
@@ -92,7 +92,7 @@ func (c *ValueCalculator) StartAsync() error {
 	interval, err := time.ParseDuration(c.cfg.AsyncInterval)
 	if err != nil {
 		interval = 30 * time.Second // Default to 30 seconds
-		log.Printf("calculator: invalid async_interval, using default 30s")
+		slog.Warn("Invalid async_interval, using default 30s")
 	}
 
 	// Reset stopped flag and create new ticker
@@ -102,7 +102,7 @@ func (c *ValueCalculator) StartAsync() error {
 	}
 	c.asyncTicker = time.NewTicker(interval)
 
-	log.Printf("calculator: starting async processing with interval %v", interval)
+	slog.Info("Starting async processing", "interval", interval)
 	go c.runAsyncProcessing(c.asyncCtx)
 
 	return nil
@@ -120,13 +120,13 @@ func (c *ValueCalculator) runAsyncProcessing(ctx context.Context) {
 		c.asyncMu.RUnlock()
 
 		if stopped {
-			log.Println("calculator: async processing stopped by user")
+			slog.Info("Async processing stopped by user")
 			return
 		}
 
 		select {
 		case <-ctx.Done():
-			log.Println("calculator: stopping async processing")
+			slog.Info("Stopping async processing")
 			return
 		case <-c.asyncTicker.C:
 			// Check again before processing
@@ -134,7 +134,7 @@ func (c *ValueCalculator) runAsyncProcessing(ctx context.Context) {
 			stopped = c.asyncStopped
 			c.asyncMu.RUnlock()
 			if stopped {
-				log.Println("calculator: async processing stopped by user")
+				slog.Info("Async processing stopped by user")
 				return
 			}
 			c.processMatchesAsync(ctx)
@@ -145,12 +145,12 @@ func (c *ValueCalculator) runAsyncProcessing(ctx context.Context) {
 // processMatchesAsync processes matches asynchronously and sends alerts for new high-value diffs
 func (c *ValueCalculator) processMatchesAsync(ctx context.Context) {
 	if c.httpClient == nil {
-		log.Printf("calculator: async: parser URL not configured, skipping")
+		slog.Debug("Parser URL not configured, skipping async processing")
 		return
 	}
 
 	if c.diffStorage == nil {
-		log.Printf("calculator: async: diff storage not configured, skipping")
+		slog.Debug("Diff storage not configured, skipping async processing")
 		return
 	}
 
@@ -168,7 +168,7 @@ func (c *ValueCalculator) processMatchesAsync(ctx context.Context) {
 		}
 	}
 
-	log.Println("calculator: async: fetching matches...")
+	slog.Debug("Fetching matches for async processing...")
 
 	// Create context with timeout for the request
 	reqCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
@@ -176,16 +176,16 @@ func (c *ValueCalculator) processMatchesAsync(ctx context.Context) {
 
 	matches, err := c.httpClient.GetMatches(reqCtx)
 	if err != nil {
-		log.Printf("calculator: async: failed to fetch matches: %v", err)
+		slog.Error("Failed to fetch matches for async processing", "error", err)
 		return
 	}
 
-	log.Printf("calculator: async: fetched %d matches, calculating diffs...", len(matches))
+	slog.Debug("Fetched matches, calculating diffs", "match_count", len(matches))
 
 	// Calculate all diffs
 	diffs := computeTopDiffs(matches, 1000) // Get more diffs for async processing
 
-	log.Printf("calculator: async: calculated %d diffs, storing and checking for alerts...", len(diffs))
+	slog.Debug("Calculated diffs, storing and checking for alerts", "diff_count", len(diffs))
 
 	// Store diffs and check for new high-value ones
 	alertCount := 0
@@ -208,7 +208,7 @@ func (c *ValueCalculator) processMatchesAsync(ctx context.Context) {
 			// Get the last diff for this match+bet combination (excluding current one)
 			lastDiffPercent, lastCalculatedAt, err := c.diffStorage.GetLastDiffBet(ctx, diff.MatchGroupKey, diff.BetKey, diff.CalculatedAt)
 			if err != nil {
-				log.Printf("calculator: async: failed to get last diff: %v", err)
+				slog.Warn("Failed to get last diff", "error", err)
 				// Continue anyway - better to send duplicate than miss an alert
 				shouldSendAlert = true
 			} else if lastDiffPercent == 0 || lastCalculatedAt.IsZero() {
@@ -218,28 +218,24 @@ func (c *ValueCalculator) processMatchesAsync(ctx context.Context) {
 				// Previous diff was below threshold, so no alert was sent
 				// This is the first time diff exceeds threshold, send alert
 				shouldSendAlert = true
-				log.Printf("calculator: async: diff crossed threshold for %s (%.2f%% -> %.2f%%), sending alert",
-					diff.MatchName, lastDiffPercent, diff.DiffPercent)
+				slog.Info("Diff crossed threshold, sending alert", "match", diff.MatchName, "from", lastDiffPercent, "to", diff.DiffPercent)
 			} else {
 				// Previous diff was also above threshold - check if alert was sent recently
 				timeSinceLastAlert := time.Since(lastCalculatedAt)
 				if timeSinceLastAlert > time.Duration(alertCooldownMinutes)*time.Minute {
 					// Last alert was sent more than cooldown minutes ago, send alert
 					shouldSendAlert = true
-					log.Printf("calculator: async: cooldown expired for %s (%.2f%%), sending alert", diff.MatchName, diff.DiffPercent)
+					slog.Info("Cooldown expired, sending alert", "match", diff.MatchName, "diff_percent", diff.DiffPercent)
 				} else {
 					// Last alert was sent recently - check if diff increased significantly
 					diffIncrease := diff.DiffPercent - lastDiffPercent
 					if diffIncrease >= alertMinIncrease {
 						// Diff increased significantly, send alert again
 						shouldSendAlert = true
-						log.Printf("calculator: async: diff increased significantly for %s (%.2f%% -> %.2f%%, +%.2f%%), sending alert",
-							diff.MatchName, lastDiffPercent, diff.DiffPercent, diffIncrease)
+						slog.Info("Diff increased significantly, sending alert", "match", diff.MatchName, "from", lastDiffPercent, "to", diff.DiffPercent, "increase", diffIncrease)
 					} else {
 						// Diff didn't increase significantly, skip
-						log.Printf("calculator: async: skipping duplicate alert for %s (%.2f%% -> %.2f%%, +%.2f%%) - already sent %.0f minutes ago, increase %.2f%% < %.2f%%",
-							diff.MatchName, lastDiffPercent, diff.DiffPercent, diffIncrease,
-							timeSinceLastAlert.Minutes(), diffIncrease, alertMinIncrease)
+						slog.Debug("Skipping duplicate alert", "match", diff.MatchName, "from", lastDiffPercent, "to", diff.DiffPercent, "increase", diffIncrease, "minutes_since_last", timeSinceLastAlert.Minutes(), "min_increase", alertMinIncrease)
 					}
 				}
 			}
@@ -249,7 +245,7 @@ func (c *ValueCalculator) processMatchesAsync(ctx context.Context) {
 		// We store all diffs, not just ones we alert on
 		_, err := c.diffStorage.StoreDiffBet(ctx, &diff)
 		if err != nil {
-			log.Printf("calculator: async: failed to store diff: %v", err)
+			slog.Error("Failed to store diff", "error", err)
 			// Continue even if storage fails
 		}
 
@@ -257,15 +253,15 @@ func (c *ValueCalculator) processMatchesAsync(ctx context.Context) {
 		if shouldSendAlert {
 			thresholdInt := int(math.Round(alertThreshold))
 			if err := c.notifier.SendDiffAlert(ctx, &diff, thresholdInt); err != nil {
-				log.Printf("calculator: async: failed to send %.0f%% alert: %v", alertThreshold, err)
+				slog.Error("Failed to send alert", "threshold", alertThreshold, "error", err)
 			} else {
 				alertCount++
-				log.Printf("calculator: async: sent %.0f%% alert for %s (%.2f%%)", alertThreshold, diff.MatchName, diff.DiffPercent)
+				slog.Info("Sent alert", "threshold", alertThreshold, "match", diff.MatchName, "diff_percent", diff.DiffPercent)
 			}
 		}
 	}
 
-	log.Printf("calculator: async: processing complete. Sent %d alerts (>%.0f%% threshold)", alertCount, alertThreshold)
+	slog.Info("Async processing complete", "alerts_sent", alertCount, "threshold", alertThreshold)
 }
 
 // StopAsync stops the asynchronous processing
@@ -279,7 +275,7 @@ func (c *ValueCalculator) StopAsync() {
 		if c.asyncCancel != nil {
 			c.asyncCancel()
 		}
-		log.Println("calculator: async processing stopped")
+		slog.Info("Async processing stopped")
 	}
 }
 

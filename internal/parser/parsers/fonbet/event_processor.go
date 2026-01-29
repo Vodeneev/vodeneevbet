@@ -3,6 +3,7 @@ package fonbet
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"strconv"
 	"time"
 
@@ -12,9 +13,9 @@ import (
 
 // EventProcessor handles processing events
 type EventProcessor struct {
-	storage     interfaces.Storage
+	storage      interfaces.Storage
 	eventFetcher interfaces.EventFetcher
-	oddsParser  interfaces.OddsParser
+	oddsParser   interfaces.OddsParser
 	matchBuilder interfaces.MatchBuilder
 }
 
@@ -106,7 +107,7 @@ func (p *EventProcessor) ProcessEvents(events []interface{}) error {
 	for _, event := range events {
 		if err := p.ProcessEvent(event); err != nil {
 			// Log error but continue with other events
-			fmt.Printf("Error processing event: %v\n", err)
+			slog.Error("Error processing event", "error", err)
 			continue
 		}
 	}
@@ -142,7 +143,7 @@ func (p *EventProcessor) ProcessSportEvents(sport string) error {
 
 		// Process the match with all its events
 		if err := p.processMatchWithEvents(mainEvent, statisticalEvents); err != nil {
-			fmt.Printf("Failed to process match %s: %v\n", matchID, err)
+			slog.Error("Failed to process match", "match_id", matchID, "error", err)
 			continue
 		}
 	}
@@ -153,7 +154,7 @@ func (p *EventProcessor) ProcessSportEvents(sport string) error {
 // groupEventsByMatch groups events by their parent match ID
 func (p *EventProcessor) groupEventsByMatch(events []interface{}) map[string][]interface{} {
 	groups := make(map[string][]interface{})
-	
+
 	// First, find all main matches (Level 1)
 	mainMatches := make(map[string]interface{})
 	for _, event := range events {
@@ -161,12 +162,12 @@ func (p *EventProcessor) groupEventsByMatch(events []interface{}) map[string][]i
 			mainMatches[fmt.Sprintf("%d", fonbetEvent.ID)] = event
 		}
 	}
-	
+
 	// Then, for each main match, find all related events
 	for matchID, mainMatch := range mainMatches {
 		// Add the main match itself
 		groups[matchID] = append(groups[matchID], mainMatch)
-		
+
 		// Find all statistical events for this match
 		for _, event := range events {
 			if fonbetEvent, ok := event.(FonbetAPIEvent); ok && fonbetEvent.Level > 1 && fonbetEvent.ParentID > 0 {
@@ -177,7 +178,7 @@ func (p *EventProcessor) groupEventsByMatch(events []interface{}) map[string][]i
 			}
 		}
 	}
-	
+
 	return groups
 }
 
@@ -192,7 +193,7 @@ func (p *EventProcessor) processMatchWithEvents(mainEvent interface{}, statistic
 	// Get factors for main event
 	mainFactors, err := p.getEventFactors(mainFonbetEvent.ID)
 	if err != nil {
-		fmt.Printf("Failed to get factors for main event %d: %v\n", mainFonbetEvent.ID, err)
+		slog.Error("Failed to get factors for main event", "event_id", mainFonbetEvent.ID, "error", err)
 		mainFactors = []FonbetFactor{}
 	}
 
@@ -211,7 +212,7 @@ func (p *EventProcessor) processMatchWithEvents(mainEvent interface{}, statistic
 		return fmt.Errorf("failed to store match: %w", err)
 	}
 
-	fmt.Printf("Successfully stored match %d with %d events\n", mainFonbetEvent.ID, len(match.Events))
+	slog.Debug("Successfully stored match", "match_id", mainFonbetEvent.ID, "event_count", len(match.Events))
 	return nil
 }
 

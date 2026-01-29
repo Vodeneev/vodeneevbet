@@ -2,7 +2,7 @@ package fonbet
 
 import (
 	"context"
-	"fmt"
+	"log/slog"
 
 	"github.com/Vodeneev/vodeneevbet/internal/pkg/config"
 	"github.com/Vodeneev/vodeneevbet/internal/pkg/enums"
@@ -48,12 +48,12 @@ func (p *Parser) runOnce(ctx context.Context) error {
 
 		sport, valid := enums.ParseSport(sportStr)
 		if !valid {
-			fmt.Printf("Unsupported sport: %s\n", sportStr)
+			slog.Warn("Unsupported sport", "sport", sportStr)
 			continue
 		}
 
 		if err := p.eventProcessor.ProcessSportEvents(sportStr); err != nil {
-			fmt.Printf("Failed to parse %s events: %v\n", sport, err)
+			slog.Error("Failed to parse events", "sport", sport, "error", err)
 			continue
 		}
 
@@ -64,7 +64,7 @@ func (p *Parser) runOnce(ctx context.Context) error {
 }
 
 func (p *Parser) Start(ctx context.Context) error {
-	fmt.Println("Starting Fonbet parser (background mode - periodic parsing runs automatically)...")
+	slog.Info("Starting Fonbet parser (background mode - periodic parsing runs automatically)...")
 
 	// Run once at startup to have initial data
 	if err := p.runOnce(ctx); err != nil {
@@ -74,7 +74,7 @@ func (p *Parser) Start(ctx context.Context) error {
 	<-ctx.Done()
 
 	// Print final summary before shutdown
-	fmt.Println("\n📊 Final Performance Summary:")
+	slog.Info("Final Performance Summary")
 	performance.GetTracker().PrintSummary()
 	return nil
 }
@@ -85,7 +85,7 @@ func (p *Parser) ParseOnce(ctx context.Context) error {
 }
 
 func (p *Parser) Stop() error {
-	fmt.Println("Stopping Fonbet parser...")
+	slog.Info("Stopping Fonbet parser...")
 	return nil
 }
 

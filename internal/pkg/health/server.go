@@ -3,8 +3,9 @@ package health
 import (
 	"context"
 	"fmt"
-	"log"
+	"log/slog"
 	"net/http"
+	"os"
 	"time"
 
 	"github.com/Vodeneev/vodeneevbet/internal/pkg/health/handlers"
@@ -37,7 +38,8 @@ func Run(ctx context.Context, addr string, service string, storage interfaces.St
 	mux.HandleFunc("/parse", handlers.HandleParse)
 
 	if readHeaderTimeout <= 0 {
-		log.Fatalf("health: read_header_timeout must be specified in config")
+		slog.Error("read_header_timeout must be specified in config")
+		os.Exit(1)
 	}
 
 	srv := &http.Server{
@@ -54,16 +56,17 @@ func Run(ctx context.Context, addr string, service string, storage interfaces.St
 	}()
 
 	go func() {
-		log.Printf("%s: health server listening on %s", service, addr)
+		slog.Info("Health server listening", "service", service, "addr", addr)
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			log.Printf("%s: health server error: %v", service, err)
+			slog.Error("Health server error", "service", service, "error", err)
 		}
 	}()
 }
 
 func AddrFor(port int) string {
 	if port <= 0 {
-		log.Fatalf("health: port must be greater than 0")
+		slog.Error("port must be greater than 0")
+		os.Exit(1)
 	}
 	return fmt.Sprintf(":%d", port)
 }

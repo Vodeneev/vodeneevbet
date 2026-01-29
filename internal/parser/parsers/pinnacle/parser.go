@@ -3,6 +3,7 @@ package pinnacle
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"os"
 	"sort"
 	"strconv"
@@ -75,7 +76,7 @@ func (p *Parser) runOnce(ctx context.Context) error {
 			default:
 			}
 			if err := p.processMatchup(ctx, matchupID); err != nil {
-				fmt.Printf("Pinnacle: failed to process matchup %d: %v\n", matchupID, err)
+				slog.Error("Failed to process matchup", "matchup_id", matchupID, "error", err)
 			}
 		}
 		return nil
@@ -83,14 +84,14 @@ func (p *Parser) runOnce(ctx context.Context) error {
 
 	// Otherwise, discover and process all matchups for relevant sports.
 	if err := p.processAll(ctx); err != nil {
-		fmt.Printf("Pinnacle: failed to process all matchups: %v\n", err)
+		slog.Error("Failed to process all matchups", "error", err)
 		return err
 	}
 	return nil
 }
 
 func (p *Parser) Start(ctx context.Context) error {
-	fmt.Println("Starting Pinnacle parser (background mode - periodic parsing runs automatically)...")
+	slog.Info("Starting Pinnacle parser (background mode - periodic parsing runs automatically)...")
 
 	// Run once at startup to have initial data
 	if err := p.runOnce(ctx); err != nil {
@@ -627,13 +628,13 @@ func logRelatedMapping(matchupID int64, related []RelatedMatchup) {
 	if len(rows) == 0 {
 		return
 	}
-	fmt.Printf("Pinnacle: related mapping for main matchup=%d (showing %d related)\n", matchupID, len(rows))
+	slog.Debug("Related mapping", "main_matchup", matchupID, "related_count", len(rows))
 	for _, it := range rows {
 		pid := "nil"
 		if it.parentID != nil {
 			pid = strconv.FormatInt(*it.parentID, 10)
 		}
-		fmt.Printf("  - related matchup=%d parentId=%s units=%q league=%q => %s\n", it.id, pid, it.units, it.league, it.mapped)
+		slog.Debug("Related matchup", "matchup_id", it.id, "parent_id", pid, "units", it.units, "league", it.league, "mapped", it.mapped)
 	}
 }
 

@@ -217,7 +217,7 @@ func NewYandexLoggingHandler(config YandexLoggingConfig) (*YandexLoggingHandler,
 		listResp, err := logGroupClient.List(ctx, listReq)
 		if err != nil {
 			// Если не удалось получить список групп, логируем ошибку, но продолжаем
-			fmt.Fprintf(os.Stderr, "Warning: failed to list log groups: %v\n", err)
+			slog.Default().Warn("Failed to list log groups", "error", err)
 		} else {
 			// Ищем группу с нужным именем
 			found := false
@@ -225,19 +225,16 @@ func NewYandexLoggingHandler(config YandexLoggingConfig) (*YandexLoggingHandler,
 				if group.Name == config.GroupName {
 					groupID = group.Id
 					found = true
-					fmt.Fprintf(os.Stderr, "Found log group '%s' with ID: %s\n", config.GroupName, groupID)
+					slog.Default().Info("Found log group", "name", config.GroupName, "id", groupID)
 					break
 				}
 			}
 			if !found {
-				fmt.Fprintf(os.Stderr, "Warning: log group '%s' not found in folder %s. Available groups: ", config.GroupName, config.FolderID)
+				availableGroups := make([]string, len(listResp.Groups))
 				for i, group := range listResp.Groups {
-					if i > 0 {
-						fmt.Fprintf(os.Stderr, ", ")
-					}
-					fmt.Fprintf(os.Stderr, "%s", group.Name)
+					availableGroups[i] = group.Name
 				}
-				fmt.Fprintf(os.Stderr, "\n")
+				slog.Default().Warn("Log group not found", "name", config.GroupName, "folder_id", config.FolderID, "available_groups", availableGroups)
 			}
 		}
 	}
@@ -246,14 +243,14 @@ func NewYandexLoggingHandler(config YandexLoggingConfig) (*YandexLoggingHandler,
 		destination.Destination = &logging.Destination_LogGroupId{
 			LogGroupId: groupID,
 		}
-		fmt.Fprintf(os.Stderr, "Using log group ID: %s\n", groupID)
+		slog.Default().Info("Using log group ID", "id", groupID)
 	} else if config.FolderID != "" {
 		// Если не удалось найти группу, используем folder_id как fallback
 		// Но это может не работать, если в каталоге несколько групп
 		destination.Destination = &logging.Destination_FolderId{
 			FolderId: config.FolderID,
 		}
-		fmt.Fprintf(os.Stderr, "Warning: using folder_id as destination (log group not found by name). This may cause Permission Denied if multiple groups exist.\n")
+		slog.Default().Warn("Using folder_id as destination (log group not found by name). This may cause Permission Denied if multiple groups exist.")
 	} else {
 		return nil, fmt.Errorf("either group_id, group_name with folder_id, or folder_id must be specified")
 	}
@@ -370,8 +367,8 @@ func (h *YandexLoggingHandler) flush() {
 	h.bufferMutex.Unlock()
 
 	if err := h.sendLogs(entries); err != nil {
-		// Логируем ошибку в stderr, чтобы не создавать цикл
-		fmt.Fprintf(os.Stderr, "Failed to send logs to Yandex Cloud Logging: %v\n", err)
+		// Логируем ошибку через default logger, чтобы не создавать цикл
+		slog.Default().Error("Failed to send logs to Yandex Cloud Logging", "error", err)
 	}
 }
 

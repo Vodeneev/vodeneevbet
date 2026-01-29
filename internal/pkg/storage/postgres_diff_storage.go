@@ -4,14 +4,14 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"log"
+	"log/slog"
 	"reflect"
 	"regexp"
 	"strings"
 	"time"
 
-	_ "github.com/lib/pq"
 	"github.com/Vodeneev/vodeneevbet/internal/pkg/config"
+	_ "github.com/lib/pq"
 )
 
 // Ensure PostgresDiffStorage implements DiffBetStorage
@@ -27,7 +27,7 @@ type PostgresDiffStorage struct {
 func parseDSNForMultipleHosts(dsn string) (string, error) {
 	// Check if DSN contains multiple hosts (comma-separated)
 	// Format: host=host1,host2 port=... or host=host1,host2,host3 port=...
-	
+
 	// Simple regex to find host parameter
 	hostPattern := `host=([^ ]+)`
 	re := regexp.MustCompile(hostPattern)
@@ -35,15 +35,15 @@ func parseDSNForMultipleHosts(dsn string) (string, error) {
 	if len(matches) < 2 {
 		return dsn, nil // No host parameter found, return as is
 	}
-	
+
 	hostsStr := matches[1]
 	hosts := strings.Split(hostsStr, ",")
-	
+
 	// If only one host, return DSN as is
 	if len(hosts) <= 1 {
 		return dsn, nil
 	}
-	
+
 	// Multiple hosts found - try each one
 	var lastErr error
 	for _, host := range hosts {
@@ -51,31 +51,31 @@ func parseDSNForMultipleHosts(dsn string) (string, error) {
 		if host == "" {
 			continue
 		}
-		
+
 		// Replace host parameter with single host
 		singleHostDSN := re.ReplaceAllString(dsn, fmt.Sprintf("host=%s", host))
-		
+
 		// Try to connect
 		db, err := sql.Open("postgres", singleHostDSN)
 		if err != nil {
 			lastErr = fmt.Errorf("failed to open connection to %s: %w", host, err)
 			continue
 		}
-		
+
 		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 		err = db.PingContext(ctx)
 		cancel()
 		db.Close()
-		
+
 		if err == nil {
 			// This host works, return DSN with this host
-			log.Printf("PostgreSQL: successfully connected to host %s", host)
+			slog.Info("Successfully connected to PostgreSQL host", "host", host)
 			return singleHostDSN, nil
 		}
-		
+
 		lastErr = fmt.Errorf("failed to ping %s: %w", host, err)
 	}
-	
+
 	// All hosts failed
 	return "", fmt.Errorf("failed to connect to any PostgreSQL host: %w", lastErr)
 }
@@ -105,13 +105,13 @@ func NewPostgresDiffStorage(cfg *config.PostgresConfig) (*PostgresDiffStorage, e
 	}
 
 	storage := &PostgresDiffStorage{db: db}
-	
+
 	// Initialize schema
 	if err := storage.initSchema(ctx); err != nil {
 		return nil, fmt.Errorf("failed to initialize schema: %w", err)
 	}
 
-	log.Println("PostgreSQL diff storage initialized successfully")
+	slog.Info("PostgreSQL diff storage initialized successfully")
 	return storage, nil
 }
 
@@ -178,14 +178,14 @@ func extractDiffBetFields(diffInterface interface{}) (matchGroupKey, matchName, 
 	maxOdd = getField("MaxOdd").Float()
 	diffAbs = getField("DiffAbs").Float()
 	diffPercent = getField("DiffPercent").Float()
-	
+
 	startTimeVal := getField("StartTime")
 	if startTimeVal.IsValid() && startTimeVal.CanInterface() {
 		if t, ok := startTimeVal.Interface().(time.Time); ok {
 			startTime = t
 		}
 	}
-	
+
 	calculatedAtVal := getField("CalculatedAt")
 	if calculatedAtVal.IsValid() && calculatedAtVal.CanInterface() {
 		if t, ok := calculatedAtVal.Interface().(time.Time); ok {
@@ -260,7 +260,7 @@ func (s *PostgresDiffStorage) IsNewDiffBet(ctx context.Context, diffInterface in
 	  AND bet_key = $2
 	  AND calculated_at > NOW() - INTERVAL '%d minutes'
 	`
-	
+
 	var count int
 	err = s.db.QueryRowContext(ctx, fmt.Sprintf(query, withinMinutes),
 		matchGroupKey,
@@ -302,7 +302,7 @@ func (s *PostgresDiffStorage) GetRecentDiffBets(ctx context.Context, withinMinut
 		var startTime, calculatedAt time.Time
 		var bookmakers int
 		var minOdd, maxOdd, diffAbs, diffPercent float64
-		
+
 		err := rows.Scan(
 			&matchGroupKey,
 			&matchName,
@@ -324,25 +324,25 @@ func (s *PostgresDiffStorage) GetRecentDiffBets(ctx context.Context, withinMinut
 		if err != nil {
 			return nil, fmt.Errorf("failed to scan diff bet: %w", err)
 		}
-		
+
 		// Return as map for now - caller can convert
 		diffMap := map[string]interface{}{
 			"match_group_key": matchGroupKey,
 			"match_name":      matchName,
-			"start_time":       startTime,
-			"sport":            sport,
-			"event_type":       eventType,
-			"outcome_type":     outcomeType,
-			"parameter":        parameter,
-			"bet_key":          betKey,
-			"bookmakers":       bookmakers,
-			"min_bookmaker":    minBookmaker,
-			"min_odd":          minOdd,
-			"max_bookmaker":    maxBookmaker,
-			"max_odd":          maxOdd,
-			"diff_abs":         diffAbs,
-			"diff_percent":     diffPercent,
-			"calculated_at":    calculatedAt,
+			"start_time":      startTime,
+			"sport":           sport,
+			"event_type":      eventType,
+			"outcome_type":    outcomeType,
+			"parameter":       parameter,
+			"bet_key":         betKey,
+			"bookmakers":      bookmakers,
+			"min_bookmaker":   minBookmaker,
+			"min_odd":         minOdd,
+			"max_bookmaker":   maxBookmaker,
+			"max_odd":         maxOdd,
+			"diff_abs":        diffAbs,
+			"diff_percent":    diffPercent,
+			"calculated_at":   calculatedAt,
 		}
 		diffs = append(diffs, diffMap)
 	}
@@ -362,7 +362,7 @@ func (s *PostgresDiffStorage) GetLastDiffBet(ctx context.Context, matchGroupKey,
 	var err error
 	var diffPercent float64
 	var calculatedAt time.Time
-	
+
 	if excludeCalculatedAt.IsZero() {
 		// No exclusion - get the most recent
 		query = `
@@ -385,7 +385,7 @@ func (s *PostgresDiffStorage) GetLastDiffBet(ctx context.Context, matchGroupKey,
 		`
 		err = s.db.QueryRowContext(ctx, query, matchGroupKey, betKey, excludeCalculatedAt).Scan(&diffPercent, &calculatedAt)
 	}
-	
+
 	if err == sql.ErrNoRows {
 		// No previous diff found - this is a new diff
 		return 0, time.Time{}, nil
@@ -393,7 +393,7 @@ func (s *PostgresDiffStorage) GetLastDiffBet(ctx context.Context, matchGroupKey,
 	if err != nil {
 		return 0, time.Time{}, fmt.Errorf("failed to get last diff bet: %w", err)
 	}
-	
+
 	return diffPercent, calculatedAt, nil
 }
 
@@ -404,7 +404,7 @@ func (s *PostgresDiffStorage) CleanDiffBets(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("failed to clean diff_bets table: %w", err)
 	}
-	log.Println("PostgreSQL: cleaned diff_bets table")
+	slog.Info("Cleaned diff_bets table")
 	return nil
 }
 

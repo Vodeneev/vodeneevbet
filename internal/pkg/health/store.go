@@ -1,7 +1,7 @@
 package health
 
 import (
-	"log"
+	"log/slog"
 	"sort"
 	"sync"
 
@@ -83,8 +83,7 @@ func AddMatch(match *models.Match) {
 		}
 
 		if addedCount > 0 || updatedCount > 0 {
-			log.Printf("✅ Updated match %s: added %d events, updated %d outcomes from %v",
-				match.ID, addedCount, updatedCount, bookmakerList)
+			slog.Debug("Updated match", "match_id", match.ID, "added_events", addedCount, "updated_outcomes", updatedCount, "bookmakers", bookmakerList)
 		}
 
 		// Update metadata
@@ -105,8 +104,7 @@ func AddMatch(match *models.Match) {
 		copy(eventsCopy, match.Events)
 		matchCopy.Events = eventsCopy
 		globalMatchStore.matches[match.ID] = &matchCopy
-		log.Printf("✅ Added new match %s from %v with %d events",
-			match.ID, bookmakerList, len(match.Events))
+		slog.Debug("Added new match", "match_id", match.ID, "bookmakers", bookmakerList, "event_count", len(match.Events))
 	}
 }
 

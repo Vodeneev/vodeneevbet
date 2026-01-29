@@ -3,8 +3,6 @@ package main
 import (
 	"context"
 	"flag"
-	"fmt"
-	"log"
 	"log/slog"
 	"net/http"
 	"os"
@@ -24,7 +22,7 @@ const (
 )
 
 func main() {
-	fmt.Println("Starting Value Bet Calculator...")
+	slog.Info("Starting Value Bet Calculator...")
 
 	var configPath string
 	var healthAddr string
@@ -38,40 +36,38 @@ func main() {
 	flag.StringVar(&healthAddr, "health-addr", ":8080", "Health server listen address (e.g. :8080)")
 	flag.Parse()
 
-	fmt.Printf("Loading config from: %s\n", configPath)
+	slog.Info("Loading config", "path", configPath)
 
 	cfg, err := config.Load(configPath)
 	if err != nil {
-		log.Fatalf("Failed to load config: %v", err)
+		slog.Error("Failed to load config", "error", err)
+		os.Exit(1)
 	}
 
 	// Настраиваем логирование с поддержкой Yandex Cloud Logging
 	_, err = logging.SetupLogger(&cfg.Logging, "calculator")
 	if err != nil {
-		log.Printf("Warning: failed to setup logging: %v, continuing with default logger", err)
+		slog.Warn("Failed to setup logging, continuing with default logger", "error", err)
 	} else {
 		slog.Info("Logging initialized", "service", "calculator")
 	}
 
-	fmt.Println("Config loaded successfully")
+	slog.Info("Config loaded successfully")
 
 	if cfg.ValueCalculator.ParserURL == "" {
 		slog.Error("parser_url is required in config")
-		log.Fatalf("calculator: parser_url is required in config")
+		os.Exit(1)
 	}
 	slog.Info("Using parser URL", "url", cfg.ValueCalculator.ParserURL)
-	log.Printf("calculator: using parser URL %s", cfg.ValueCalculator.ParserURL)
 
 	if token := os.Getenv("TELEGRAM_BOT_TOKEN"); token != "" {
 		cfg.ValueCalculator.TelegramBotToken = token
 		slog.Info("Using Telegram bot token from environment")
-		log.Println("calculator: using Telegram bot token from environment")
 	}
 	if chatIDStr := os.Getenv("TELEGRAM_CHAT_ID"); chatIDStr != "" {
 		if chatID, err := strconv.ParseInt(chatIDStr, 10, 64); err == nil {
 			cfg.ValueCalculator.TelegramChatID = chatID
 			slog.Info("Using Telegram chat ID from environment", "chat_id", chatID)
-			log.Printf("calculator: using Telegram chat ID from environment: %d", chatID)
 		}
 	}
 
@@ -82,37 +78,39 @@ func main() {
 		postgresDSN := cfg.Postgres.DSN
 		if envDSN := os.Getenv("POSTGRES_DSN"); envDSN != "" {
 			postgresDSN = envDSN
-			log.Println("calculator: using PostgreSQL DSN from POSTGRES_DSN environment variable")
+			slog.Info("Using PostgreSQL DSN from POSTGRES_DSN environment variable")
 		}
 
 		if postgresDSN == "" {
-			log.Fatalf("calculator: postgres DSN is required when async is enabled. Set it in config or POSTGRES_DSN env var")
+			slog.Error("postgres DSN is required when async is enabled. Set it in config or POSTGRES_DSN env var")
+			os.Exit(1)
 		}
 
-		log.Println("calculator: initializing PostgreSQL diff storage...")
+		slog.Info("Initializing PostgreSQL diff storage...")
 		pgConfig := cfg.Postgres
 		pgConfig.DSN = postgresDSN
 		pgStorage, err := storage.NewPostgresDiffStorage(&pgConfig)
 		if err != nil {
-			log.Fatalf("calculator: failed to initialize PostgreSQL storage: %v", err)
+			slog.Error("Failed to initialize PostgreSQL storage", "error", err)
+			os.Exit(1)
 		}
 		diffStorage = pgStorage
 		defer func() {
 			if err := pgStorage.Close(); err != nil {
-				log.Printf("calculator: error closing PostgreSQL storage: %v", err)
+				slog.Error("Error closing PostgreSQL storage", "error", err)
 			}
 		}()
-		log.Println("calculator: PostgreSQL diff storage initialized")
+		slog.Info("PostgreSQL diff storage initialized")
 
 		// Clean diff_bets table on startup to prevent stale data from blocking alerts
-		log.Println("calculator: cleaning diff_bets table on startup...")
+		slog.Info("Cleaning diff_bets table on startup...")
 		cleanCtx, cleanCancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cleanCancel()
 		if err := pgStorage.CleanDiffBets(cleanCtx); err != nil {
-			log.Printf("calculator: warning: failed to clean diff_bets table: %v", err)
+			slog.Warn("Failed to clean diff_bets table", "error", err)
 			// Don't fail startup if cleanup fails, but log warning
 		} else {
-			log.Println("calculator: diff_bets table cleaned successfully")
+			slog.Info("diff_bets table cleaned successfully")
 		}
 	}
 
@@ -127,7 +125,6 @@ func main() {
 	go func() {
 		<-sigChan
 		slog.Info("Received shutdown signal, stopping calculator...")
-		log.Println("Received shutdown signal, stopping calculator...")
 		cancel()
 	}()
 
@@ -156,20 +153,16 @@ func main() {
 	}()
 	go func() {
 		slog.Info("HTTP server listening", "addr", healthAddr)
-		log.Printf("calculator: http server listening on %s", healthAddr)
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			slog.Error("HTTP server error", "error", err)
-			log.Printf("calculator: http server error: %v", err)
 		}
 	}()
 
 	slog.Info("Starting Value Bet Calculator...")
-	log.Println("Starting Value Bet Calculator...")
 	if err := valueCalculator.Start(ctx); err != nil {
 		slog.Error("Calculator failed", "error", err)
-		log.Fatalf("Calculator failed: %v", err)
+		os.Exit(1)
 	}
 
 	slog.Info("Value Bet Calculator stopped")
-	log.Println("Value Bet Calculator stopped")
 }

@@ -4,7 +4,6 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	"log"
 	"log/slog"
 	"os"
 	"os/signal"
@@ -36,15 +35,16 @@ type config struct {
 
 func main() {
 	if err := run(); err != nil {
-		log.Fatalf("Parser failed: %v", err)
+		slog.Error("Parser failed", "error", err)
+		os.Exit(1)
 	}
 }
 
 func run() error {
-	fmt.Println("Starting parser...")
+	slog.Info("Starting parser...")
 
 	cfg := parseFlags()
-	fmt.Printf("Loading config from: %s\n", cfg.configPath)
+	slog.Info("Loading config", "path", cfg.configPath)
 
 	appConfig, err := pkgconfig.Load(cfg.configPath)
 	if err != nil {
@@ -54,12 +54,12 @@ func run() error {
 	// Настраиваем логирование с поддержкой Yandex Cloud Logging
 	_, err = logging.SetupLogger(&appConfig.Logging, "parser")
 	if err != nil {
-		log.Printf("Warning: failed to setup logging: %v, continuing with default logger", err)
+		slog.Warn("Failed to setup logging, continuing with default logger", "error", err)
 	} else {
 		slog.Info("Logging initialized", "service", "parser")
 	}
 
-	fmt.Println("Config loaded successfully")
+	slog.Info("Config loaded successfully")
 
 	// Override enabled_parsers from command line if specified
 	if cfg.parser != "" {
@@ -85,7 +85,7 @@ func run() error {
 	port := appConfig.Health.Port
 	if port <= 0 {
 		slog.Error("health.port must be specified in config")
-		log.Fatalf("parser: health.port must be specified in config")
+		os.Exit(1)
 	}
 	healthAddr := health.AddrFor(port)
 
@@ -98,7 +98,6 @@ func run() error {
 	health.Run(ctx, healthAddr, "parser", nil, appConfig.Health.ReadHeaderTimeout, asyncParsingTimeout)
 
 	slog.Info("Starting parsers...")
-	log.Println("Starting parsers...")
 	return runParsers(ctx, ps, appConfig, asyncParsingTimeout)
 }
 
@@ -183,7 +182,7 @@ func printSelectedParsers(ps []parsers.Parser) {
 		names = append(names, p.GetName())
 	}
 	sort.Strings(names)
-	fmt.Printf("Using parsers: %s\n", strings.Join(names, ", "))
+	slog.Info("Using parsers", "parsers", strings.Join(names, ", "))
 }
 
 func createContext(runFor time.Duration) (context.Context, context.CancelFunc) {
@@ -201,7 +200,6 @@ func setupSignalHandler(ctx context.Context, cancel context.CancelFunc) {
 		select {
 		case sig := <-sigChan:
 			slog.Info("Received shutdown signal, stopping parser...", "signal", sig.String())
-			log.Printf("Received shutdown signal (%s), stopping parser...", sig)
 			cancel()
 		case <-ctx.Done():
 			// Context already cancelled (timeout or parent cancellation)
@@ -223,7 +221,6 @@ func runParsers(ctx context.Context, ps []parsers.Parser, appConfig *pkgconfig.C
 	opts.LogStart = true // Log when parsers start
 	opts.OnError = func(p interfaces.Parser, err error) {
 		slog.Error("Parser failed", "parser", p.GetName(), "error", err)
-		log.Printf("Parser %s failed: %v", p.GetName(), err)
 	}
 	err := parserutil.RunParsers(ctx, interfaceParsers, func(ctx context.Context, p interfaces.Parser) error {
 		return p.Start(ctx)
@@ -231,7 +228,6 @@ func runParsers(ctx context.Context, ps []parsers.Parser, appConfig *pkgconfig.C
 
 	if err != nil {
 		slog.Error("Parser error detected", "error", err)
-		log.Printf("Parser error detected: %v", err)
 		return err
 	}
 
@@ -240,10 +236,8 @@ func runParsers(ctx context.Context, ps []parsers.Parser, appConfig *pkgconfig.C
 	if parseInterval <= 0 {
 		parseInterval = 10 * time.Second
 		slog.Info("parser.interval not set, using default", "interval", parseInterval)
-		log.Printf("parser.interval not set, using default: %v", parseInterval)
 	} else {
 		slog.Info("Starting periodic parsing", "interval", parseInterval)
-		log.Printf("Starting periodic parsing with interval: %v", parseInterval)
 	}
 
 	startPeriodicParsing(ctx, interfaceParsers, parseInterval, asyncParsingTimeout)
@@ -251,7 +245,6 @@ func runParsers(ctx context.Context, ps []parsers.Parser, appConfig *pkgconfig.C
 	// Wait for context cancellation
 	<-ctx.Done()
 	slog.Info("Parser stopped gracefully")
-	log.Println("Parser stopped gracefully")
 	return nil
 }
 
@@ -261,7 +254,6 @@ func startPeriodicParsing(ctx context.Context, parsers []interfaces.Parser, inte
 		opts := parserutil.AsyncRunOptions()
 		opts.OnError = func(p interfaces.Parser, err error) {
 			slog.Error("Periodic parsing failed", "parser", p.GetName(), "error", err)
-			log.Printf("Periodic parsing failed for %s: %v", p.GetName(), err)
 		}
 		return opts
 	}
@@ -275,7 +267,6 @@ func startPeriodicParsing(ctx context.Context, parsers []interfaces.Parser, inte
 			select {
 			case <-ctx.Done():
 				slog.Info("Stopping periodic parsing...")
-				log.Println("Stopping periodic parsing...")
 				return
 			case <-ticker.C:
 				runParsingOnce(parsers, timeout, createAsyncOpts())

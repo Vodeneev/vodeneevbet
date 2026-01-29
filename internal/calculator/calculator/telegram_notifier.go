@@ -3,7 +3,7 @@ package calculator
 import (
 	"context"
 	"fmt"
-	"log"
+	"log/slog"
 	"strings"
 	"time"
 
@@ -20,7 +20,7 @@ type TelegramNotifier struct {
 func NewTelegramNotifier(token string, chatID int64) *TelegramNotifier {
 	bot, err := tgbotapi.NewBotAPI(token)
 	if err != nil {
-		log.Printf("calculator: failed to create telegram bot: %v", err)
+		slog.Error("Failed to create telegram bot", "error", err)
 		return nil
 	}
 
@@ -29,11 +29,11 @@ func NewTelegramNotifier(token string, chatID int64) *TelegramNotifier {
 	// Test bot connection
 	_, err = bot.GetMe()
 	if err != nil {
-		log.Printf("calculator: failed to get bot info: %v", err)
+		slog.Error("Failed to get bot info", "error", err)
 		return nil
 	}
 
-	log.Printf("calculator: telegram notifier initialized for chat %d", chatID)
+	slog.Info("Telegram notifier initialized", "chat_id", chatID)
 
 	return &TelegramNotifier{
 		bot:    bot,

@@ -3,7 +3,7 @@ package handlers
 import (
 	"encoding/json"
 	"fmt"
-	"log"
+	"log/slog"
 	"net/http"
 	"time"
 
@@ -45,7 +45,7 @@ func HandleMatches(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("X-Matches-Count", fmt.Sprintf("%d", matchCount))
 	w.Header().Set("X-Source", "memory")
 
-	log.Printf("✅ Retrieved %d matches from memory in %v", matchCount, duration)
+	slog.Info("Retrieved matches from memory", "count", matchCount, "duration", duration)
 
 	if err := json.NewEncoder(w).Encode(map[string]interface{}{
 		"matches": matches,
@@ -55,7 +55,7 @@ func HandleMatches(w http.ResponseWriter, r *http.Request) {
 			"source":   "memory",
 		},
 	}); err != nil {
-		log.Printf("❌ Failed to encode matches: %v", err)
+		slog.Error("Failed to encode matches", "error", err)
 		http.Error(w, fmt.Sprintf("Failed to encode matches: %v", err), http.StatusInternalServerError)
 		return
 	}

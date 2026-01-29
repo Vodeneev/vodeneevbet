@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"net"
 	"net/http"
 	"net/url"
@@ -83,11 +84,11 @@ func resolveMirror(mirrorURL string, timeout time.Duration) (string, error) {
 				domain = domain[:idx]
 			}
 			if isIPAddress(domain) {
-				fmt.Printf("Pinnacle888: HTTP redirect leads to IP address %s, using JavaScript resolution...\n", domain)
+				slog.Debug("HTTP redirect leads to IP address, using JavaScript resolution", "domain", domain)
 				return resolveMirrorWithJS(mirrorURL, timeout)
 			}
 		}
-		fmt.Printf("Pinnacle888: Resolved mirror %s -> %s (HTTP redirect)\n", mirrorURL, finalURL)
+		slog.Debug("Resolved mirror", "from", mirrorURL, "to", finalURL, "method", "HTTP redirect")
 		return finalURL, nil
 	}
 
@@ -116,11 +117,11 @@ func resolveMirror(mirrorURL string, timeout time.Duration) (string, error) {
 				domain = domain[:idx]
 			}
 			if isIPAddress(domain) {
-				fmt.Printf("Pinnacle888: HTTP redirect leads to IP address %s, using JavaScript resolution...\n", domain)
+				slog.Debug("HTTP redirect leads to IP address, using JavaScript resolution", "domain", domain)
 				return resolveMirrorWithJS(mirrorURL, timeout)
 			}
 		}
-		fmt.Printf("Pinnacle888: Resolved mirror %s -> %s (HTTP redirect)\n", mirrorURL, finalURL)
+		slog.Debug("Resolved mirror", "from", mirrorURL, "to", finalURL, "method", "HTTP redirect")
 		return finalURL, nil
 	}
 
@@ -134,14 +135,14 @@ func resolveMirror(mirrorURL string, timeout time.Duration) (string, error) {
 			// Check if body contains JavaScript that might do redirect
 			if strings.Contains(bodyStr, "<script") || strings.Contains(bodyStr, "window.location") ||
 				strings.Contains(bodyStr, "location.href") || strings.Contains(bodyStr, "document.location") {
-				fmt.Printf("Pinnacle888: Detected JavaScript redirect, using headless browser...\n")
+				slog.Debug("Detected JavaScript redirect, using headless browser")
 				return resolveMirrorWithJS(mirrorURL, timeout)
 			}
 		}
 	}
 
 	// If still same URL, try JavaScript resolution
-	fmt.Printf("Pinnacle888: HTTP redirect didn't work, trying JavaScript resolution...\n")
+	slog.Debug("Pinnacle888: HTTP redirect didn't work, trying JavaScript resolution...\n")
 	return resolveMirrorWithJS(mirrorURL, timeout)
 }
 
@@ -167,7 +168,7 @@ func resolveMirrorWithJS(mirrorURL string, timeout time.Duration) (string, error
 	ctx, cancel = chromedp.NewContext(allocCtx, chromedp.WithLogf(func(format string, v ...interface{}) {
 		// Suppress chromedp logs unless debugging
 		if os.Getenv("PINNACLE888_DEBUG") == "1" {
-			fmt.Printf("chromedp: "+format, v...)
+			slog.Debug("chromedp", "message", fmt.Sprintf(format, v...))
 		}
 	}))
 	defer cancel()
@@ -199,7 +200,7 @@ func resolveMirrorWithJS(mirrorURL string, timeout time.Duration) (string, error
 			finalURL = checkURL
 		}
 
-		fmt.Printf("Pinnacle888: Resolved mirror %s -> %s (JavaScript redirect)\n", mirrorURL, finalURL)
+		slog.Debug("Resolved mirror", "from", mirrorURL, "to", finalURL, "method", "JavaScript redirect")
 		return finalURL, nil
 	}
 
@@ -215,13 +216,13 @@ func resolveMirrorWithJS(mirrorURL string, timeout time.Duration) (string, error
 	}
 
 	if finalURL != "" && finalURL != mirrorURL {
-		fmt.Printf("Pinnacle888: Resolved mirror %s -> %s (JavaScript redirect after wait)\n", mirrorURL, finalURL)
+		slog.Debug("Pinnacle888: Resolved mirror %s -> %s (JavaScript redirect after wait)\n", mirrorURL, finalURL)
 		return finalURL, nil
 	}
 
 	// If still same URL, return it (maybe no redirect needed)
 	if finalURL != "" {
-		fmt.Printf("Pinnacle888: Mirror URL did not redirect: %s\n", finalURL)
+		slog.Debug("Pinnacle888: Mirror URL did not redirect: %s\n", finalURL)
 		return finalURL, nil
 	}
 
@@ -240,7 +241,7 @@ func getFinalDomainFromResolved(resolvedURL string, timeout time.Duration) (stri
 		}
 		// If it's already a domain (not an IP), return it directly
 		if !isIPAddress(domain) {
-			fmt.Printf("Pinnacle888: Resolved URL already contains domain: %s\n", domain)
+			slog.Debug("Pinnacle888: Resolved URL already contains domain: %s\n", domain)
 			return domain, nil
 		}
 	}
@@ -263,7 +264,7 @@ func getFinalDomainFromResolved(resolvedURL string, timeout time.Duration) (stri
 	ctx, cancel = chromedp.NewContext(allocCtx, chromedp.WithLogf(func(format string, v ...interface{}) {
 		// Suppress chromedp logs unless debugging
 		if os.Getenv("PINNACLE888_DEBUG") == "1" {
-			fmt.Printf("chromedp: "+format, v...)
+			slog.Debug("chromedp", "message", fmt.Sprintf(format, v...))
 		}
 	}))
 	defer cancel()
@@ -307,7 +308,7 @@ func getFinalDomainFromResolved(resolvedURL string, timeout time.Duration) (stri
 		}
 		// Only return if it's a domain (not an IP address)
 		if !isIPAddress(domain) {
-			fmt.Printf("Pinnacle888: Extracted domain from final URL: %s\n", domain)
+			slog.Debug("Pinnacle888: Extracted domain from final URL: %s\n", domain)
 			return domain, nil
 		}
 	}
@@ -358,7 +359,7 @@ func getFinalDomainFromResolved(resolvedURL string, timeout time.Duration) (stri
 							domain = domain[:idx]
 						}
 						if domain != "" && !isIPAddress(domain) {
-							fmt.Printf("Pinnacle888: Extracted domain from JavaScript: %s\n", domain)
+							slog.Debug("Pinnacle888: Extracted domain from JavaScript: %s\n", domain)
 							return domain, nil
 						}
 					}
@@ -388,7 +389,7 @@ func NewClient(baseURL, mirrorURL, apiKey, deviceUUID string, timeout time.Durat
 
 	// Use proxy list from config
 	if len(proxyList) > 0 {
-		fmt.Printf("Pinnacle888: Using proxy list from config (%d proxies)\n", len(proxyList))
+		slog.Debug("Pinnacle888: Using proxy list from config (%d proxies)\n", len(proxyList))
 	}
 
 	// Create default transport (without proxy - we'll use proxy per request)
@@ -478,7 +479,7 @@ func (c *Client) ensureResolved() error {
 		}
 
 		// URL is not healthy, need to re-resolve
-		fmt.Printf("Pinnacle888: Cached URL %s is not responding, re-resolving mirror...\n", resolvedURL)
+		slog.Debug("Pinnacle888: Cached URL %s is not responding, re-resolving mirror...\n", resolvedURL)
 	}
 
 	// Resolve mirror URL
@@ -486,7 +487,7 @@ func (c *Client) ensureResolved() error {
 	if err != nil {
 		if hasResolved {
 			// If we had a cached URL but re-resolution failed, log warning but keep using cached URL
-			fmt.Printf("Pinnacle888: Warning: failed to re-resolve mirror %s: %v, keeping cached URL %s\n", c.mirrorURL, err, resolvedURL)
+			slog.Debug("Pinnacle888: Warning: failed to re-resolve mirror %s: %v, keeping cached URL %s\n", c.mirrorURL, err, resolvedURL)
 			return nil
 		}
 		return fmt.Errorf("failed to resolve mirror: %w", err)
@@ -499,7 +500,7 @@ func (c *Client) ensureResolved() error {
 	c.baseURL = resolved
 	c.resolvedMu.Unlock()
 
-	fmt.Printf("Pinnacle888: Resolved mirror URL: %s\n", resolved)
+	slog.Debug("Pinnacle888: Resolved mirror URL: %s\n", resolved)
 
 	// Extract domain from resolved URL for odds endpoint
 	parsed, err := url.Parse(resolved)
@@ -513,31 +514,31 @@ func (c *Client) ensureResolved() error {
 		// Check if it's an IP address
 		if isIPAddress(domain) {
 			// If it's an IP address, try to get domain from JavaScript redirects
-			fmt.Printf("Pinnacle888: Resolved URL is IP address %s, attempting to resolve domain via JavaScript...\n", domain)
+			slog.Debug("Pinnacle888: Resolved URL is IP address %s, attempting to resolve domain via JavaScript...\n", domain)
 			finalDomain, err := getFinalDomainFromResolved(resolved, c.resolveTimeout)
 			if err != nil {
-				fmt.Printf("Pinnacle888: Failed to resolve domain from IP via JavaScript: %v, using IP address directly\n", err)
+				slog.Debug("Pinnacle888: Failed to resolve domain from IP via JavaScript: %v, using IP address directly\n", err)
 				c.resolvedMu.Lock()
 				c.oddsDomain = domain
 				c.resolvedMu.Unlock()
-				fmt.Printf("Pinnacle888: Using IP address %s for odds endpoint\n", domain)
+				slog.Debug("Pinnacle888: Using IP address %s for odds endpoint\n", domain)
 			} else if finalDomain != "" {
 				c.resolvedMu.Lock()
 				c.oddsDomain = finalDomain
 				c.resolvedMu.Unlock()
-				fmt.Printf("Pinnacle888: Resolved odds domain from JavaScript: %s\n", finalDomain)
+				slog.Debug("Pinnacle888: Resolved odds domain from JavaScript: %s\n", finalDomain)
 			} else {
 				c.resolvedMu.Lock()
 				c.oddsDomain = domain
 				c.resolvedMu.Unlock()
-				fmt.Printf("Pinnacle888: Using IP address %s for odds endpoint (fallback)\n", domain)
+				slog.Debug("Pinnacle888: Using IP address %s for odds endpoint (fallback)\n", domain)
 			}
 		} else {
 			// It's already a domain, use it directly
 			c.resolvedMu.Lock()
 			c.oddsDomain = domain
 			c.resolvedMu.Unlock()
-			fmt.Printf("Pinnacle888: Using resolved domain %s for odds endpoint\n", domain)
+			slog.Debug("Pinnacle888: Using resolved domain %s for odds endpoint\n", domain)
 		}
 	}
 
@@ -569,7 +570,7 @@ func (c *Client) clearResolvedURL() {
 	c.resolvedMu.Lock()
 	defer c.resolvedMu.Unlock()
 	if c.resolvedURL != "" {
-		fmt.Printf("Pinnacle888: Clearing cached URL %s to force re-resolution\n", c.resolvedURL)
+		slog.Debug("Pinnacle888: Clearing cached URL %s to force re-resolution\n", c.resolvedURL)
 		c.resolvedURL = ""
 		c.oddsDomain = ""
 	}
@@ -580,7 +581,7 @@ func (c *Client) clearResolvedURL() {
 func (c *Client) getResolvedBaseURL() string {
 	// Ensure mirror is resolved (lazy resolution)
 	if err := c.ensureResolved(); err != nil {
-		fmt.Printf("Pinnacle888: Warning: failed to ensure resolved URL: %v\n", err)
+		slog.Debug("Pinnacle888: Warning: failed to ensure resolved URL: %v\n", err)
 	}
 
 	c.resolvedMu.RLock()
@@ -658,7 +659,7 @@ func (c *Client) GetOddsEvents(oddsPath string, sportID int64, isLive bool) ([]b
 
 		// Ensure mirror is resolved to get odds domain
 		if err := c.ensureResolved(); err != nil {
-			fmt.Printf("Pinnacle888: Warning: failed to ensure resolved URL: %v\n", err)
+			slog.Debug("Pinnacle888: Warning: failed to ensure resolved URL: %v\n", err)
 		}
 
 		// Try to get resolved odds domain from mirror
@@ -679,7 +680,7 @@ func (c *Client) GetOddsEvents(oddsPath string, sportID int64, isLive bool) ([]b
 	}
 
 	// Log the URL construction for debugging
-	fmt.Printf("Pinnacle888: Using odds endpoint: %s%s\n", u.Scheme+"://"+u.Host, u.Path)
+	slog.Debug("Pinnacle888: Using odds endpoint: %s%s\n", u.Scheme+"://"+u.Host, u.Path)
 
 	// Set query parameters
 	queryParams := u.Query()
@@ -717,7 +718,7 @@ func (c *Client) GetOddsEvents(oddsPath string, sportID int64, isLive bool) ([]b
 	if err != nil {
 		// If request failed, check if we should re-resolve mirror
 		if c.shouldReResolve(err, 0) {
-			fmt.Printf("Pinnacle888: Request to odds endpoint failed: %v, clearing cached URL for re-resolution\n", err)
+			slog.Debug("Pinnacle888: Request to odds endpoint failed: %v, clearing cached URL for re-resolution\n", err)
 			c.clearResolvedURL()
 		}
 		return nil, fmt.Errorf("request failed: %w", err)
@@ -730,11 +731,11 @@ func (c *Client) GetOddsEvents(oddsPath string, sportID int64, isLive bool) ([]b
 		if len(b) < previewLen {
 			previewLen = len(b)
 		}
-		fmt.Printf("Pinnacle888: Odds events API returned status %d, body preview: %s\n", resp.StatusCode, string(b[:previewLen]))
+		slog.Debug("Pinnacle888: Odds events API returned status %d, body preview: %s\n", resp.StatusCode, string(b[:previewLen]))
 
 		// If we got error that might indicate URL changed, clear cached URL
 		if c.shouldReResolve(nil, resp.StatusCode) {
-			fmt.Printf("Pinnacle888: HTTP error %d, clearing cached URL to force re-resolution on next request\n", resp.StatusCode)
+			slog.Debug("Pinnacle888: HTTP error %d, clearing cached URL to force re-resolution on next request\n", resp.StatusCode)
 			c.clearResolvedURL()
 		}
 
@@ -815,7 +816,7 @@ func (c *Client) getJSONWithProxyRetry(path string, out any) error {
 
 		proxyURL, err := url.Parse(proxyURLStr)
 		if err != nil {
-			fmt.Printf("Pinnacle888: Invalid proxy URL %s: %v\n", maskProxyURL(proxyURLStr), err)
+			slog.Debug("Pinnacle888: Invalid proxy URL %s: %v\n", maskProxyURL(proxyURLStr), err)
 			continue
 		}
 
@@ -836,7 +837,7 @@ func (c *Client) getJSONWithProxyRetry(path string, out any) error {
 
 		req, err := http.NewRequest(http.MethodGet, requestURL, nil)
 		if err != nil {
-			fmt.Printf("Pinnacle888: Failed to create request: %v, trying next proxy...\n", err)
+			slog.Debug("Pinnacle888: Failed to create request: %v, trying next proxy...\n", err)
 			continue
 		}
 
@@ -844,7 +845,7 @@ func (c *Client) getJSONWithProxyRetry(path string, out any) error {
 
 		resp, err := client.Do(req)
 		if err != nil {
-			fmt.Printf("Pinnacle888: Proxy %s failed: %v, trying next...\n", maskProxyURL(proxyURLStr), err)
+			slog.Debug("Pinnacle888: Proxy %s failed: %v, trying next...\n", maskProxyURL(proxyURLStr), err)
 			continue
 		}
 
@@ -870,7 +871,7 @@ func (c *Client) getJSONWithProxyRetry(path string, out any) error {
 			c.proxyMu.Lock()
 			c.currentProxyIndex = proxyIndex
 			c.proxyMu.Unlock()
-			fmt.Printf("Pinnacle888: Using working proxy %s\n", maskProxyURL(proxyURLStr))
+			slog.Debug("Pinnacle888: Using working proxy %s\n", maskProxyURL(proxyURLStr))
 
 			err := c.handleResponse(resp, out)
 			resp.Body.Close()
@@ -885,12 +886,12 @@ func (c *Client) getJSONWithProxyRetry(path string, out any) error {
 			preview = preview[:200] + "..."
 		}
 		cfRay := resp.Header.Get("Cf-Ray")
-		fmt.Printf("Pinnacle888: Proxy %s returned status=%d, content-type=%s, cf-ray=%s, body_preview=%s (blocked/invalid), trying next...\n",
+		slog.Debug("Pinnacle888: Proxy %s returned status=%d, content-type=%s, cf-ray=%s, body_preview=%s (blocked/invalid), trying next...\n",
 			maskProxyURL(proxyURLStr), resp.StatusCode, contentType, cfRay, preview)
 	}
 
 	// All proxies failed, try direct connection as last resort
-	fmt.Printf("Pinnacle888: All proxies failed, trying direct connection...\n")
+	slog.Debug("Pinnacle888: All proxies failed, trying direct connection...\n")
 	return c.getJSONDirect(path, out)
 }
 
@@ -923,8 +924,7 @@ func (c *Client) setHeaders(req *http.Request) {
 func (c *Client) handleResponse(resp *http.Response, out any) error {
 	// Log response headers for debugging (especially for blocked requests)
 	if resp.StatusCode != http.StatusOK || resp.Header.Get("Content-Type") != "application/json" {
-		fmt.Printf("Pinnacle888 API response: status=%d, content-type=%s, cf-ray=%s\n",
-			resp.StatusCode, resp.Header.Get("Content-Type"), resp.Header.Get("Cf-Ray"))
+		slog.Debug("Pinnacle888 API response", "status", resp.StatusCode, "content_type", resp.Header.Get("Content-Type"), "cf_ray", resp.Header.Get("Cf-Ray"))
 	}
 
 	if resp.StatusCode != http.StatusOK {
@@ -969,8 +969,7 @@ func (c *Client) handleResponse(resp *http.Response, out any) error {
 					typeCounts[mtype]++
 				}
 			}
-			fmt.Printf("Pinnacle888 DEBUG: %s - markets: %d total, periods: %v, statuses: %v, types: %v\n",
-				resp.Request.URL.Path, len(marketsArray), periodCounts, statusCounts, typeCounts)
+			slog.Debug("Pinnacle888 markets response", "path", resp.Request.URL.Path, "total", len(marketsArray), "periods", periodCounts, "statuses", statusCounts, "types", typeCounts)
 
 			// Log first few markets in detail
 			if len(marketsArray) > 0 {
@@ -984,7 +983,7 @@ func (c *Client) handleResponse(resp *http.Response, out any) error {
 					if len(preview) > 300 {
 						preview = preview[:300] + "..."
 					}
-					fmt.Printf("Pinnacle888 DEBUG: Market[%d] sample: %s\n", i, preview)
+					slog.Debug("Pinnacle888 market sample", "index", i, "preview", preview)
 				}
 			}
 		} else {
@@ -996,14 +995,14 @@ func (c *Client) handleResponse(resp *http.Response, out any) error {
 				if len(preview) > 500 {
 					preview = preview[:500] + "..."
 				}
-				fmt.Printf("Pinnacle888 DEBUG: %s - response object: %s\n", resp.Request.URL.Path, preview)
+				slog.Debug("Pinnacle888 response object", "path", resp.Request.URL.Path, "preview", preview)
 			} else {
 				// Raw body if can't parse
 				preview := string(body)
 				if len(preview) > 1000 {
 					preview = preview[:1000] + "..."
 				}
-				fmt.Printf("Pinnacle888 DEBUG: %s - raw response (%d bytes): %s\n", resp.Request.URL.Path, len(body), preview)
+				slog.Debug("Pinnacle888 raw response", "path", resp.Request.URL.Path, "bytes", len(body), "preview", preview)
 			}
 		}
 	}

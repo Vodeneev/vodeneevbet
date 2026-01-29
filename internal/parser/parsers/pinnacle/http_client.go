@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"os"
@@ -38,7 +39,7 @@ func NewClient(baseURL, apiKey, deviceUUID string, timeout time.Duration, proxyL
 
 	// Use proxy list from config
 	if len(proxyList) > 0 {
-		fmt.Printf("Pinnacle: Using proxy list from config (%d proxies)\n", len(proxyList))
+		slog.Debug("Using proxy list from config", "proxy_count", len(proxyList))
 	}
 
 	// Create default transport (without proxy - we'll use proxy per request)
@@ -155,7 +156,7 @@ func (c *Client) getJSONWithProxyRetry(path string, out any) error {
 
 		proxyURL, err := url.Parse(proxyURLStr)
 		if err != nil {
-			fmt.Printf("Pinnacle: Invalid proxy URL %s: %v\n", maskProxyURL(proxyURLStr), err)
+			slog.Debug("Invalid proxy URL", "proxy", maskProxyURL(proxyURLStr), "error", err)
 			continue
 		}
 
@@ -176,7 +177,7 @@ func (c *Client) getJSONWithProxyRetry(path string, out any) error {
 
 		req, err := http.NewRequest(http.MethodGet, requestURL, nil)
 		if err != nil {
-			fmt.Printf("Pinnacle: Failed to create request: %v, trying next proxy...\n", err)
+			slog.Debug("Failed to create request, trying next proxy", "error", err)
 			continue
 		}
 
@@ -184,7 +185,7 @@ func (c *Client) getJSONWithProxyRetry(path string, out any) error {
 
 		resp, err := client.Do(req)
 		if err != nil {
-			fmt.Printf("Pinnacle: Proxy %s failed: %v, trying next...\n", maskProxyURL(proxyURLStr), err)
+			slog.Debug("Proxy failed, trying next", "proxy", maskProxyURL(proxyURLStr), "error", err)
 			continue
 		}
 
@@ -210,7 +211,7 @@ func (c *Client) getJSONWithProxyRetry(path string, out any) error {
 			c.proxyMu.Lock()
 			c.currentProxyIndex = proxyIndex
 			c.proxyMu.Unlock()
-			fmt.Printf("Pinnacle: Using working proxy %s\n", maskProxyURL(proxyURLStr))
+			slog.Debug("Using working proxy", "proxy", maskProxyURL(proxyURLStr))
 
 			err := c.handleResponse(resp, out)
 			resp.Body.Close()
@@ -225,12 +226,11 @@ func (c *Client) getJSONWithProxyRetry(path string, out any) error {
 			preview = preview[:200] + "..."
 		}
 		cfRay := resp.Header.Get("Cf-Ray")
-		fmt.Printf("Pinnacle: Proxy %s returned status=%d, content-type=%s, cf-ray=%s, body_preview=%s (blocked/invalid), trying next...\n",
-			maskProxyURL(proxyURLStr), resp.StatusCode, contentType, cfRay, preview)
+		slog.Debug("Proxy returned blocked/invalid response, trying next", "proxy", maskProxyURL(proxyURLStr), "status", resp.StatusCode, "content_type", contentType, "cf_ray", cfRay, "body_preview", preview)
 	}
 
 	// All proxies failed, try direct connection as last resort
-	fmt.Printf("Pinnacle: All proxies failed, trying direct connection...\n")
+	slog.Debug("All proxies failed, trying direct connection")
 	return c.getJSONDirect(path, out)
 }
 
@@ -262,8 +262,7 @@ func (c *Client) setHeaders(req *http.Request) {
 func (c *Client) handleResponse(resp *http.Response, out any) error {
 	// Log response headers for debugging (especially for blocked requests)
 	if resp.StatusCode != http.StatusOK || resp.Header.Get("Content-Type") != "application/json" {
-		fmt.Printf("Pinnacle API response: status=%d, content-type=%s, cf-ray=%s\n",
-			resp.StatusCode, resp.Header.Get("Content-Type"), resp.Header.Get("Cf-Ray"))
+		slog.Debug("Pinnacle API response", "status", resp.StatusCode, "content_type", resp.Header.Get("Content-Type"), "cf_ray", resp.Header.Get("Cf-Ray"))
 	}
 
 	if resp.StatusCode != http.StatusOK {
@@ -308,8 +307,7 @@ func (c *Client) handleResponse(resp *http.Response, out any) error {
 					typeCounts[mtype]++
 				}
 			}
-			fmt.Printf("Pinnacle DEBUG: %s - markets: %d total, periods: %v, statuses: %v, types: %v\n",
-				resp.Request.URL.Path, len(marketsArray), periodCounts, statusCounts, typeCounts)
+			slog.Debug("Pinnacle markets response", "path", resp.Request.URL.Path, "total", len(marketsArray), "periods", periodCounts, "statuses", statusCounts, "types", typeCounts)
 
 			// Log first few markets in detail
 			if len(marketsArray) > 0 {
@@ -323,7 +321,7 @@ func (c *Client) handleResponse(resp *http.Response, out any) error {
 					if len(preview) > 300 {
 						preview = preview[:300] + "..."
 					}
-					fmt.Printf("Pinnacle DEBUG: Market[%d] sample: %s\n", i, preview)
+					slog.Debug("Pinnacle market sample", "index", i, "preview", preview)
 				}
 			}
 		} else {
@@ -335,14 +333,14 @@ func (c *Client) handleResponse(resp *http.Response, out any) error {
 				if len(preview) > 500 {
 					preview = preview[:500] + "..."
 				}
-				fmt.Printf("Pinnacle DEBUG: %s - response object: %s\n", resp.Request.URL.Path, preview)
+				slog.Debug("Pinnacle response object", "path", resp.Request.URL.Path, "preview", preview)
 			} else {
 				// Raw body if can't parse
 				preview := string(body)
 				if len(preview) > 1000 {
 					preview = preview[:1000] + "..."
 				}
-				fmt.Printf("Pinnacle DEBUG: %s - raw response (%d bytes): %s\n", resp.Request.URL.Path, len(body), preview)
+				slog.Debug("Pinnacle raw response", "path", resp.Request.URL.Path, "bytes", len(body), "preview", preview)
 			}
 		}
 	}

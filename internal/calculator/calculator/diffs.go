@@ -3,7 +3,7 @@ package calculator
 import (
 	"context"
 	"encoding/json"
-	"log"
+	"log/slog"
 	"net/http"
 	"sort"
 	"strconv"
@@ -40,7 +40,7 @@ func (c *ValueCalculator) handleTopDiffs(w http.ResponseWriter, r *http.Request)
 
 	matches, err := c.httpClient.GetMatches(ctx)
 	if err != nil {
-		log.Printf("calculator: failed to load matches in handleTopDiffs: %v", err)
+		slog.Error("Failed to load matches in handleTopDiffs", "error", err)
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusBadGateway)
 		_ = json.NewEncoder(w).Encode(map[string]string{"error": "failed to fetch matches from parser", "details": err.Error()})

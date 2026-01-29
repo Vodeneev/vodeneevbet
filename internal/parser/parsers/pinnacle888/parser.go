@@ -3,6 +3,7 @@ package pinnacle888
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"os"
 	"sort"
 	"strconv"
@@ -77,7 +78,7 @@ func (p *Parser) runOnce(ctx context.Context) error {
 			default:
 			}
 			if err := p.processMatchup(ctx, matchupID); err != nil {
-				fmt.Printf("Pinnacle888: failed to process matchup %d: %v\n", matchupID, err)
+				slog.Error("Failed to process matchup", "matchup_id", matchupID, "error", err)
 			}
 		}
 		return nil
@@ -97,7 +98,7 @@ func (p *Parser) runOnce(ctx context.Context) error {
 			matches, err := p.processLiveMatches(ctx)
 			if err != nil {
 				liveErr = err
-				fmt.Printf("Pinnacle888: failed to process live matches: %v\n", err)
+				slog.Error("Failed to process live matches", "error", err)
 			} else {
 				liveMatches = matches
 			}
@@ -112,7 +113,7 @@ func (p *Parser) runOnce(ctx context.Context) error {
 			matches, err := p.processLineMatches(ctx)
 			if err != nil {
 				prematchErr = err
-				fmt.Printf("Pinnacle888: failed to process pre-match matches: %v\n", err)
+				slog.Error("Failed to process pre-match matches", "error", err)
 			} else {
 				prematchMatches = matches
 			}
@@ -137,14 +138,13 @@ func (p *Parser) runOnce(ctx context.Context) error {
 
 	// If there were errors but we still got some matches, log but don't fail
 	if liveErr != nil || prematchErr != nil {
-		fmt.Printf("Pinnacle888: Some matches processed successfully despite errors (live: %d, pre-match: %d, merged: %d)\n",
-			len(liveMatches), len(prematchMatches), len(mergedMatches))
+		slog.Warn("Some matches processed successfully despite errors", "live_count", len(liveMatches), "prematch_count", len(prematchMatches), "merged_count", len(mergedMatches))
 	}
 
 	// Otherwise, discover and process all matchups for relevant sports (legacy mode)
 	if !p.cfg.Parser.Pinnacle888.IncludeLive && !p.cfg.Parser.Pinnacle888.IncludePrematch {
 		if err := p.processAll(ctx); err != nil {
-			fmt.Printf("Pinnacle888: failed to process all matchups: %v\n", err)
+			slog.Error("Failed to process all matchups", "error", err)
 			return err
 		}
 	}
@@ -153,7 +153,7 @@ func (p *Parser) runOnce(ctx context.Context) error {
 }
 
 func (p *Parser) Start(ctx context.Context) error {
-	fmt.Println("Starting Pinnacle888 parser (background mode - periodic parsing runs automatically)...")
+	slog.Info("Starting Pinnacle888 parser (background mode - periodic parsing runs automatically)...")
 
 	// Run once at startup to have initial data
 	if err := p.runOnce(ctx); err != nil {
@@ -372,7 +372,7 @@ func (p *Parser) processLiveMatches(ctx context.Context) ([]*models.Match, error
 		return nil, fmt.Errorf("parse odds response: %w", err)
 	}
 
-	fmt.Printf("Pinnacle888: Found %d live matches\n", len(matches))
+	slog.Info("Found live matches", "count", len(matches))
 	return matches, nil
 }
 
@@ -396,7 +396,7 @@ func (p *Parser) processLineMatches(ctx context.Context) ([]*models.Match, error
 		return nil, fmt.Errorf("parse odds response: %w", err)
 	}
 
-	fmt.Printf("Pinnacle888: Found %d pre-match matches\n", len(matches))
+	slog.Info("Found pre-match matches", "count", len(matches))
 	return matches, nil
 }
 
@@ -816,13 +816,13 @@ func logRelatedMapping(matchupID int64, related []RelatedMatchup) {
 	if len(rows) == 0 {
 		return
 	}
-	fmt.Printf("Pinnacle888: related mapping for main matchup=%d (showing %d related)\n", matchupID, len(rows))
+	slog.Debug("Related mapping", "main_matchup", matchupID, "related_count", len(rows))
 	for _, it := range rows {
 		pid := "nil"
 		if it.parentID != nil {
 			pid = strconv.FormatInt(*it.parentID, 10)
 		}
-		fmt.Printf("  - related matchup=%d parentId=%s units=%q league=%q => %s\n", it.id, pid, it.units, it.league, it.mapped)
+		slog.Debug("Related matchup", "matchup_id", it.id, "parent_id", pid, "units", it.units, "league", it.league, "mapped", it.mapped)
 	}
 }
 

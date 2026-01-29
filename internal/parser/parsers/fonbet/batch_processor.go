@@ -3,6 +3,7 @@ package fonbet
 import (
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"strings"
 	"sync"
 	"time"
@@ -99,7 +100,7 @@ func (p *BatchProcessor) ProcessSportEvents(sport string) error {
 	startTime := time.Now()
 	tracker := performance.GetTracker()
 
-	fmt.Printf("🚀 Starting batch processing for sport: %s\n", sport)
+	slog.Info("Starting batch processing", "sport", sport)
 
 	// Fetch events for the sport (single HTTP request)
 	fetchStart := time.Now()
@@ -108,7 +109,7 @@ func (p *BatchProcessor) ProcessSportEvents(sport string) error {
 		return fmt.Errorf("failed to fetch events for sport %s: %w", sport, err)
 	}
 	fetchDuration := time.Since(fetchStart)
-	fmt.Printf("⏱️  HTTP fetch took: %v\n", fetchDuration)
+	slog.Debug("HTTP fetch completed", "duration", fetchDuration)
 
 	// Parse the complete API response
 	parseStart := time.Now()
@@ -117,10 +118,9 @@ func (p *BatchProcessor) ProcessSportEvents(sport string) error {
 		return fmt.Errorf("failed to unmarshal API response: %w", err)
 	}
 	parseDuration := time.Since(parseStart)
-	fmt.Printf("⏱️  JSON parsing took: %v\n", parseDuration)
+	slog.Debug("JSON parsing completed", "duration", parseDuration)
 
-	fmt.Printf("📊 Found %d events and %d factor groups in API response\n",
-		len(apiResponse.Events), len(apiResponse.CustomFactors))
+	slog.Debug("Found events and factor groups", "events", len(apiResponse.Events), "factor_groups", len(apiResponse.CustomFactors))
 
 	// Index custom factors by event id for fast lookup.
 	factorsByEventID := make(map[int64]FonbetFactorGroup, len(apiResponse.CustomFactors))
@@ -137,9 +137,9 @@ func (p *BatchProcessor) ProcessSportEvents(sport string) error {
 
 	eventsByMatch := p.groupEventsByMatchFromAPI(apiResponse.Events, allowedSportIDs)
 	groupDuration := time.Since(groupStart)
-	fmt.Printf("⏱️  Event grouping took: %v\n", groupDuration)
+	slog.Debug("Event grouping completed", "duration", groupDuration)
 
-	fmt.Printf("🏆 Found %d main matches\n", len(eventsByMatch))
+	slog.Debug("Found main matches", "count", len(eventsByMatch))
 
 	// Process matches in batches with parallel workers
 	processStart := time.Now()
@@ -161,10 +161,9 @@ func (p *BatchProcessor) ProcessSportEvents(sport string) error {
 		totalOutcomes,
 	)
 
-	fmt.Printf("✅ Successfully processed %d matches for sport: %s\n", processedCount, sport)
-	fmt.Printf("⏱️  Total timing: fetch=%v, parse=%v, group=%v, process=%v, total=%v\n",
-		fetchDuration, parseDuration, groupDuration, processDuration, totalDuration)
-	fmt.Printf("📈 Stats: %d events, %d outcomes processed\n", totalEvents, totalOutcomes)
+	slog.Info("Successfully processed matches", "sport", sport, "count", processedCount)
+	slog.Debug("Total timing", "fetch", fetchDuration, "parse", parseDuration, "group", groupDuration, "process", processDuration, "total", totalDuration)
+	slog.Debug("Stats", "events", totalEvents, "outcomes", totalOutcomes)
 
 	return nil
 }
@@ -223,10 +222,9 @@ func (p *BatchProcessor) processMatchesInBatches(
 		})
 	}
 
-	fmt.Printf("🔍 Filtered out %d matches (invalid teams/name)\n", filteredCount)
+	slog.Debug("Filtered out matches", "count", filteredCount, "reason", "invalid teams/name")
 
-	fmt.Printf("🔄 Processing %d matches in batches of %d with %d workers\n",
-		len(matches), p.batchSize, p.workers)
+	slog.Debug("Processing matches in batches", "total", len(matches), "batch_size", p.batchSize, "workers", p.workers)
 
 	// Process in batches with dynamic sizing
 	processedCount := 0
@@ -251,8 +249,7 @@ func (p *BatchProcessor) processMatchesInBatches(
 		totalYDBWriteTime += ydbTime
 
 		batchDuration := time.Since(batchStart)
-		fmt.Printf("⏱️  Batch %d-%d: %d matches, %d events, %d outcomes in %v (batch_size=%d)\n",
-			i+1, end, count, events, outcomes, batchDuration, p.batchSize)
+		slog.Debug("Batch processed", "start", i+1, "end", end, "matches", count, "events", events, "outcomes", outcomes, "duration", batchDuration, "batch_size", p.batchSize)
 
 		// Динамически корректируем размер батча
 		p.adjustBatchSize(batchDuration)
@@ -342,7 +339,7 @@ func (p *BatchProcessor) processBatch(matches []MatchData) (int, int, int, time.
 			totalOutcomes += result.OutcomesCount
 			totalYDBWriteTime += result.YDBWriteTime
 		} else {
-			fmt.Printf("❌ Failed to process match %s: %v\n", result.MatchID, result.Error)
+			slog.Warn("Failed to process match", "match_id", result.MatchID, "error", result.Error)
 		}
 	}
 
@@ -367,8 +364,7 @@ func (p *BatchProcessor) adjustBatchSize(batchDuration time.Duration) {
 			newSize = p.minBatchSize
 		}
 		if newSize != p.batchSize {
-			fmt.Printf("📉 Reducing batch size: %d -> %d (batch took %v, target: %v)\n",
-				p.batchSize, newSize, batchDuration, p.targetBatchTime)
+			slog.Debug("Reducing batch size", "from", p.batchSize, "to", newSize, "batch_duration", batchDuration, "target", p.targetBatchTime)
 			p.batchSize = newSize
 		}
 	} else if batchDuration < time.Duration(float64(p.targetBatchTime)*0.5) {
@@ -378,8 +374,7 @@ func (p *BatchProcessor) adjustBatchSize(batchDuration time.Duration) {
 			newSize = p.maxBatchSize
 		}
 		if newSize != p.batchSize {
-			fmt.Printf("📈 Increasing batch size: %d -> %d (batch took %v, target: %v)\n",
-				p.batchSize, newSize, batchDuration, p.targetBatchTime)
+			slog.Debug("Increasing batch size", "from", p.batchSize, "to", newSize, "batch_duration", batchDuration, "target", p.targetBatchTime)
 			p.batchSize = newSize
 		}
 	}
@@ -439,8 +434,7 @@ func (p *BatchProcessor) worker(
 		}
 
 		if duration > 1*time.Second {
-			fmt.Printf("⏱️  Worker: Match %s took %v (build=%v, store=%v, events=%d, outcomes=%d)\n",
-				match.ID, duration, buildTime, storeTime, eventsCount, outcomesCount)
+			slog.Debug("Worker match processing", "match_id", match.ID, "duration", duration, "build_time", buildTime, "store_time", storeTime, "events", eventsCount, "outcomes", outcomesCount)
 		}
 	}
 }

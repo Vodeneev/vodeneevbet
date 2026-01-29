@@ -3,7 +3,9 @@ package parsers
 // Example implementation for another bookmaker (e.g., 1xBet)
 // This shows how the standardized event mapping works across different bookmakers
 
-import "fmt"
+import (
+	"log/slog"
+)
 
 // Example1xBetParser demonstrates how another bookmaker would implement EventMapper
 type Example1xBetParser struct {
@@ -15,13 +17,13 @@ type Example1xBetParser struct {
 func NewExample1xBetParser() *Example1xBetParser {
 	return &Example1xBetParser{
 		supportedEvents: map[int64]StandardEventType{
-			1:      StandardEventMainMatch,      // Main match
-			101:    StandardEventCorners,         // 1xBet uses 101 for corners
-			102:    StandardEventYellowCards,     // 1xBet uses 102 for yellow cards
-			103:    StandardEventFouls,           // 1xBet uses 103 for fouls
-			104:    StandardEventShotsOnTarget,   // 1xBet uses 104 for shots on target
-			105:    StandardEventOffsides,        // 1xBet uses 105 for offsides
-			106:    StandardEventThrowIns,        // 1xBet uses 106 for throw-ins
+			1:   StandardEventMainMatch,     // Main match
+			101: StandardEventCorners,       // 1xBet uses 101 for corners
+			102: StandardEventYellowCards,   // 1xBet uses 102 for yellow cards
+			103: StandardEventFouls,         // 1xBet uses 103 for fouls
+			104: StandardEventShotsOnTarget, // 1xBet uses 104 for shots on target
+			105: StandardEventOffsides,      // 1xBet uses 105 for offsides
+			106: StandardEventThrowIns,      // 1xBet uses 106 for throw-ins
 		},
 	}
 }
@@ -49,22 +51,22 @@ func (p *Example1xBetParser) GetSupportedEvents() map[int64]StandardEventType {
 func ExampleUsage() {
 	// Fonbet parser
 	// fonbetParser := &fonbet.JSONParser{} // Assuming this implements EventMapper
-	
+
 	// 1xBet parser
 	onexbetParser := NewExample1xBetParser()
-	
+
 	// Both parsers can now map their specific event IDs to standard types
 	// fonbetEventType := fonbetParser.GetStandardEventType(400100) // Fonbet corner event
-	onexbetEventType := onexbetParser.GetStandardEventType(101)  // 1xBet corner event
-	
+	onexbetEventType := onexbetParser.GetStandardEventType(101) // 1xBet corner event
+
 	// fmt.Printf("Fonbet corner event maps to: %s\n", fonbetEventType)
-	fmt.Printf("1xBet corner event maps to: %s\n", onexbetEventType)
-	
+	slog.Debug("1xBet corner event mapping", "event_type", onexbetEventType)
+
 	// Both should return the same standard type
 	// if fonbetEventType == onexbetEventType {
 	//	fmt.Println("✅ Both bookmakers map to the same standard event type!")
 	// }
-	
+
 	// Get market name using standard type
 	// marketName := GetMarketName(fonbetEventType)
 	// fmt.Printf("Market name: %s\n", marketName)

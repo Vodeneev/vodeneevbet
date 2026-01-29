@@ -2,7 +2,6 @@ package logging
 
 import (
 	"context"
-	"log"
 	"log/slog"
 	"os"
 
@@ -45,8 +44,7 @@ func setupLoggerWithConfig(config YandexLoggingConfig, serviceName string) (*slo
 	if config.Enabled {
 		yandexHandler, err := NewYandexLoggingHandler(config)
 		if err != nil {
-			log.Printf("Warning: failed to initialize Yandex Cloud Logging: %v", err)
-			log.Println("Continuing with stdout logging only")
+			slog.Warn("Failed to initialize Yandex Cloud Logging, continuing with stdout logging only", "error", err)
 		} else {
 			handlers = append(handlers, yandexHandler)
 		}

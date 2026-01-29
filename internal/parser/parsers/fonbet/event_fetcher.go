@@ -4,6 +4,7 @@ import (
 	"compress/gzip"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"time"
 
@@ -29,7 +30,7 @@ func NewEventFetcher(config *config.Config) interfaces.EventFetcher {
 		IdleConnTimeout:     90 * time.Second, // Таймаут для idle соединений
 		DisableKeepAlives:   false,            // Включить keep-alive для переиспользования соединений
 	}
-	
+
 	return &EventFetcher{
 		client: &http.Client{
 			Timeout:   config.Parser.Timeout,
@@ -44,10 +45,10 @@ func NewEventFetcher(config *config.Config) interfaces.EventFetcher {
 func (f *EventFetcher) FetchEvents(sport string) ([]byte, error) {
 	var lastErr error
 	maxRetries := 3
-	
+
 	for attempt := 1; attempt <= maxRetries; attempt++ {
-		fmt.Printf("🔄 HTTP fetch attempt %d/%d for sport: %s\n", attempt, maxRetries, sport)
-		
+		slog.Debug("HTTP fetch attempt", "attempt", attempt, "max_retries", maxRetries, "sport", sport)
+
 		req, err := http.NewRequest("GET", f.baseURL, nil)
 		if err != nil {
 			lastErr = fmt.Errorf("failed to create request: %w", err)
@@ -57,7 +58,7 @@ func (f *EventFetcher) FetchEvents(sport string) ([]byte, error) {
 		q := req.URL.Query()
 		q.Set("lang", f.config.Parser.Fonbet.Lang)
 		q.Set("version", f.config.Parser.Fonbet.Version)
-		
+
 		// Convert sport string to enum and get scope market
 		if sportEnum, valid := enums.ParseSport(sport); valid {
 			scopeMarket := fonbet.GetScopeMarket(sportEnum)
@@ -74,7 +75,7 @@ func (f *EventFetcher) FetchEvents(sport string) ([]byte, error) {
 		if err != nil {
 			lastErr = fmt.Errorf("failed to make request (attempt %d): %w", attempt, err)
 			if attempt < maxRetries {
-				fmt.Printf("⏳ Retrying in 2 seconds...\n")
+				slog.Debug("Retrying in 2 seconds")
 				time.Sleep(2 * time.Second)
 			}
 			continue
@@ -84,17 +85,17 @@ func (f *EventFetcher) FetchEvents(sport string) ([]byte, error) {
 		if resp.StatusCode != http.StatusOK {
 			lastErr = fmt.Errorf("unexpected status code: %d (attempt %d)", resp.StatusCode, attempt)
 			if attempt < maxRetries {
-				fmt.Printf("⏳ Retrying in 2 seconds...\n")
+				slog.Debug("Retrying in 2 seconds")
 				time.Sleep(2 * time.Second)
 			}
 			continue
 		}
 
 		// Success!
-		fmt.Printf("✅ HTTP fetch successful on attempt %d\n", attempt)
+		slog.Debug("HTTP fetch successful", "attempt", attempt)
 		return f.readResponseBody(resp)
 	}
-	
+
 	return nil, fmt.Errorf("failed after %d attempts: %w", maxRetries, lastErr)
 }
 
@@ -142,7 +143,7 @@ func (f *EventFetcher) readResponseBody(resp *http.Response) ([]byte, error) {
 			return nil, fmt.Errorf("failed to create gzip reader: %w", err)
 		}
 		defer gzReader.Close()
-		
+
 		body, err = io.ReadAll(gzReader)
 		if err != nil {
 			return nil, fmt.Errorf("failed to read gzipped body: %w", err)

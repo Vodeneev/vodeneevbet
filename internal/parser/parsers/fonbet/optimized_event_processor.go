@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"strconv"
 	"time"
 
@@ -37,8 +38,8 @@ func NewOptimizedEventProcessor(
 // ProcessSportEvents processes events for a specific sport using data from main API response
 func (p *OptimizedEventProcessor) ProcessSportEvents(sport string) error {
 	startTime := time.Now()
-	fmt.Printf("🚀 Starting optimized processing for sport: %s\n", sport)
-	
+	slog.Info("Starting optimized processing", "sport", sport)
+
 	// Fetch events for the sport (single HTTP request)
 	fetchStart := time.Now()
 	eventsData, err := p.eventFetcher.FetchEvents(sport)
@@ -46,7 +47,7 @@ func (p *OptimizedEventProcessor) ProcessSportEvents(sport string) error {
 		return fmt.Errorf("failed to fetch events for sport %s: %w", sport, err)
 	}
 	fetchDuration := time.Since(fetchStart)
-	fmt.Printf("⏱️  HTTP fetch took: %v\n", fetchDuration)
+	slog.Debug("HTTP fetch completed", "duration", fetchDuration)
 
 	// Parse the complete API response
 	parseStart := time.Now()
@@ -55,18 +56,17 @@ func (p *OptimizedEventProcessor) ProcessSportEvents(sport string) error {
 		return fmt.Errorf("failed to unmarshal API response: %w", err)
 	}
 	parseDuration := time.Since(parseStart)
-	fmt.Printf("⏱️  JSON parsing took: %v\n", parseDuration)
+	slog.Debug("JSON parsing completed", "duration", parseDuration)
 
-	fmt.Printf("📊 Found %d events and %d factor groups in API response\n", 
-		len(apiResponse.Events), len(apiResponse.CustomFactors))
+	slog.Debug("Found events and factor groups", "events", len(apiResponse.Events), "factor_groups", len(apiResponse.CustomFactors))
 
 	// Group events by match (Level 1 events are main matches)
 	groupStart := time.Now()
 	eventsByMatch := p.groupEventsByMatchFromAPI(apiResponse.Events)
 	groupDuration := time.Since(groupStart)
-	fmt.Printf("⏱️  Event grouping took: %v\n", groupDuration)
-	
-	fmt.Printf("🏆 Found %d main matches\n", len(eventsByMatch))
+	slog.Debug("Event grouping completed", "duration", groupDuration)
+
+	slog.Debug("Found main matches", "count", len(eventsByMatch))
 
 	// Process each match with all its events and factors
 	processStart := time.Now()
@@ -77,7 +77,7 @@ func (p *OptimizedEventProcessor) ProcessSportEvents(sport string) error {
 		}
 
 		matchStart := time.Now()
-		
+
 		// The first event is always the main match (Level 1)
 		mainEvent := matchEvents[0]
 		statisticalEvents := matchEvents[1:] // All other events are statistical
@@ -90,38 +90,36 @@ func (p *OptimizedEventProcessor) ProcessSportEvents(sport string) error {
 		// Process the match with all its events and factors
 		buildStart := time.Now()
 		if err := p.processMatchWithEventsAndFactors(mainEvent, statisticalEvents, matchFactors); err != nil {
-			fmt.Printf("❌ Failed to process match %s: %v\n", matchID, err)
+			slog.Warn("Failed to process match", "match_id", matchID, "error", err)
 			continue
 		}
 		buildDuration := time.Since(buildStart)
-		
+
 		matchDuration := time.Since(matchStart)
 		processedCount++
-		
+
 		// Выводим замеры для каждого матча
-		fmt.Printf("⏱️  Match %s: total=%v, factors=%v, build=%v\n", 
-			matchID, matchDuration, factorDuration, buildDuration)
-		
+		slog.Debug("Match processed", "match_id", matchID, "total", matchDuration, "factors", factorDuration, "build", buildDuration)
+
 		// Прерываем через 10 матчей для анализа
 		if processedCount >= 10 {
-			fmt.Printf("🛑 Stopping after %d matches for analysis\n", processedCount)
+			slog.Debug("Stopping after matches for analysis", "count", processedCount)
 			break
 		}
 	}
 	processDuration := time.Since(processStart)
-	
+
 	totalDuration := time.Since(startTime)
-	fmt.Printf("✅ Successfully processed %d matches for sport: %s\n", processedCount, sport)
-	fmt.Printf("⏱️  Total timing: fetch=%v, parse=%v, group=%v, process=%v, total=%v\n", 
-		fetchDuration, parseDuration, groupDuration, processDuration, totalDuration)
-	
+	slog.Info("Successfully processed matches", "sport", sport, "count", processedCount)
+	slog.Debug("Total timing", "fetch", fetchDuration, "parse", parseDuration, "group", groupDuration, "process", processDuration, "total", totalDuration)
+
 	return nil
 }
 
 // groupEventsByMatchFromAPI groups events by their parent match ID from API response
 func (p *OptimizedEventProcessor) groupEventsByMatchFromAPI(events []FonbetAPIEvent) map[string][]FonbetAPIEvent {
 	groups := make(map[string][]FonbetAPIEvent)
-	
+
 	// First, find all main matches (Level 1)
 	mainMatches := make(map[string]FonbetAPIEvent)
 	for _, event := range events {
@@ -130,12 +128,12 @@ func (p *OptimizedEventProcessor) groupEventsByMatchFromAPI(events []FonbetAPIEv
 			mainMatches[matchID] = event
 		}
 	}
-	
+
 	// Then, for each main match, find all related events
 	for matchID, mainMatch := range mainMatches {
 		// Add the main match itself
 		groups[matchID] = append(groups[matchID], mainMatch)
-		
+
 		// Find all statistical events for this match
 		for _, event := range events {
 			if event.Level > 1 && event.ParentID > 0 {
@@ -146,7 +144,7 @@ func (p *OptimizedEventProcessor) groupEventsByMatchFromAPI(events []FonbetAPIEv
 			}
 		}
 	}
-	
+
 	return groups
 }
 
@@ -169,12 +167,12 @@ func (p *OptimizedEventProcessor) getFactorsForMatch(matchID string, customFacto
 
 // processMatchWithEventsAndFactors processes a main match with all its statistical events and factors
 func (p *OptimizedEventProcessor) processMatchWithEventsAndFactors(
-	mainEvent FonbetAPIEvent, 
-	statisticalEvents []FonbetAPIEvent, 
+	mainEvent FonbetAPIEvent,
+	statisticalEvents []FonbetAPIEvent,
 	factors []FonbetFactor,
 ) error {
 	convertStart := time.Now()
-	
+
 	// Convert main event to FonbetEvent
 	mainFonbetEvent := FonbetEvent{
 		ID:         fmt.Sprintf("%d", mainEvent.ID),
@@ -214,7 +212,7 @@ func (p *OptimizedEventProcessor) processMatchWithEventsAndFactors(
 	for i, factor := range factors {
 		factorsInterface[i] = factor
 	}
-	
+
 	convertDuration := time.Since(convertStart)
 
 	// Use match builder to create the match
@@ -229,7 +227,7 @@ func (p *OptimizedEventProcessor) processMatchWithEventsAndFactors(
 	if matchModel, ok := (*match).(*models.Match); ok {
 		// Storage is optional: allow running without external storage.
 		if p.storage == nil {
-			fmt.Printf("⚠️  Storage is not configured, skipping store (match %d)\n", mainEvent.ID)
+			slog.Debug("Storage is not configured, skipping store", "match_id", mainEvent.ID)
 			return nil
 		}
 		// Store the match
@@ -239,8 +237,7 @@ func (p *OptimizedEventProcessor) processMatchWithEventsAndFactors(
 		}
 		storeDuration := time.Since(storeStart)
 
-		fmt.Printf("✅ Match %d: convert=%v, build=%v, store=%v, events=%d, factors=%d\n", 
-			mainEvent.ID, convertDuration, buildDuration, storeDuration, len(matchModel.Events), len(factors))
+		slog.Debug("Match processed", "match_id", mainEvent.ID, "convert", convertDuration, "build", buildDuration, "store", storeDuration, "events", len(matchModel.Events), "factors", len(factors))
 		return nil
 	}
 

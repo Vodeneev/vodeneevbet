@@ -4,7 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log"
+	"log/slog"
 	"net/http"
 	"strings"
 	"time"
@@ -82,7 +82,7 @@ func HandleParse(w http.ResponseWriter, r *http.Request) {
 		}
 		if err != nil {
 			result["error"] = err.Error()
-			log.Printf("Manual parse failed for %s: %v", parser.GetName(), err)
+			slog.Error("Manual parse failed", "parser", parser.GetName(), "error", err)
 		}
 		results = append(results, result)
 	}
@@ -93,7 +93,7 @@ func HandleParse(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := json.NewEncoder(w).Encode(response); err != nil {
-		log.Printf("Failed to encode parse response: %v", err)
+		slog.Error("Failed to encode parse response", "error", err)
 		http.Error(w, `{"error": "failed to encode response"}`, http.StatusInternalServerError)
 		return
 	}

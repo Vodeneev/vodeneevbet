@@ -7,7 +7,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
-	"log"
+	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
@@ -17,6 +17,8 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/Vodeneev/vodeneevbet/internal/pkg/config"
+	"github.com/Vodeneev/vodeneevbet/internal/pkg/logging"
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 )
 
@@ -35,18 +37,28 @@ func main() {
 	var token string
 	var calculatorURL string
 	var allowedUsers string
+	var configPath string
 
 	flag.StringVar(&token, "token", "", "Telegram bot token (required, or set TELEGRAM_BOT_TOKEN env var)")
 	flag.StringVar(&calculatorURL, "calculator-url", defaultCalculatorURL, "Calculator service URL")
 	flag.StringVar(&allowedUsers, "allowed-users", "", "Comma-separated list of allowed user IDs (optional)")
+	flag.StringVar(&configPath, "config", "", "Path to config file (optional, for logging setup)")
 	flag.Parse()
+
+	// Initialize logging if config is provided
+	if configPath != "" {
+		if cfg, err := config.Load(configPath); err == nil {
+			_, _ = logging.SetupLogger(&cfg.Logging, "telegram-bot")
+		}
+	}
 
 	// Get token from environment if not provided via flag
 	if token == "" {
 		token = os.Getenv("TELEGRAM_BOT_TOKEN")
 	}
 	if token == "" {
-		log.Fatal("Telegram bot token is required. Set -token flag or TELEGRAM_BOT_TOKEN env var")
+		slog.Error("Telegram bot token is required. Set -token flag or TELEGRAM_BOT_TOKEN env var")
+		os.Exit(1)
 	}
 
 	// Get calculator URL from environment if not provided
@@ -56,7 +68,7 @@ func main() {
 		}
 	}
 
-	config := BotConfig{
+	botConfig := BotConfig{
 		Token:         token,
 		CalculatorURL: calculatorURL,
 		UpdateTimeout: 60,
@@ -68,30 +80,32 @@ func main() {
 		for _, idStr := range userIDs {
 			id, err := strconv.ParseInt(strings.TrimSpace(idStr), 10, 64)
 			if err == nil {
-				config.AllowedUserIDs = append(config.AllowedUserIDs, id)
+				botConfig.AllowedUserIDs = append(botConfig.AllowedUserIDs, id)
 			}
 		}
 	}
 
-	log.Printf("Starting Telegram bot...")
-	log.Printf("Calculator URL: %s", config.CalculatorURL)
+	slog.Info("Starting Telegram bot...")
+	slog.Info("Calculator URL", "url", botConfig.CalculatorURL)
 
-	bot, err := tgbotapi.NewBotAPI(config.Token)
+	bot, err := tgbotapi.NewBotAPI(botConfig.Token)
 	if err != nil {
-		log.Fatalf("Failed to create bot: %v", err)
+		slog.Error("Failed to create bot", "error", err)
+		os.Exit(1)
 	}
 
 	bot.Debug = false
-	
+
 	// Test bot connection by getting bot info
 	botInfo, err := bot.GetMe()
 	if err != nil {
-		log.Fatalf("Failed to get bot info (token might be invalid): %v", err)
+		slog.Error("Failed to get bot info (token might be invalid)", "error", err)
+		os.Exit(1)
 	}
-	
-	log.Printf("Authorized on account %s (ID: %d)", botInfo.UserName, botInfo.ID)
-	log.Printf("Bot is ready to receive messages")
-	log.Printf("Bot token: %s...%s (first 10, last 4 chars)", config.Token[:10], config.Token[len(config.Token)-4:])
+
+	slog.Info("Authorized on account", "username", botInfo.UserName, "id", botInfo.ID)
+	slog.Info("Bot is ready to receive messages")
+	slog.Debug("Bot token", "token_preview", fmt.Sprintf("%s...%s", botConfig.Token[:10], botConfig.Token[len(botConfig.Token)-4:]))
 
 	u := tgbotapi.NewUpdate(0)
 	u.Timeout = config.UpdateTimeout
@@ -104,25 +118,25 @@ func main() {
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
 	go func() {
 		<-sigChan
-		log.Println("Received shutdown signal, stopping bot...")
+		slog.Info("Received shutdown signal, stopping bot...")
 		cancel()
 	}()
 
 	// Start bot handler
-	log.Println("Starting updates channel...")
+	slog.Info("Starting updates channel...")
 	updates := bot.GetUpdatesChan(u)
-	
+
 	go func() {
 		defer func() {
 			if r := recover(); r != nil {
-				log.Printf("PANIC in bot handler: %v", r)
+				slog.Error("PANIC in bot handler", "error", r)
 			}
 		}()
-		
+
 		for {
 			select {
 			case <-ctx.Done():
-				log.Println("Stopping bot updates...")
+				slog.Info("Stopping bot updates...")
 				bot.StopReceivingUpdates()
 				return
 			case update := <-updates:
@@ -130,20 +144,20 @@ func main() {
 				go func(upd tgbotapi.Update) {
 					defer func() {
 						if r := recover(); r != nil {
-							log.Printf("PANIC handling message from user %d: %v", upd.Message.From.ID, r)
+							slog.Error("PANIC handling message", "user_id", upd.Message.From.ID, "error", r)
 						}
 					}()
-					
+
 					if upd.Message == nil {
 						return
 					}
 
-					log.Printf("Received message from user %d: %s", upd.Message.From.ID, upd.Message.Text)
+					slog.Debug("Received message", "user_id", upd.Message.From.ID, "text", upd.Message.Text)
 
 					// Check if user is allowed (if restrictions are set)
-					if len(config.AllowedUserIDs) > 0 {
+					if len(botConfig.AllowedUserIDs) > 0 {
 						allowed := false
-						for _, id := range config.AllowedUserIDs {
+						for _, id := range botConfig.AllowedUserIDs {
 							if upd.Message.From.ID == id {
 								allowed = true
 								break
@@ -152,13 +166,13 @@ func main() {
 						if !allowed {
 							msg := tgbotapi.NewMessage(upd.Message.Chat.ID, "Access denied. You are not authorized to use this bot.")
 							if _, err := bot.Send(msg); err != nil {
-								log.Printf("Failed to send access denied message to user %d: %v", upd.Message.From.ID, err)
+								slog.Error("Failed to send access denied message", "user_id", upd.Message.From.ID, "error", err)
 							}
 							return
 						}
 					}
 
-					handleMessage(bot, upd.Message, config)
+					handleMessage(bot, upd.Message, botConfig)
 				}(update)
 			}
 		}
@@ -166,7 +180,7 @@ func main() {
 
 	// Wait for context cancellation
 	<-ctx.Done()
-	log.Println("Telegram bot stopped")
+	slog.Info("Telegram bot stopped")
 }
 
 func handleMessage(bot *tgbotapi.BotAPI, message *tgbotapi.Message, config BotConfig) {
@@ -214,7 +228,7 @@ func handleMessage(bot *tgbotapi.BotAPI, message *tgbotapi.Message, config BotCo
 		default:
 			msg := tgbotapi.NewMessage(message.Chat.ID, "Unknown command. Use /help to see available commands.")
 			if _, err := bot.Send(msg); err != nil {
-				log.Printf("Failed to send unknown command message to user %d: %v", message.From.ID, err)
+				slog.Error("Failed to send unknown command message", "user_id", message.From.ID, "error", err)
 			}
 		}
 	} else {
@@ -285,7 +299,7 @@ You can also send messages like:
 	msg := tgbotapi.NewMessage(chatID, helpText)
 	msg.ParseMode = tgbotapi.ModeMarkdown
 	if _, err := bot.Send(msg); err != nil {
-		log.Printf("Failed to send help message to chat %d: %v", chatID, err)
+		slog.Error("Failed to send help message", "chat_id", chatID, "error", err)
 	}
 }
 
@@ -293,7 +307,7 @@ func fetchAndSendDiffs(bot *tgbotapi.BotAPI, chatID int64, config BotConfig, lim
 	// Show "typing..." indicator
 	typing := tgbotapi.NewChatAction(chatID, tgbotapi.ChatTyping)
 	if _, err := bot.Request(typing); err != nil {
-		log.Printf("Failed to send typing indicator to chat %d: %v", chatID, err)
+		slog.Debug("Failed to send typing indicator", "chat_id", chatID, "error", err)
 	}
 
 	// Build URL - use value-bets endpoint instead of diffs
@@ -303,33 +317,33 @@ func fetchAndSendDiffs(bot *tgbotapi.BotAPI, chatID int64, config BotConfig, lim
 	}
 
 	// Fetch data from calculator
-	log.Printf("Fetching diffs from %s", url)
+	slog.Debug("Fetching diffs", "url", url)
 	client := &http.Client{Timeout: 30 * time.Second}
 	resp, err := client.Get(url)
 	if err != nil {
-		log.Printf("Failed to fetch from calculator: %v", err)
+		slog.Error("Failed to fetch from calculator", "error", err)
 		msg := tgbotapi.NewMessage(chatID, fmt.Sprintf("❌ Error: Failed to connect to calculator service: %v", err))
 		if _, sendErr := bot.Send(msg); sendErr != nil {
-			log.Printf("Failed to send error message to chat %d: %v", chatID, sendErr)
+			slog.Error("Failed to send error message", "chat_id", chatID, "error", sendErr)
 		}
 		return
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		log.Printf("Calculator returned status %d", resp.StatusCode)
+		slog.Warn("Calculator returned non-OK status", "status", resp.StatusCode)
 		bodyBytes, _ := io.ReadAll(resp.Body)
-		log.Printf("Calculator error response body: %s", string(bodyBytes))
+		slog.Debug("Calculator error response body", "body", string(bodyBytes))
 		var errorResp map[string]string
 		if err := json.NewDecoder(bytes.NewReader(bodyBytes)).Decode(&errorResp); err == nil {
 			msg := tgbotapi.NewMessage(chatID, fmt.Sprintf("❌ Error: %s", errorResp["error"]))
 			if _, sendErr := bot.Send(msg); sendErr != nil {
-				log.Printf("Failed to send error message to chat %d: %v", chatID, sendErr)
+				slog.Error("Failed to send error message", "chat_id", chatID, "error", sendErr)
 			}
 		} else {
 			msg := tgbotapi.NewMessage(chatID, fmt.Sprintf("❌ Error: Calculator service returned status %d", resp.StatusCode))
 			if _, sendErr := bot.Send(msg); sendErr != nil {
-				log.Printf("Failed to send error message to chat %d: %v", chatID, sendErr)
+				slog.Error("Failed to send error message", "chat_id", chatID, "error", sendErr)
 			}
 		}
 		return
@@ -338,10 +352,10 @@ func fetchAndSendDiffs(bot *tgbotapi.BotAPI, chatID int64, config BotConfig, lim
 	// Read response body for debugging
 	bodyBytes, err := io.ReadAll(resp.Body)
 	if err != nil {
-		log.Printf("Failed to read calculator response body: %v", err)
+		slog.Error("Failed to read calculator response body", "error", err)
 		msg := tgbotapi.NewMessage(chatID, fmt.Sprintf("❌ Error: Failed to read response: %v", err))
 		if _, sendErr := bot.Send(msg); sendErr != nil {
-			log.Printf("Failed to send error message to chat %d: %v", chatID, sendErr)
+			slog.Error("Failed to send error message", "chat_id", chatID, "error", sendErr)
 		}
 		return
 	}
@@ -350,7 +364,7 @@ func fetchAndSendDiffs(bot *tgbotapi.BotAPI, chatID int64, config BotConfig, lim
 	if len(bodyBytes) < previewLen {
 		previewLen = len(bodyBytes)
 	}
-	log.Printf("Calculator response body length: %d bytes, preview: %s", len(bodyBytes), string(bodyBytes[:previewLen]))
+	slog.Debug("Calculator response", "length", len(bodyBytes), "preview", string(bodyBytes[:previewLen]))
 
 	var valueBets []ValueBet
 	if err := json.NewDecoder(bytes.NewReader(bodyBytes)).Decode(&valueBets); err != nil {
@@ -358,20 +372,19 @@ func fetchAndSendDiffs(bot *tgbotapi.BotAPI, chatID int64, config BotConfig, lim
 		if len(bodyBytes) < previewLen {
 			previewLen = len(bodyBytes)
 		}
-		log.Printf("Failed to parse calculator response: %v, body: %s", err, string(bodyBytes[:previewLen]))
+		slog.Error("Failed to parse calculator response", "error", err, "body_preview", string(bodyBytes[:previewLen]))
 		msg := tgbotapi.NewMessage(chatID, fmt.Sprintf("❌ Error: Failed to parse response: %v", err))
 		if _, sendErr := bot.Send(msg); sendErr != nil {
-			log.Printf("Failed to send error message to chat %d: %v", chatID, sendErr)
+			slog.Error("Failed to send error message", "chat_id", chatID, "error", sendErr)
 		}
 		return
 	}
 
-	log.Printf("Received %d value bets from calculator", len(valueBets))
-	
+	slog.Info("Received value bets from calculator", "count", len(valueBets))
+
 	// Debug: log first value bet structure if available
 	if len(valueBets) > 0 {
-		log.Printf("First value bet: MatchName=%s, Bookmaker=%s, AllBookmakerOdds=%v", 
-			valueBets[0].MatchName, valueBets[0].Bookmaker, valueBets[0].AllBookmakerOdds)
+		slog.Debug("First value bet", "match_name", valueBets[0].MatchName, "bookmaker", valueBets[0].Bookmaker, "odds", valueBets[0].AllBookmakerOdds)
 	}
 
 	if len(valueBets) == 0 {
@@ -382,12 +395,12 @@ func fetchAndSendDiffs(bot *tgbotapi.BotAPI, chatID int64, config BotConfig, lim
 			statusText = " upcoming"
 		}
 		msgText := fmt.Sprintf("📊 No%s value bets found.", statusText)
-		log.Printf("Sending empty result message to chat %d: %s", chatID, msgText)
+		slog.Debug("Sending empty result message", "chat_id", chatID, "message", msgText)
 		msg := tgbotapi.NewMessage(chatID, msgText)
 		if _, sendErr := bot.Send(msg); sendErr != nil {
-			log.Printf("Failed to send empty result message to chat %d: %v", chatID, sendErr)
+			slog.Error("Failed to send empty result message", "chat_id", chatID, "error", sendErr)
 		} else {
-			log.Printf("Successfully sent empty result message to chat %d", chatID)
+			slog.Debug("Successfully sent empty result message", "chat_id", chatID)
 		}
 		return
 	}
@@ -429,7 +442,7 @@ func fetchAndSendDiffs(bot *tgbotapi.BotAPI, chatID int64, config BotConfig, lim
 		entry += fmt.Sprintf("💰 Value: *%.2f%%* | Expected: %.4f\n", vb.ValuePercent, vb.ExpectedValue)
 		entry += fmt.Sprintf("🎯 %s: *%.2f*\n", vb.Bookmaker, vb.BookmakerOdd)
 		entry += fmt.Sprintf("📊 Fair odd: %.2f (prob: %.2f%%)\n", vb.FairOdd, vb.FairProbability*100)
-		
+
 		// Show all bookmaker odds
 		if len(vb.AllBookmakerOdds) > 0 {
 			entry += "📈 All odds: "
@@ -442,7 +455,7 @@ func fetchAndSendDiffs(bot *tgbotapi.BotAPI, chatID int64, config BotConfig, lim
 			entry += strings.Join(oddsParts, " | ")
 			entry += "\n"
 		}
-		
+
 		entry += fmt.Sprintf("🕐 Start: %s\n", formatTime(vb.StartTime))
 		entry += "\n"
 
@@ -452,7 +465,7 @@ func fetchAndSendDiffs(bot *tgbotapi.BotAPI, chatID int64, config BotConfig, lim
 			msg := tgbotapi.NewMessage(chatID, builder.String())
 			msg.ParseMode = tgbotapi.ModeMarkdown
 			if _, err := bot.Send(msg); err != nil {
-				log.Printf("Failed to send message part to chat %d: %v", chatID, err)
+				slog.Error("Failed to send message part", "chat_id", chatID, "error", err)
 				return
 			}
 			builder.Reset()
@@ -465,16 +478,16 @@ func fetchAndSendDiffs(bot *tgbotapi.BotAPI, chatID int64, config BotConfig, lim
 	// Send remaining message
 	if builder.Len() > len(header) {
 		msgText := builder.String()
-		log.Printf("Sending value bets message to chat %d (%d chars, %d value bets)", chatID, len(msgText), len(valueBets))
+		slog.Debug("Sending value bets message", "chat_id", chatID, "chars", len(msgText), "count", len(valueBets))
 		msg := tgbotapi.NewMessage(chatID, msgText)
 		msg.ParseMode = tgbotapi.ModeMarkdown
 		if _, err := bot.Send(msg); err != nil {
-			log.Printf("Failed to send final message to chat %d: %v", chatID, err)
+			slog.Error("Failed to send final message", "chat_id", chatID, "error", err)
 		} else {
-			log.Printf("Successfully sent value bets to chat %d (%d value bets)", chatID, len(valueBets))
+			slog.Debug("Successfully sent value bets", "chat_id", chatID, "count", len(valueBets))
 		}
 	} else {
-		log.Printf("Message builder is empty or only contains header, not sending message to chat %d", chatID)
+		slog.Debug("Message builder is empty or only contains header, not sending", "chat_id", chatID)
 	}
 }
 
@@ -536,48 +549,48 @@ func startAsyncProcessing(bot *tgbotapi.BotAPI, chatID int64, config BotConfig) 
 	// Show "typing..." indicator
 	typing := tgbotapi.NewChatAction(chatID, tgbotapi.ChatTyping)
 	if _, err := bot.Request(typing); err != nil {
-		log.Printf("Failed to send typing indicator to chat %d: %v", chatID, err)
+		slog.Debug("Failed to send typing indicator", "chat_id", chatID, "error", err)
 	}
 
 	// Build URL
 	url := fmt.Sprintf("%s/async/start", config.CalculatorURL)
 
 	// Send POST request to start async processing
-	log.Printf("Starting async processing via %s", url)
+	slog.Debug("Starting async processing", "url", url)
 	client := &http.Client{Timeout: 10 * time.Second}
 	req, err := http.NewRequest("POST", url, nil)
 	if err != nil {
-		log.Printf("Failed to create request: %v", err)
+		slog.Error("Failed to create request", "error", err)
 		msg := tgbotapi.NewMessage(chatID, fmt.Sprintf("❌ Error: Failed to create request: %v", err))
 		if _, sendErr := bot.Send(msg); sendErr != nil {
-			log.Printf("Failed to send error message to chat %d: %v", chatID, sendErr)
+			slog.Error("Failed to send error message", "chat_id", chatID, "error", sendErr)
 		}
 		return
 	}
 
 	resp, err := client.Do(req)
 	if err != nil {
-		log.Printf("Failed to start async processing: %v", err)
+		slog.Error("Failed to start async processing", "error", err)
 		msg := tgbotapi.NewMessage(chatID, fmt.Sprintf("❌ Error: Failed to connect to calculator service: %v", err))
 		if _, sendErr := bot.Send(msg); sendErr != nil {
-			log.Printf("Failed to send error message to chat %d: %v", chatID, sendErr)
+			slog.Error("Failed to send error message", "chat_id", chatID, "error", sendErr)
 		}
 		return
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		log.Printf("Calculator returned status %d", resp.StatusCode)
+		slog.Warn("Calculator returned non-OK status", "status", resp.StatusCode)
 		var errorResp map[string]string
 		if err := json.NewDecoder(resp.Body).Decode(&errorResp); err == nil {
 			msg := tgbotapi.NewMessage(chatID, fmt.Sprintf("❌ Error: %s", errorResp["error"]))
 			if _, sendErr := bot.Send(msg); sendErr != nil {
-				log.Printf("Failed to send error message to chat %d: %v", chatID, sendErr)
+				slog.Error("Failed to send error message", "chat_id", chatID, "error", sendErr)
 			}
 		} else {
 			msg := tgbotapi.NewMessage(chatID, fmt.Sprintf("❌ Error: Calculator service returned status %d", resp.StatusCode))
 			if _, sendErr := bot.Send(msg); sendErr != nil {
-				log.Printf("Failed to send error message to chat %d: %v", chatID, sendErr)
+				slog.Error("Failed to send error message", "chat_id", chatID, "error", sendErr)
 			}
 		}
 		return
@@ -585,10 +598,10 @@ func startAsyncProcessing(bot *tgbotapi.BotAPI, chatID int64, config BotConfig) 
 
 	var result map[string]string
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		log.Printf("Failed to parse calculator response: %v", err)
+		slog.Error("Failed to parse calculator response", "error", err)
 		msg := tgbotapi.NewMessage(chatID, fmt.Sprintf("❌ Error: Failed to parse response: %v", err))
 		if _, sendErr := bot.Send(msg); sendErr != nil {
-			log.Printf("Failed to send error message to chat %d: %v", chatID, sendErr)
+			slog.Error("Failed to send error message", "chat_id", chatID, "error", sendErr)
 		}
 		return
 	}
@@ -600,9 +613,9 @@ func startAsyncProcessing(bot *tgbotapi.BotAPI, chatID int64, config BotConfig) 
 	}
 	msg := tgbotapi.NewMessage(chatID, statusMsg)
 	if _, err := bot.Send(msg); err != nil {
-		log.Printf("Failed to send start confirmation to chat %d: %v", chatID, err)
+		slog.Error("Failed to send start confirmation", "chat_id", chatID, "error", err)
 	} else {
-		log.Printf("Successfully started async processing via bot")
+		slog.Info("Successfully started async processing via bot")
 	}
 }
 
@@ -610,48 +623,48 @@ func stopAsyncProcessing(bot *tgbotapi.BotAPI, chatID int64, config BotConfig) {
 	// Show "typing..." indicator
 	typing := tgbotapi.NewChatAction(chatID, tgbotapi.ChatTyping)
 	if _, err := bot.Request(typing); err != nil {
-		log.Printf("Failed to send typing indicator to chat %d: %v", chatID, err)
+		slog.Debug("Failed to send typing indicator", "chat_id", chatID, "error", err)
 	}
 
 	// Build URL
 	url := fmt.Sprintf("%s/async/stop", config.CalculatorURL)
 
 	// Send POST request to stop async processing
-	log.Printf("Stopping async processing via %s", url)
+	slog.Debug("Stopping async processing", "url", url)
 	client := &http.Client{Timeout: 10 * time.Second}
 	req, err := http.NewRequest("POST", url, nil)
 	if err != nil {
-		log.Printf("Failed to create request: %v", err)
+		slog.Error("Failed to create request", "error", err)
 		msg := tgbotapi.NewMessage(chatID, fmt.Sprintf("❌ Error: Failed to create request: %v", err))
 		if _, sendErr := bot.Send(msg); sendErr != nil {
-			log.Printf("Failed to send error message to chat %d: %v", chatID, sendErr)
+			slog.Error("Failed to send error message", "chat_id", chatID, "error", sendErr)
 		}
 		return
 	}
 
 	resp, err := client.Do(req)
 	if err != nil {
-		log.Printf("Failed to stop async processing: %v", err)
+		slog.Error("Failed to stop async processing", "error", err)
 		msg := tgbotapi.NewMessage(chatID, fmt.Sprintf("❌ Error: Failed to connect to calculator service: %v", err))
 		if _, sendErr := bot.Send(msg); sendErr != nil {
-			log.Printf("Failed to send error message to chat %d: %v", chatID, sendErr)
+			slog.Error("Failed to send error message", "chat_id", chatID, "error", sendErr)
 		}
 		return
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		log.Printf("Calculator returned status %d", resp.StatusCode)
+		slog.Warn("Calculator returned non-OK status", "status", resp.StatusCode)
 		var errorResp map[string]string
 		if err := json.NewDecoder(resp.Body).Decode(&errorResp); err == nil {
 			msg := tgbotapi.NewMessage(chatID, fmt.Sprintf("❌ Error: %s", errorResp["error"]))
 			if _, sendErr := bot.Send(msg); sendErr != nil {
-				log.Printf("Failed to send error message to chat %d: %v", chatID, sendErr)
+				slog.Error("Failed to send error message", "chat_id", chatID, "error", sendErr)
 			}
 		} else {
 			msg := tgbotapi.NewMessage(chatID, fmt.Sprintf("❌ Error: Calculator service returned status %d", resp.StatusCode))
 			if _, sendErr := bot.Send(msg); sendErr != nil {
-				log.Printf("Failed to send error message to chat %d: %v", chatID, sendErr)
+				slog.Error("Failed to send error message", "chat_id", chatID, "error", sendErr)
 			}
 		}
 		return
@@ -659,10 +672,10 @@ func stopAsyncProcessing(bot *tgbotapi.BotAPI, chatID int64, config BotConfig) {
 
 	var result map[string]string
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		log.Printf("Failed to parse calculator response: %v", err)
+		slog.Error("Failed to parse calculator response", "error", err)
 		msg := tgbotapi.NewMessage(chatID, fmt.Sprintf("❌ Error: Failed to parse response: %v", err))
 		if _, sendErr := bot.Send(msg); sendErr != nil {
-			log.Printf("Failed to send error message to chat %d: %v", chatID, sendErr)
+			slog.Error("Failed to send error message", "chat_id", chatID, "error", sendErr)
 		}
 		return
 	}
@@ -674,9 +687,9 @@ func stopAsyncProcessing(bot *tgbotapi.BotAPI, chatID int64, config BotConfig) {
 	}
 	msg := tgbotapi.NewMessage(chatID, statusMsg)
 	if _, err := bot.Send(msg); err != nil {
-		log.Printf("Failed to send stop confirmation to chat %d: %v", chatID, err)
+		slog.Error("Failed to send stop confirmation", "chat_id", chatID, "error", err)
 	} else {
-		log.Printf("Successfully stopped async processing via bot")
+		slog.Info("Successfully stopped async processing via bot")
 	}
 }
 

@@ -98,6 +98,8 @@ jobs:
       - name: Upload docker-compose.yml and nginx.conf
         run: |
           ssh "${VM_USER}@${VM_HOST}" "sudo mkdir -p '${REMOTE_DIR}' && sudo chown -R '${VM_USER}:${VM_USER}' '${REMOTE_DIR}'"
+          # Remove nginx.conf if it exists as a directory (leftover from failed run when file was missing)
+          ssh "${VM_USER}@${VM_HOST}" "rm -rf '${REMOTE_DIR}/nginx.conf'"
           scp "deploy/vm-parsers/docker-compose.yml" "${VM_USER}@${VM_HOST}:${REMOTE_DIR}/docker-compose.yml"
           scp "deploy/vm-parsers/nginx.conf" "${VM_USER}@${VM_HOST}:${REMOTE_DIR}/nginx.conf"
 

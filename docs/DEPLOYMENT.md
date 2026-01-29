@@ -4,7 +4,7 @@ The automatic deployment system ensures that the latest version of services is a
 
 ## Deployment Architecture
 
-- **vm-parsers** (158.160.197.172): Runs Parser Service
+- **vm-parsers** (158.160.221.249): Runs Parser Service
 - **vm-core-services** (158.160.200.253): Runs Calculator Service
 
 ## Quick Start
@@ -140,7 +140,7 @@ Workflow `.github/workflows/deploy.yml`:
 **Solution:**
 1. Check SSH connection: `ssh vm-parsers`
 2. Make sure SSH config is set up correctly
-3. Check port 22 availability: `Test-NetConnection -ComputerName 158.160.197.172 -Port 22`
+3. Check port 22 availability: `Test-NetConnection -ComputerName 158.160.221.249 -Port 22`
 
 ### Problem: "Permission denied"
 

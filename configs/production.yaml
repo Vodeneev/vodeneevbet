@@ -63,7 +63,7 @@ health:
 
 value_calculator:
   # Data source: use parser's /matches endpoint
-  parser_url: "http://158.160.197.172/parser"  # URL to parser service (e.g. "http://parser:8080" in Docker)
+  parser_url: "http://158.160.221.249/parser"  # URL to parser service (e.g. "http://parser:8080" in Docker)
   
   # Filters for parsers
   sports: ["football"]             # Sports to parse (used by parsers, not calculator)

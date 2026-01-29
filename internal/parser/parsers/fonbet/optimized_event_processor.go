@@ -38,7 +38,7 @@ func NewOptimizedEventProcessor(
 // ProcessSportEvents processes events for a specific sport using data from main API response
 func (p *OptimizedEventProcessor) ProcessSportEvents(sport string) error {
 	startTime := time.Now()
-	slog.Info("Starting optimized processing", "sport", sport)
+	slog.Info(fmt.Sprintf("Fonbet: Processing sport %s", sport))
 
 	// Fetch events for the sport (single HTTP request)
 	fetchStart := time.Now()

@@ -100,7 +100,7 @@ func (p *BatchProcessor) ProcessSportEvents(sport string) error {
 	startTime := time.Now()
 	tracker := performance.GetTracker()
 
-	slog.Info("Starting batch processing", "sport", sport)
+	slog.Info(fmt.Sprintf("Fonbet: Processing sport %s", sport))
 
 	// Fetch events for the sport (single HTTP request)
 	fetchStart := time.Now()

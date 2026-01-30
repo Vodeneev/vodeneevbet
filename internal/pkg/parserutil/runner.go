@@ -17,6 +17,9 @@ type RunOptions struct {
 	LogStart bool
 	// OnError is called when a parser returns an error. If nil, errors are logged.
 	OnError func(p interfaces.Parser, err error)
+	// WaitForCompletion when true blocks until all parsers finish (so the passed context stays valid for the full run).
+	// When false, RunParsers returns immediately and the caller must not cancel the context until parsers are done.
+	WaitForCompletion bool
 }
 
 // AsyncRunOptions returns default options for async (non-blocking) execution
@@ -43,7 +46,7 @@ func RunParsers(ctx context.Context, parsers []interfaces.Parser, parserFunc Par
 		}
 	}
 
-	// Start all parsers in parallel (async, non-blocking)
+	// Start all parsers in parallel
 	for _, p := range parsers {
 		p := p
 		wg.Add(1)
@@ -62,6 +65,8 @@ func RunParsers(ctx context.Context, parsers []interfaces.Parser, parserFunc Par
 		}()
 	}
 
-	// Return immediately - parsing happens in background
+	if opts.WaitForCompletion {
+		wg.Wait()
+	}
 	return nil
 }

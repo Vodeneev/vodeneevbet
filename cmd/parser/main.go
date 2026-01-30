@@ -279,6 +279,7 @@ func runParsingOnce(parsers []interfaces.Parser, timeout time.Duration, opts par
 	parseCtx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 
+	opts.WaitForCompletion = true // wait for all parsers so context stays valid for full timeout
 	_ = parserutil.RunParsers(parseCtx, parsers, func(ctx context.Context, p interfaces.Parser) error {
 		return p.ParseOnce(ctx)
 	}, opts)

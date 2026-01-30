@@ -20,24 +20,8 @@ import (
 	"github.com/chromedp/chromedp"
 )
 
-// Single Chrome user data dir to avoid accumulating temp dirs (each ~20MB+), which can fill disk on small VMs.
-const pinnacle888ChromeUserDataDir = "/tmp/pinnacle888_chrome"
-
 // chromeMu serializes all Chrome usage so only one instance runs at a time (avoids SingletonLock "File exists" when live and prematch resolve in parallel).
 var chromeMu sync.Mutex
-
-// cleanChromeUserDataDir removes the Chrome profile dir and lock files so a new Chrome can start (e.g. after a crash left stale SingletonLock).
-func cleanChromeUserDataDir() {
-	lockPath := pinnacle888ChromeUserDataDir + "/SingletonLock"
-	socketPath := pinnacle888ChromeUserDataDir + "/SingletonSocket"
-	cookiePath := pinnacle888ChromeUserDataDir + "/SingletonCookie"
-	_ = os.Remove(lockPath)
-	_ = os.Remove(socketPath)
-	_ = os.Remove(cookiePath)
-	if err := os.RemoveAll(pinnacle888ChromeUserDataDir); err != nil {
-		slog.Warn("Pinnacle888: failed to remove Chrome user data dir (stale lock may remain)", "dir", pinnacle888ChromeUserDataDir, "error", err)
-	}
-}
 
 type Client struct {
 	baseURL           string
@@ -54,6 +38,9 @@ type Client struct {
 	resolveTimeout    time.Duration // Timeout for mirror resolution
 	lastResolveTime   time.Time     // When we last resolved the mirror
 	resolveInterval   time.Duration // How often to check if resolution is needed
+	resolveMu         sync.Mutex    // Serializes "who runs resolve"; waiters block until one resolve finishes
+	resolveCond       *sync.Cond    // Signalled when resolve finishes so waiting goroutines can proceed
+	resolving         bool          // True while one goroutine is running resolveMirror()
 }
 
 // resolveMirror resolves the actual URL from mirror link
@@ -169,19 +156,24 @@ func resolveMirror(mirrorURL string, timeout time.Duration) (string, error) {
 func resolveMirrorWithJS(mirrorURL string, timeout time.Duration) (string, error) {
 	chromeMu.Lock()
 	defer chromeMu.Unlock()
-	cleanChromeUserDataDir()
+
+	// Unique temp dir per run so we never remove a dir that Chrome still has open (avoids ENOTEMPTY / "stale lock" warnings).
+	chromeDir, err := os.MkdirTemp("", "pinnacle888_chrome_")
+	if err != nil {
+		return "", fmt.Errorf("create chrome temp dir: %w", err)
+	}
+	defer os.RemoveAll(chromeDir)
 
 	// Create context with timeout
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 
-	// Create chromedp context (fixed UserDataDir to avoid new temp dir per run)
 	opts := append(chromedp.DefaultExecAllocatorOptions[:],
 		chromedp.Flag("headless", true),
 		chromedp.Flag("disable-gpu", true),
 		chromedp.Flag("disable-dev-shm-usage", true),
 		chromedp.Flag("no-sandbox", true),
-		chromedp.UserDataDir(pinnacle888ChromeUserDataDir),
+		chromedp.UserDataDir(chromeDir),
 		chromedp.UserAgent("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36"),
 	)
 
@@ -201,7 +193,7 @@ func resolveMirrorWithJS(mirrorURL string, timeout time.Duration) (string, error
 
 	// Navigate and wait for page to load (including JavaScript redirects)
 	// Use longer wait times to ensure JavaScript redirects complete
-	err := chromedp.Run(ctx,
+	err = chromedp.Run(ctx,
 		chromedp.Navigate(mirrorURL),
 		chromedp.Sleep(3*time.Second), // Wait for initial page load
 		chromedp.Location(&finalURL),
@@ -272,7 +264,12 @@ func getFinalDomainFromResolved(resolvedURL string, timeout time.Duration) (stri
 
 	chromeMu.Lock()
 	defer chromeMu.Unlock()
-	cleanChromeUserDataDir()
+
+	chromeDir, createErr := os.MkdirTemp("", "pinnacle888_chrome_")
+	if createErr != nil {
+		return "", fmt.Errorf("create chrome temp dir: %w", createErr)
+	}
+	defer os.RemoveAll(chromeDir)
 
 	// If it's an IP address, try JavaScript resolution to get final URL after all redirects
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
@@ -283,7 +280,7 @@ func getFinalDomainFromResolved(resolvedURL string, timeout time.Duration) (stri
 		chromedp.Flag("disable-gpu", true),
 		chromedp.Flag("disable-dev-shm-usage", true),
 		chromedp.Flag("no-sandbox", true),
-		chromedp.UserDataDir(pinnacle888ChromeUserDataDir),
+		chromedp.UserDataDir(chromeDir),
 		chromedp.UserAgent("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36"),
 	)
 
@@ -444,8 +441,9 @@ func NewClient(baseURL, mirrorURL, apiKey, deviceUUID string, timeout time.Durat
 		proxyList:         proxyList,
 		currentProxyIndex: 0,
 		resolveTimeout:    timeout,
-		resolveInterval:   5 * time.Minute, // Check every 5 minutes if resolution is needed
+		resolveInterval:   2 * time.Hour, // Re-resolve mirror at most once every 2 hours (Chrome used only when needed)
 	}
+	client.resolveCond = sync.NewCond(&client.resolveMu)
 
 	// Don't resolve immediately - do lazy resolution when needed
 	// This avoids blocking startup and allows re-resolution when URL stops working
@@ -475,47 +473,56 @@ func (c *Client) checkURLHealth(urlStr string) bool {
 	return resp.StatusCode >= 200 && resp.StatusCode < 400
 }
 
-// ensureResolved ensures that mirror URL is resolved and cached
-// It only resolves if:
-// 1. Not resolved yet, OR
-// 2. Last resolution was more than resolveInterval ago AND URL is not healthy
+// ensureResolved ensures that mirror URL is resolved and cached.
+// Only one goroutine runs resolveMirror(); all others block until it finishes and then use the cached result.
+// This avoids hundreds of resolve attempts (and Chrome launches) when many requests hit ensureResolved() with empty cache.
 func (c *Client) ensureResolved() error {
 	if c.mirrorURL == "" {
 		return nil
 	}
 
+	c.resolveMu.Lock()
+	for c.resolving {
+		c.resolveCond.Wait()
+	}
+	// Re-read cache; another goroutine may have just resolved
 	c.resolvedMu.RLock()
 	hasResolved := c.resolvedURL != ""
 	lastResolve := c.lastResolveTime
 	resolvedURL := c.resolvedURL
 	c.resolvedMu.RUnlock()
 
-	// If we have a resolved URL, check if it's still healthy
+	if hasResolved && time.Since(lastResolve) < c.resolveInterval {
+		c.resolveMu.Unlock()
+		return nil
+	}
 	if hasResolved {
-		// Check if enough time has passed since last resolution
-		if time.Since(lastResolve) < c.resolveInterval {
-			// Too soon to check again, use cached URL
-			return nil
-		}
-
-		// Check if current URL is still healthy
+		c.resolveMu.Unlock()
 		if c.checkURLHealth(resolvedURL) {
-			// URL is still working, update last check time
 			c.resolvedMu.Lock()
 			c.lastResolveTime = time.Now()
 			c.resolvedMu.Unlock()
 			return nil
 		}
-
-		// URL is not healthy, need to re-resolve
+		c.resolveMu.Lock()
 		slog.Debug("Pinnacle888: Cached URL %s is not responding, re-resolving mirror...\n", resolvedURL)
 	}
 
-	// Resolve mirror URL
+	// This goroutine runs resolve; others block on resolveCond until we're done
+	c.resolving = true
+	c.resolveMu.Unlock()
+
 	resolved, err := resolveMirror(c.mirrorURL, c.resolveTimeout)
+
+	c.resolveMu.Lock()
+	c.resolving = false
+	defer func() {
+		c.resolveCond.Broadcast()
+		c.resolveMu.Unlock()
+	}()
+
 	if err != nil {
 		if hasResolved {
-			// If we had a cached URL but re-resolution failed, log warning but keep using cached URL
 			slog.Warn("Pinnacle888: mirror re-resolve failed, keeping cached URL", "mirror_url", c.mirrorURL, "error", err, "error_msg", err.Error(), "cached_url", resolvedURL)
 			return nil
 		}
@@ -523,7 +530,6 @@ func (c *Client) ensureResolved() error {
 		return fmt.Errorf("failed to resolve mirror: %w", err)
 	}
 
-	// Update cached resolved URL
 	c.resolvedMu.Lock()
 	c.resolvedURL = resolved
 	c.lastResolveTime = time.Now()
@@ -532,18 +538,13 @@ func (c *Client) ensureResolved() error {
 
 	slog.Debug("Pinnacle888: Resolved mirror URL: %s\n", resolved)
 
-	// Extract domain from resolved URL for odds endpoint
 	parsed, err := url.Parse(resolved)
 	if err == nil {
 		domain := parsed.Host
-		// Remove port if present
 		if idx := strings.Index(domain, ":"); idx != -1 {
 			domain = domain[:idx]
 		}
-
-		// Check if it's an IP address
 		if isIPAddress(domain) {
-			// If it's an IP address, try to get domain from JavaScript redirects
 			slog.Debug("Pinnacle888: Resolved URL is IP address %s, attempting to resolve domain via JavaScript...\n", domain)
 			finalDomain, err := getFinalDomainFromResolved(resolved, c.resolveTimeout)
 			if err != nil {
@@ -551,44 +552,38 @@ func (c *Client) ensureResolved() error {
 				c.resolvedMu.Lock()
 				c.oddsDomain = domain
 				c.resolvedMu.Unlock()
-				slog.Debug("Pinnacle888: Using IP address %s for odds endpoint\n", domain)
 			} else if finalDomain != "" {
 				c.resolvedMu.Lock()
 				c.oddsDomain = finalDomain
 				c.resolvedMu.Unlock()
-				slog.Debug("Pinnacle888: Resolved odds domain from JavaScript: %s\n", finalDomain)
 			} else {
 				c.resolvedMu.Lock()
 				c.oddsDomain = domain
 				c.resolvedMu.Unlock()
-				slog.Debug("Pinnacle888: Using IP address %s for odds endpoint (fallback)\n", domain)
 			}
 		} else {
-			// It's already a domain, use it directly
 			c.resolvedMu.Lock()
 			c.oddsDomain = domain
 			c.resolvedMu.Unlock()
-			slog.Debug("Pinnacle888: Using resolved domain %s for odds endpoint\n", domain)
 		}
 	}
 
-	// Log resolved URLs at INFO so production logs show what mirror resolved to
 	c.resolvedMu.RLock()
 	oddsDomain := c.oddsDomain
 	c.resolvedMu.RUnlock()
 	if oddsDomain == "" {
 		oddsDomain = "(empty)"
 	}
-	slog.Info("Pinnacle888: 	", "mirror_url", c.mirrorURL, "resolved_base_url", resolved, "odds_domain", oddsDomain)
+	slog.Info("Pinnacle888: mirror resolved", "mirror_url", c.mirrorURL, "resolved_base_url", resolved, "odds_domain", oddsDomain)
 
 	return nil
 }
 
-// shouldReResolve checks if an error indicates that we should re-resolve the mirror URL
+// shouldReResolve checks if an error indicates that we should re-resolve the mirror URL.
+// We only clear cache when the domain/connection is wrong, not when the API path returns 404.
 func (c *Client) shouldReResolve(err error, statusCode int) bool {
 	if err != nil {
 		errStr := err.Error()
-		// Check for connection errors that might indicate URL is down
 		if strings.Contains(errStr, "connection refused") ||
 			strings.Contains(errStr, "no such host") ||
 			strings.Contains(errStr, "timeout") ||
@@ -596,9 +591,9 @@ func (c *Client) shouldReResolve(err error, statusCode int) bool {
 			return true
 		}
 	}
-	// Check for HTTP errors that might indicate URL changed
-	if statusCode >= 400 && statusCode < 500 {
-		// 4xx errors might indicate URL changed or resource not found
+	// 404/403 = path not found or forbidden — domain is fine, don't clear cache (would trigger Chrome on every request).
+	// 502/503 = bad gateway / unavailable — proxy or mirror might have changed.
+	if statusCode == 502 || statusCode == 503 {
 		return true
 	}
 	return false

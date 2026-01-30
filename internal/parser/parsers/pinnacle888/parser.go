@@ -53,6 +53,14 @@ func (p *Parser) runOnce(ctx context.Context) error {
 	start := time.Now()
 	defer func() { slog.Info("Pinnacle888: runOnce finished", "duration", time.Since(start)) }()
 
+	// Resolve mirror once at the start of each run; cache is reused. On error we don't re-resolve, next iteration will retry.
+	if p.cfg.Parser.Pinnacle888.OddsURL != "" && (p.cfg.Parser.Pinnacle888.IncludeLive || p.cfg.Parser.Pinnacle888.IncludePrematch) {
+		if err := p.client.ensureResolved(); err != nil {
+			slog.Warn("Pinnacle888: mirror resolve failed at run start, will retry next iteration", "error", err, "error_msg", err.Error())
+			// continue anyway — requests will fail; next runOnce() will try resolve again
+		}
+	}
+
 	// If matchup_ids are provided, run targeted mode.
 	if len(p.cfg.Parser.Pinnacle888.MatchupIDs) > 0 {
 		for _, matchupID := range p.cfg.Parser.Pinnacle888.MatchupIDs {

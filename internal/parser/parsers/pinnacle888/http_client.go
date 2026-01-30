@@ -498,9 +498,10 @@ func (c *Client) ensureResolved() error {
 	if err != nil {
 		if hasResolved {
 			// If we had a cached URL but re-resolution failed, log warning but keep using cached URL
-			slog.Debug("Pinnacle888: Warning: failed to re-resolve mirror %s: %v, keeping cached URL %s\n", c.mirrorURL, err, resolvedURL)
+			slog.Warn("Pinnacle888: mirror re-resolve failed, keeping cached URL", "mirror_url", c.mirrorURL, "error", err, "error_msg", err.Error(), "cached_url", resolvedURL)
 			return nil
 		}
+		slog.Error("Pinnacle888: mirror resolve failed", "mirror_url", c.mirrorURL, "error", err, "error_msg", err.Error())
 		return fmt.Errorf("failed to resolve mirror: %w", err)
 	}
 
@@ -552,6 +553,15 @@ func (c *Client) ensureResolved() error {
 			slog.Debug("Pinnacle888: Using resolved domain %s for odds endpoint\n", domain)
 		}
 	}
+
+	// Log resolved URLs at INFO so production logs show what mirror resolved to
+	c.resolvedMu.RLock()
+	oddsDomain := c.oddsDomain
+	c.resolvedMu.RUnlock()
+	if oddsDomain == "" {
+		oddsDomain = "(empty)"
+	}
+	slog.Info("Pinnacle888: mirror resolved", "mirror_url", c.mirrorURL, "resolved_base_url", resolved, "odds_domain", oddsDomain)
 
 	return nil
 }

@@ -404,7 +404,7 @@ func (p *Parser) processOddsLeaguesFlow(ctx context.Context, isLive bool) ([]*mo
 	var allMatches []*models.Match
 	var wgLeagues sync.WaitGroup
 
-	for _, league := range leaguesWithEvents {
+	for idx, league := range leaguesWithEvents {
 		select {
 		case <-ctx.Done():
 			return allMatches, ctx.Err()
@@ -413,10 +413,14 @@ func (p *Parser) processOddsLeaguesFlow(ctx context.Context, isLive bool) ([]*mo
 
 		wgLeagues.Add(1)
 		league := league
+		leagueIdx := idx + 1
+		totalLeagues := len(leaguesWithEvents)
 		go func() {
 			defer wgLeagues.Done()
 			leagueSem <- struct{}{}
 			defer func() { <-leagueSem }()
+
+			slog.Info("Pinnacle888: processing league", "league", league.Name, "progress", fmt.Sprintf("%d/%d", leagueIdx, totalLeagues))
 
 			data, err := p.client.GetLeagueOdds(oddsURL, league.LeagueCode, sportID, isLive)
 			if err != nil {
@@ -432,6 +436,7 @@ func (p *Parser) processOddsLeaguesFlow(ctx context.Context, isLive bool) ([]*mo
 
 			// Events sequentially: no goroutines per event to avoid CPU/disk load
 			for _, lg := range leagueResp.Leagues {
+				leagueName := lg.Name
 				for _, ev := range lg.Events {
 					select {
 					case <-ctx.Done():
@@ -447,6 +452,11 @@ func (p *Parser) processOddsLeaguesFlow(ctx context.Context, isLive bool) ([]*mo
 					if err != nil || match == nil {
 						continue
 					}
+					matchName := match.HomeTeam + " vs " + match.AwayTeam
+					if matchName == " vs " {
+						matchName = match.Name
+					}
+					slog.Info("Pinnacle888: parsed match", "league", leagueName, "match", matchName)
 					matchesMu.Lock()
 					allMatches = append(allMatches, match)
 					matchesMu.Unlock()

@@ -436,6 +436,7 @@ func (p *Parser) processOddsLeaguesFlow(ctx context.Context, isLive bool) ([]*mo
 
 			// Events sequentially: no goroutines per event to avoid CPU/disk load
 			var eventsTotal, getEventErr, parseErr, skipped, matchesAdded int
+			var firstGetErrMsg string
 			for _, lg := range leagueResp.Leagues {
 				leagueName := lg.Name
 				for _, ev := range lg.Events {
@@ -448,6 +449,12 @@ func (p *Parser) processOddsLeaguesFlow(ctx context.Context, isLive bool) ([]*mo
 					eventData, err := p.client.GetEventOdds(oddsURL, ev.ID)
 					if err != nil {
 						getEventErr++
+						if firstGetErrMsg == "" {
+							firstGetErrMsg = err.Error()
+							if len(firstGetErrMsg) > 120 {
+								firstGetErrMsg = firstGetErrMsg[:117] + "..."
+							}
+						}
 						slog.Debug("Pinnacle888: get event odds", "eventId", ev.ID, "error", err)
 						continue
 					}
@@ -472,7 +479,11 @@ func (p *Parser) processOddsLeaguesFlow(ctx context.Context, isLive bool) ([]*mo
 					matchesMu.Unlock()
 				}
 			}
-			slog.Info(fmt.Sprintf("Pinnacle888: league finished: %s | events=%d get_err=%d parse_err=%d skipped=%d matches=%d", league.Name, eventsTotal, getEventErr, parseErr, skipped, matchesAdded))
+			finishMsg := fmt.Sprintf("Pinnacle888: league finished: %s | events=%d get_err=%d parse_err=%d skipped=%d matches=%d", league.Name, eventsTotal, getEventErr, parseErr, skipped, matchesAdded)
+			if getEventErr > 0 && firstGetErrMsg != "" {
+				finishMsg += " | first_get_err=" + firstGetErrMsg
+			}
+			slog.Info(finishMsg)
 		}()
 	}
 

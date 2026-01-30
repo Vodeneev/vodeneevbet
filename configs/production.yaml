@@ -60,7 +60,7 @@ health:
   # HTTP server settings
   port: 8080                # HTTP server listen port (default: 8080)
   read_header_timeout: 5s   # Timeout for reading HTTP headers (default: 5s)
-  async_parsing_timeout: 280s  # Timeout for periodic + /matches parsing; Pinnacle888 needs more time for 147+ leagues
+  async_parsing_timeout: 420s  # Timeout for periodic + /matches parsing; Pinnacle888 needs more time for 147+ leagues
 
 value_calculator:
   # Data source: use parser's /matches endpoint

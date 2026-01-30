@@ -93,7 +93,11 @@ func (p *Parser) runOnce(ctx context.Context) error {
 			matches, err := p.processLiveMatches(ctx)
 			if err != nil {
 				liveErr = err
-				slog.Error("Pinnacle888: failed to process live matches", "error", err, "error_msg", err.Error())
+				if ctx.Err() != nil {
+					slog.Warn("Pinnacle888: live matches processing stopped (time limit or context canceled)", "error_msg", err.Error())
+				} else {
+					slog.Error("Pinnacle888: failed to process live matches", "error", err, "error_msg", err.Error())
+				}
 			} else {
 				liveMatches = matches
 				slog.Info("Pinnacle888: live matches processed", "count", len(matches))
@@ -110,7 +114,11 @@ func (p *Parser) runOnce(ctx context.Context) error {
 			matches, err := p.processLineMatches(ctx)
 			if err != nil {
 				prematchErr = err
-				slog.Error("Pinnacle888: failed to process pre-match matches", "error", err, "error_msg", err.Error())
+				if ctx.Err() != nil {
+					slog.Warn("Pinnacle888: pre-match matches processing stopped (time limit or context canceled)", "error_msg", err.Error())
+				} else {
+					slog.Error("Pinnacle888: failed to process pre-match matches", "error", err, "error_msg", err.Error())
+				}
 			} else {
 				prematchMatches = matches
 				slog.Info("Pinnacle888: pre-match matches processed", "count", len(matches))

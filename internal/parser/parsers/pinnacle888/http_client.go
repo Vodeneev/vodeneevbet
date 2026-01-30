@@ -23,6 +23,22 @@ import (
 // Single Chrome user data dir to avoid accumulating temp dirs (each ~20MB+), which can fill disk on small VMs.
 const pinnacle888ChromeUserDataDir = "/tmp/pinnacle888_chrome"
 
+// chromeMu serializes all Chrome usage so only one instance runs at a time (avoids SingletonLock "File exists" when live and prematch resolve in parallel).
+var chromeMu sync.Mutex
+
+// cleanChromeUserDataDir removes the Chrome profile dir and lock files so a new Chrome can start (e.g. after a crash left stale SingletonLock).
+func cleanChromeUserDataDir() {
+	lockPath := pinnacle888ChromeUserDataDir + "/SingletonLock"
+	socketPath := pinnacle888ChromeUserDataDir + "/SingletonSocket"
+	cookiePath := pinnacle888ChromeUserDataDir + "/SingletonCookie"
+	_ = os.Remove(lockPath)
+	_ = os.Remove(socketPath)
+	_ = os.Remove(cookiePath)
+	if err := os.RemoveAll(pinnacle888ChromeUserDataDir); err != nil {
+		slog.Warn("Pinnacle888: failed to remove Chrome user data dir (stale lock may remain)", "dir", pinnacle888ChromeUserDataDir, "error", err)
+	}
+}
+
 type Client struct {
 	baseURL           string
 	mirrorURL         string // Mirror URL to resolve actual baseURL
@@ -151,8 +167,9 @@ func resolveMirror(mirrorURL string, timeout time.Duration) (string, error) {
 
 // resolveMirrorWithJS uses headless browser to execute JavaScript and get final URL
 func resolveMirrorWithJS(mirrorURL string, timeout time.Duration) (string, error) {
-	// Reuse single dir and clean before use to avoid filling disk with Chrome temp dirs
-	_ = os.RemoveAll(pinnacle888ChromeUserDataDir)
+	chromeMu.Lock()
+	defer chromeMu.Unlock()
+	cleanChromeUserDataDir()
 
 	// Create context with timeout
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
@@ -253,8 +270,9 @@ func getFinalDomainFromResolved(resolvedURL string, timeout time.Duration) (stri
 		}
 	}
 
-	// Reuse single dir and clean before use to avoid filling disk with Chrome temp dirs
-	_ = os.RemoveAll(pinnacle888ChromeUserDataDir)
+	chromeMu.Lock()
+	defer chromeMu.Unlock()
+	cleanChromeUserDataDir()
 
 	// If it's an IP address, try JavaScript resolution to get final URL after all redirects
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
@@ -561,7 +579,7 @@ func (c *Client) ensureResolved() error {
 	if oddsDomain == "" {
 		oddsDomain = "(empty)"
 	}
-	slog.Info("Pinnacle888: mirror resolved", "mirror_url", c.mirrorURL, "resolved_base_url", resolved, "odds_domain", oddsDomain)
+	slog.Info("Pinnacle888: 	", "mirror_url", c.mirrorURL, "resolved_base_url", resolved, "odds_domain", oddsDomain)
 
 	return nil
 }

@@ -3,6 +3,7 @@ package pinnacle888
 import (
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"strconv"
 	"time"
 
@@ -65,6 +66,7 @@ func buildMatchFromOddsEvent(leagueName string, event Event) *models.Match {
 	}
 
 	if homeTeam == "" || awayTeam == "" {
+		slog.Debug("Pinnacle888: skip event (no home/away)", "eventId", event.ID, "participants", len(event.Participants))
 		return nil
 	}
 
@@ -74,6 +76,7 @@ func buildMatchFromOddsEvent(leagueName string, event Event) *models.Match {
 
 	// Skip past events
 	if startTime.Before(now) && !event.Live {
+		slog.Debug("Pinnacle888: skip event (past start)", "eventId", event.ID, "startTime", startTime.Format(time.RFC3339), "home", homeTeam, "away", awayTeam)
 		return nil
 	}
 

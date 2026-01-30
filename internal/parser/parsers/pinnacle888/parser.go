@@ -420,7 +420,7 @@ func (p *Parser) processOddsLeaguesFlow(ctx context.Context, isLive bool) ([]*mo
 			leagueSem <- struct{}{}
 			defer func() { <-leagueSem }()
 
-			slog.Info("Pinnacle888: processing league", "league", league.Name, "progress", fmt.Sprintf("%d/%d", leagueIdx, totalLeagues))
+			slog.Info(fmt.Sprintf("Pinnacle888: processing league: %s (%d/%d)", league.Name, leagueIdx, totalLeagues))
 
 			data, err := p.client.GetLeagueOdds(oddsURL, league.LeagueCode, sportID, isLive)
 			if err != nil {
@@ -435,9 +435,11 @@ func (p *Parser) processOddsLeaguesFlow(ctx context.Context, isLive bool) ([]*mo
 			}
 
 			// Events sequentially: no goroutines per event to avoid CPU/disk load
+			var eventsTotal, getEventErr, parseErr, skipped, matchesAdded int
 			for _, lg := range leagueResp.Leagues {
 				leagueName := lg.Name
 				for _, ev := range lg.Events {
+					eventsTotal++
 					select {
 					case <-ctx.Done():
 						return
@@ -445,23 +447,32 @@ func (p *Parser) processOddsLeaguesFlow(ctx context.Context, isLive bool) ([]*mo
 					}
 					eventData, err := p.client.GetEventOdds(oddsURL, ev.ID)
 					if err != nil {
+						getEventErr++
 						slog.Debug("Pinnacle888: get event odds", "eventId", ev.ID, "error", err)
 						continue
 					}
 					match, err := ParseEventOddsResponse(eventData)
-					if err != nil || match == nil {
+					if err != nil {
+						parseErr++
+						slog.Debug("Pinnacle888: parse event odds", "eventId", ev.ID, "error", err)
 						continue
 					}
+					if match == nil {
+						skipped++
+						continue
+					}
+					matchesAdded++
 					matchName := match.HomeTeam + " vs " + match.AwayTeam
 					if matchName == " vs " {
 						matchName = match.Name
 					}
-					slog.Info("Pinnacle888: parsed match", "league", leagueName, "match", matchName)
+					slog.Info(fmt.Sprintf("Pinnacle888: parsed match: %s | %s", leagueName, matchName))
 					matchesMu.Lock()
 					allMatches = append(allMatches, match)
 					matchesMu.Unlock()
 				}
 			}
+			slog.Info(fmt.Sprintf("Pinnacle888: league finished: %s | events=%d get_err=%d parse_err=%d skipped=%d matches=%d", league.Name, eventsTotal, getEventErr, parseErr, skipped, matchesAdded))
 		}()
 	}
 

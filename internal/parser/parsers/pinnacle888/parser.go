@@ -93,6 +93,7 @@ func (p *Parser) runOnce(ctx context.Context) error {
 			matches, err := p.processLiveMatches(ctx)
 			if err != nil {
 				liveErr = err
+
 				if ctx.Err() != nil {
 					slog.Warn("Pinnacle888: live matches processing stopped (time limit or context canceled)", "error_msg", err.Error())
 				} else {

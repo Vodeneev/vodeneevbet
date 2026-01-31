@@ -61,25 +61,42 @@ func run() error {
 
 	slog.Info("Config loaded successfully")
 
-	// Override enabled_parsers from command line if specified
-	if cfg.parser != "" {
-		appConfig.Parser.EnabledParsers = []string{cfg.parser}
+	asyncParsingTimeout := appConfig.Health.AsyncParsingTimeout
+	if asyncParsingTimeout <= 0 {
+		asyncParsingTimeout = 60 * time.Second
 	}
-	ps, err := selectParsers(appConfig)
-	if err != nil {
-		return err
+
+	var interfaceParsers []interfaces.Parser
+	if len(appConfig.Parser.BookmakerServices) > 0 {
+		// Orchestrator mode: no local parsers, aggregate from bookmaker services
+		interfaceParsers = health.RemoteParsers(appConfig.Parser.BookmakerServices, asyncParsingTimeout)
+		health.SetMatchesAggregator(appConfig.Parser.BookmakerServices, 90*time.Second)
+		names := make([]string, 0, len(interfaceParsers))
+		for _, p := range interfaceParsers {
+			names = append(names, p.GetName())
+		}
+		sort.Strings(names)
+		slog.Info("Parser orchestrator mode: aggregating from bookmaker services", "services", strings.Join(names, ", "))
+	} else {
+		// Local mode: run parsers in process
+		if cfg.parser != "" {
+			appConfig.Parser.EnabledParsers = []string{cfg.parser}
+		}
+		ps, err := selectParsers(appConfig)
+		if err != nil {
+			return err
+		}
+		printSelectedParsers(ps)
+		interfaceParsers = make([]interfaces.Parser, len(ps))
+		for i, p := range ps {
+			interfaceParsers[i] = p
+		}
 	}
-	printSelectedParsers(ps)
 
 	ctx, cancel := createContext(cfg.runFor)
 	defer cancel()
-
 	setupSignalHandler(ctx, cancel)
 
-	interfaceParsers := make([]interfaces.Parser, len(ps))
-	for i, p := range ps {
-		interfaceParsers[i] = p
-	}
 	health.RegisterParsers(interfaceParsers)
 
 	port := appConfig.Health.Port
@@ -89,16 +106,10 @@ func run() error {
 	}
 	healthAddr := health.AddrFor(port)
 
-	// Use async_parsing_timeout from config, default to 60s if not specified
-	asyncParsingTimeout := appConfig.Health.AsyncParsingTimeout
-	if asyncParsingTimeout <= 0 {
-		asyncParsingTimeout = 60 * time.Second
-	}
-
 	health.Run(ctx, healthAddr, "parser", nil, appConfig.Health.ReadHeaderTimeout, asyncParsingTimeout)
 
 	slog.Info("Starting parsers...")
-	return runParsers(ctx, ps, appConfig, asyncParsingTimeout)
+	return runParsers(ctx, interfaceParsers, appConfig, asyncParsingTimeout)
 }
 
 func parseFlags() config {
@@ -209,29 +220,17 @@ func setupSignalHandler(ctx context.Context, cancel context.CancelFunc) {
 	}()
 }
 
-func runParsers(ctx context.Context, ps []parsers.Parser, appConfig *pkgconfig.Config, asyncParsingTimeout time.Duration) error {
-	interfaceParsers := make([]interfaces.Parser, len(ps))
-	for i, p := range ps {
-		interfaceParsers[i] = p
-	}
-
-	// Start parsers in background (they will wait for context cancellation)
-	// Use async options because Start() is a long-running process that waits for context cancellation
+func runParsers(ctx context.Context, interfaceParsers []interfaces.Parser, appConfig *pkgconfig.Config, asyncParsingTimeout time.Duration) error {
+	// Start parsers in background (local parsers wait for context; remote parsers no-op Start)
 	opts := parserutil.AsyncRunOptions()
-	opts.LogStart = true // Log when parsers start
+	opts.LogStart = true
 	opts.OnError = func(p interfaces.Parser, err error) {
 		slog.Error("Parser failed", "parser", p.GetName(), "error", err)
 	}
-	err := parserutil.RunParsers(ctx, interfaceParsers, func(ctx context.Context, p interfaces.Parser) error {
+	_ = parserutil.RunParsers(ctx, interfaceParsers, func(ctx context.Context, p interfaces.Parser) error {
 		return p.Start(ctx)
 	}, opts)
 
-	if err != nil {
-		slog.Error("Parser error detected", "error", err)
-		return err
-	}
-
-	// Start periodic background parsing
 	parseInterval := appConfig.Parser.Interval
 	if parseInterval <= 0 {
 		parseInterval = 2 * time.Minute
@@ -242,7 +241,6 @@ func runParsers(ctx context.Context, ps []parsers.Parser, appConfig *pkgconfig.C
 
 	startPeriodicParsing(ctx, interfaceParsers, parseInterval, asyncParsingTimeout)
 
-	// Wait for context cancellation
 	<-ctx.Done()
 	slog.Info("Parser stopped gracefully")
 	return nil

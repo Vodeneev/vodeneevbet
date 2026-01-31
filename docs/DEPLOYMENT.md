@@ -4,8 +4,55 @@ The automatic deployment system ensures that the latest version of services is a
 
 ## Deployment Architecture
 
-- **vm-parsers** (158.160.168.187): Runs Parser Service
+- **vm-parsers** (158.160.168.187): Runs Parser Service (local mode or orchestrator)
+- **vm-bookmaker-services** (158.160.159.73): Runs bookmaker services (fonbet, pinnacle, pinnacle888) — по одной конторе на контейнер
 - **vm-core-services** (158.160.222.217): Runs Calculator Service
+
+### Orchestrator mode and bookmaker services
+
+You can run **one service per bookmaker** (контора) and deploy them on different hardware. The parser then works as an **orchestrator**: it does not run parsers locally, but:
+
+- **GET /matches** — запрашивает `/matches` у каждого bookmaker-service асинхронно и мержит результаты (та же логика слияния по match_id).
+- **Периодический парсинг** — по таймеру дергает **GET /parse** у каждого bookmaker-service асинхронно.
+- **GET /parse?parser=X** — проксирует запрос на соответствующий bookmaker-service.
+
+Как развернуть:
+
+1. **Bookmaker services** — на каждой машине (или на одной) поднимаете сервисы по одной конторе:
+   - Используйте бинарник `bookmaker-service` с флагом `-parser=fonbet` / `-parser=pinnacle` / `-parser=pinnacle888`.
+   - Пример compose: `deploy/vm-bookmaker-services/docker-compose.yml` (три контейнера: fonbet, pinnacle, pinnacle888).
+   - Запуск локально: `./bin/bookmaker-service -parser=fonbet -config=configs/production.yaml`.
+
+2. **Parser в режиме оркестратора** — в конфиге парсера задаёте `parser.bookmaker_services`:
+   ```yaml
+   parser:
+     bookmaker_services:
+       fonbet: "http://158.160.159.73:8081"
+       pinnacle: "http://158.160.159.73:8082"
+       pinnacle888: "http://158.160.159.73:8083"
+     # enabled_parsers не используется в orchestrator mode
+   ```
+   Калькулятор по-прежнему ходит на один URL парсера (оркестратора); оркестратор сам собирает матчи со всех сервисов.
+
+### Деплой контор на 158.160.159.73
+
+```bash
+export IMAGE_OWNER=vodeneev   # или ваш namespace в GHCR
+export IMAGE_TAG=main
+export GHCR_TOKEN=...         # если образы приватные
+
+make deploy-bookmaker-services
+# или
+./scripts/deploy/deploy-bookmaker-services.sh
+```
+
+По умолчанию скрипт деплоит на **158.160.159.73** (VM_HOST). Порты: fonbet 8081, pinnacle 8082, pinnacle888 8083. Для `make status` добавьте в `~/.ssh/config`:
+
+```
+Host vm-bookmaker-services
+  HostName 158.160.159.73
+  User vodeneevm
+```
 
 ## Quick Start
 
@@ -149,15 +196,19 @@ After that, the GitHub Actions deploy (or local `./scripts/deploy/deploy-parsers
 
 ### GitHub Actions
 
-Workflow `.github/workflows/deploy.yml`:
+Workflow `.github/workflows/deploy.yml` при пуше в `main`:
 
-- builds `parser` and `calculator` images in GHCR
-- deploys to two VMs via SSH using `docker compose`
+- собирает образы: `parser`, `bookmaker-service`, `calculator`, `telegram-bot` и пушит в GHCR
+- деплоит парсер на vm-parsers, калькулятор и бот на vm-core
+- **если задан секрет `VM_BOOKMAKER_HOST`** — деплоит конторы (fonbet, pinnacle, pinnacle888) на эту VM (например 158.160.159.73)
+
+Чтобы после пуша всё заводилось, в т.ч. конторы на 158.160.159.73: в репозитории **Settings** → **Secrets and variables** → **Actions** добавь секрет **`VM_BOOKMAKER_HOST`** = **`158.160.159.73`**. Подробнее: `docs/GITHUB_SECRETS_SETUP.md`.
 
 **Required Secrets:**
 - `SSH_PRIVATE_KEY` — private SSH key (without passphrase)
 - `VM_PARSERS_HOST` — IP/DNS of vm-parsers
 - `VM_CORE_HOST` — IP/DNS of vm-core-services
+- `VM_BOOKMAKER_HOST` — (опционально) IP/DNS VM для контор, напр. `158.160.159.73`
 
 **Optional Secrets:**
 - `VM_USER` — user on VM (if different)

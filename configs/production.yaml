@@ -1,8 +1,17 @@
 parser:
   # Production parser management
-  # Empty array [] = run all registered parsers
+  # Empty array [] = run all registered parsers (local mode)
   enabled_parsers: ["fonbet", "pinnacle", "pinnacle888"]
-  
+
+  # Orchestrator mode: if bookmaker_services is set, parser does NOT run parsers locally,
+  # but aggregates /matches from these URLs and triggers /parse on them.
+  # Deploy one bookmaker-service per контора (e.g. on different hardware), then set:
+  # bookmaker_services:
+  #   fonbet: "http://fonbet-service:8080"
+  #   pinnacle: "http://pinnacle-service:8080"
+  #   pinnacle888: "http://pinnacle888-service:8080"
+  bookmaker_services: {}  # {} = local mode; set URLs for orchestrator mode
+
   user_agent: "ValueBetBot/1.0 (https://github.com/Vodeneev/vodeneevbet)"
   timeout: 120s
   interval: 2m   # Periodic parsing interval (default: 2m if not specified)

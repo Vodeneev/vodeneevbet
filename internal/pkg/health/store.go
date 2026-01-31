@@ -8,6 +8,75 @@ import (
 	"github.com/Vodeneev/vodeneevbet/internal/pkg/models"
 )
 
+// MergeMatchLists merges multiple match lists by match ID (same logic as AddMatch).
+// Used by parser-orchestrator to aggregate matches from bookmaker services.
+func MergeMatchLists(lists [][]models.Match) []models.Match {
+	byID := make(map[string]*models.Match)
+	for _, list := range lists {
+		for i := range list {
+			match := &list[i]
+			mergeMatchInto(byID, match)
+		}
+	}
+	out := make([]models.Match, 0, len(byID))
+	for _, m := range byID {
+		matchCopy := *m
+		eventsCopy := make([]models.Event, len(m.Events))
+		copy(eventsCopy, m.Events)
+		matchCopy.Events = eventsCopy
+		out = append(out, matchCopy)
+	}
+	sort.Slice(out, func(i, j int) bool {
+		return out[i].UpdatedAt.After(out[j].UpdatedAt)
+	})
+	return out
+}
+
+// mergeMatchInto merges one match into the map (by match ID, merge events).
+func mergeMatchInto(byID map[string]*models.Match, match *models.Match) {
+	if existing, ok := byID[match.ID]; ok {
+		existingEvents := make(map[string]*models.Event)
+		for i := range existing.Events {
+			existingEvents[existing.Events[i].ID] = &existing.Events[i]
+		}
+		for _, newEvent := range match.Events {
+			if existingEvent, exists := existingEvents[newEvent.ID]; exists {
+				existingOutcomes := make(map[string]*models.Outcome)
+				for i := range existingEvent.Outcomes {
+					existingOutcomes[existingEvent.Outcomes[i].ID] = &existingEvent.Outcomes[i]
+				}
+				for _, newOutcome := range newEvent.Outcomes {
+					if existingOutcome, outcomeExists := existingOutcomes[newOutcome.ID]; outcomeExists {
+						existingOutcome.Odds = newOutcome.Odds
+						existingOutcome.UpdatedAt = newOutcome.UpdatedAt
+					} else {
+						existingEvent.Outcomes = append(existingEvent.Outcomes, newOutcome)
+					}
+				}
+				existingEvent.UpdatedAt = newEvent.UpdatedAt
+			} else {
+				existing.Events = append(existing.Events, newEvent)
+			}
+		}
+		existing.UpdatedAt = match.UpdatedAt
+		if match.Name != "" {
+			existing.Name = match.Name
+		}
+		if match.HomeTeam != "" {
+			existing.HomeTeam = match.HomeTeam
+		}
+		if match.AwayTeam != "" {
+			existing.AwayTeam = match.AwayTeam
+		}
+	} else {
+		matchCopy := *match
+		eventsCopy := make([]models.Event, len(match.Events))
+		copy(eventsCopy, match.Events)
+		matchCopy.Events = eventsCopy
+		byID[match.ID] = &matchCopy
+	}
+}
+
 // InMemoryMatchStore stores matches in memory for fast API access
 type InMemoryMatchStore struct {
 	mu      sync.RWMutex
@@ -42,69 +111,9 @@ func AddMatch(match *models.Match) {
 		bookmakerList = append(bookmakerList, bk)
 	}
 
-	// Add or update match (UPSERT logic - merge events from different bookmakers)
-	if existing, ok := globalMatchStore.matches[match.ID]; ok {
-		// Merge events: add new events or update existing ones
-		existingEvents := make(map[string]*models.Event)
-		for i := range existing.Events {
-			existingEvents[existing.Events[i].ID] = &existing.Events[i]
-		}
-
-		addedCount := 0
-		updatedCount := 0
-		// Add new events or update existing ones
-		for _, newEvent := range match.Events {
-			if existingEvent, exists := existingEvents[newEvent.ID]; exists {
-				// Update existing event: merge outcomes (update odds for live matches)
-				existingOutcomes := make(map[string]*models.Outcome)
-				for i := range existingEvent.Outcomes {
-					existingOutcomes[existingEvent.Outcomes[i].ID] = &existingEvent.Outcomes[i]
-				}
-
-				// Update or add outcomes
-				for _, newOutcome := range newEvent.Outcomes {
-					if existingOutcome, outcomeExists := existingOutcomes[newOutcome.ID]; outcomeExists {
-						// Update existing outcome (important for live matches - odds change)
-						existingOutcome.Odds = newOutcome.Odds
-						existingOutcome.UpdatedAt = newOutcome.UpdatedAt
-						updatedCount++
-					} else {
-						// Add new outcome
-						existingEvent.Outcomes = append(existingEvent.Outcomes, newOutcome)
-						updatedCount++
-					}
-				}
-				existingEvent.UpdatedAt = newEvent.UpdatedAt
-			} else {
-				// Add new event
-				existing.Events = append(existing.Events, newEvent)
-				addedCount++
-			}
-		}
-
-		if addedCount > 0 || updatedCount > 0 {
-			slog.Debug("Updated match", "match_id", match.ID, "added_events", addedCount, "updated_outcomes", updatedCount, "bookmakers", bookmakerList)
-		}
-
-		// Update metadata
-		existing.UpdatedAt = match.UpdatedAt
-		if match.Name != "" {
-			existing.Name = match.Name
-		}
-		if match.HomeTeam != "" {
-			existing.HomeTeam = match.HomeTeam
-		}
-		if match.AwayTeam != "" {
-			existing.AwayTeam = match.AwayTeam
-		}
-	} else {
-		// Create copy to avoid race conditions
-		matchCopy := *match
-		eventsCopy := make([]models.Event, len(match.Events))
-		copy(eventsCopy, match.Events)
-		matchCopy.Events = eventsCopy
-		globalMatchStore.matches[match.ID] = &matchCopy
-		slog.Debug("Added new match", "match_id", match.ID, "bookmakers", bookmakerList, "event_count", len(match.Events))
+	mergeMatchInto(globalMatchStore.matches, match)
+	if slog.Default().Enabled(nil, slog.LevelDebug) {
+		slog.Debug("Stored match", "match_id", match.ID, "bookmakers", bookmakerList)
 	}
 }
 

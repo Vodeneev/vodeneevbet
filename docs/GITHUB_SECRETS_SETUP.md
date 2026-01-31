@@ -144,6 +144,16 @@ You already have the following secrets configured (don't touch them):
 - `GHCR_TOKEN` - token for GitHub Container Registry
 - `GHCR_USERNAME` - username for GHCR (optional)
 
+### Optional: деплой контор (bookmaker services) на отдельную VM
+
+Чтобы после пуша в `main` автоматически деплоились конторы (fonbet, pinnacle, pinnacle888) на **158.160.159.73**:
+
+1. **Settings** → **Secrets and variables** → **Actions** → **New repository secret**
+2. Добавь секрет **`VM_BOOKMAKER_HOST`** со значением **`158.160.159.73`**
+3. Если на этой VM другой SSH-ключ — добавь **`SSH_PRIVATE_KEY_BOOKMAKER`** (полный PEM ключ). Если не добавить — используется тот же ключ, что и для parsers (`SSH_PRIVATE_KEY`).
+
+После этого при каждом пуше в `main` workflow будет деплоить конторы на 158.160.159.73. Если секрет `VM_BOOKMAKER_HOST` не задан — job деплоя контор просто пропускается.
+
 ## Security
 
 ⚠️ **Important:**

@@ -21,14 +21,17 @@ type PostgresConfig struct {
 }
 
 type ParserConfig struct {
-	EnabledParsers []string          `yaml:"enabled_parsers"`
-	Interval       time.Duration     `yaml:"interval"`
-	UserAgent      string            `yaml:"user_agent"`
-	Timeout        time.Duration     `yaml:"timeout"`
-	Headers        map[string]string `yaml:"headers"`
-	Fonbet         FonbetConfig      `yaml:"fonbet"`
-	Pinnacle       PinnacleConfig    `yaml:"pinnacle"`
-	Pinnacle888    Pinnacle888Config `yaml:"pinnacle888"`
+	EnabledParsers    []string          `yaml:"enabled_parsers"`
+	Interval          time.Duration     `yaml:"interval"`
+	UserAgent         string            `yaml:"user_agent"`
+	Timeout           time.Duration     `yaml:"timeout"`
+	Headers           map[string]string `yaml:"headers"`
+	// BookmakerServices: name -> base URL. If set, parser runs in orchestrator mode:
+	// no local parsers, /matches aggregates from these URLs, /parse proxies to them.
+	BookmakerServices map[string]string `yaml:"bookmaker_services"`
+	Fonbet            FonbetConfig      `yaml:"fonbet"`
+	Pinnacle          PinnacleConfig    `yaml:"pinnacle"`
+	Pinnacle888       Pinnacle888Config `yaml:"pinnacle888"`
 }
 
 type FonbetConfig struct {

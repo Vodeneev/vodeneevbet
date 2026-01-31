@@ -76,6 +76,8 @@ func run() error {
 		return fmt.Errorf("expected exactly one parser for %q, got %d (available: %v)", cfg.parser, len(ps), parsers.AvailableNames())
 	}
 	slog.Info("Using parser", "parser", ps[0].GetName())
+	// Маркер для логов: по этой строке в Yandex Logging видно, что лог с VM контор (158.160.159.73)
+	slog.Info("Bookmaker service running on separate VM (single-converter)", "parser", cfg.parser)
 
 	ctx, cancel := createContext(cfg.runFor)
 	defer cancel()

@@ -70,9 +70,9 @@ jobs:
     name: Deploy bookmaker services (конторы) VM
     runs-on: ubuntu-latest
     needs: build_and_push
-    if: ${{ secrets.VM_BOOKMAKER_HOST != '' }}
+    if: ${{ vars.VM_BOOKMAKER_HOST != '' }}
     env:
-      VM_HOST: ${{ secrets.VM_BOOKMAKER_HOST }}
+      VM_HOST: ${{ vars.VM_BOOKMAKER_HOST }}
       REMOTE_DIR: /opt/vodeneevbet/bookmaker-services
       GHCR_USERNAME: ${{ secrets.GHCR_USERNAME || github.repository_owner }}
       GHCR_TOKEN: ${{ secrets.GHCR_TOKEN }}

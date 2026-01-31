@@ -148,11 +148,11 @@ You already have the following secrets configured (don't touch them):
 
 Чтобы после пуша в `main` автоматически деплоились конторы (fonbet, pinnacle, pinnacle888) на **158.160.159.73**:
 
-1. **Settings** → **Secrets and variables** → **Actions** → **New repository secret**
-2. Добавь секрет **`VM_BOOKMAKER_HOST`** со значением **`158.160.159.73`**
-3. Если на этой VM другой SSH-ключ — добавь **`SSH_PRIVATE_KEY_BOOKMAKER`** (полный PEM ключ). Если не добавить — используется тот же ключ, что и для parsers (`SSH_PRIVATE_KEY`).
+1. **Settings** → **Secrets and variables** → **Actions** → вкладка **Variables** → **New repository variable**
+2. Добавь переменную **`VM_BOOKMAKER_HOST`** со значением **`158.160.159.73`** (именно Variable, не Secret — иначе job нельзя пропустить по условию)
+3. Если на этой VM другой SSH-ключ — в **Secrets** добавь **`SSH_PRIVATE_KEY_BOOKMAKER`** (полный PEM ключ). Если не добавить — используется тот же ключ, что и для parsers (`SSH_PRIVATE_KEY`).
 
-После этого при каждом пуше в `main` workflow будет деплоить конторы на 158.160.159.73. Если секрет `VM_BOOKMAKER_HOST` не задан — job деплоя контор просто пропускается.
+После этого при каждом пуше в `main` workflow будет деплоить конторы на 158.160.159.73. Если переменная `VM_BOOKMAKER_HOST` не задана — job деплоя контор пропускается.
 
 ## Security
 

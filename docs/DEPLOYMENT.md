@@ -202,13 +202,13 @@ Workflow `.github/workflows/deploy.yml` при пуше в `main`:
 - деплоит парсер на vm-parsers, калькулятор и бот на vm-core
 - **если задан секрет `VM_BOOKMAKER_HOST`** — деплоит конторы (fonbet, pinnacle, pinnacle888) на эту VM (например 158.160.159.73)
 
-Чтобы после пуша всё заводилось, в т.ч. конторы на 158.160.159.73: в репозитории **Settings** → **Secrets and variables** → **Actions** добавь секрет **`VM_BOOKMAKER_HOST`** = **`158.160.159.73`**. Подробнее: `docs/GITHUB_SECRETS_SETUP.md`.
+Чтобы после пуша всё заводилось, в т.ч. конторы на 158.160.159.73: в репозитории **Settings** → **Secrets and variables** → **Actions** → вкладка **Variables** добавь переменную **`VM_BOOKMAKER_HOST`** = **`158.160.159.73`**. Подробнее: `docs/GITHUB_SECRETS_SETUP.md`.
 
 **Required Secrets:**
 - `SSH_PRIVATE_KEY` — private SSH key (without passphrase)
 - `VM_PARSERS_HOST` — IP/DNS of vm-parsers
 - `VM_CORE_HOST` — IP/DNS of vm-core-services
-- `VM_BOOKMAKER_HOST` — (опционально) IP/DNS VM для контор, напр. `158.160.159.73`
+- `VM_BOOKMAKER_HOST` — (опционально, Variable) IP/DNS VM для контор, напр. `158.160.159.73`
 
 **Optional Secrets:**
 - `VM_USER` — user on VM (if different)

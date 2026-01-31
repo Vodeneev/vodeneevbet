@@ -72,6 +72,7 @@ jobs:
     needs: build_and_push
     env:
       VM_HOST: ${{ secrets.VM_BOOKMAKER_HOST }}
+      VM_USER: ${{ secrets.VM_BOOKMAKER_USER || secrets.VM_USER || 'vodeneevm' }}
       REMOTE_DIR: /opt/vodeneevbet/bookmaker-services
       GHCR_USERNAME: ${{ secrets.GHCR_USERNAME || github.repository_owner }}
       GHCR_TOKEN: ${{ secrets.GHCR_TOKEN }}
@@ -85,7 +86,7 @@ jobs:
       - name: Start SSH agent
         uses: webfactory/ssh-agent@v0.9.0
         with:
-          ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY_BOOKMAKER || secrets.SSH_PRIVATE_KEY }}
+          ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
 
       - name: Add VM to known_hosts
         run: |

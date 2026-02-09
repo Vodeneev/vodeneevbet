@@ -734,7 +734,7 @@ var oddsUserAgents = []string{
 }
 
 // oddsRateLimit enforces a minimum delay between requests to avoid Cloudflare 429.
-const oddsMinDelay = 100 * time.Millisecond
+const oddsMinDelay = 500 * time.Millisecond
 
 // doOddsRequest performs GET with common headers for odds domain.
 // Includes rate limiting (800ms between requests) and User-Agent rotation.

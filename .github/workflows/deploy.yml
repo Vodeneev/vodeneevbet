@@ -114,7 +114,7 @@ jobs:
           set -euo pipefail
           cd "${REMOTE_DIR}"
           if [ -n "${YC_SERVICE_ACCOUNT_KEY_JSON:-}" ]; then
-            YC_SERVICE_ACCOUNT_KEY_JSON_CLEANED=$(printf '%s' "${YC_SERVICE_ACCOUNT_KEY_JSON}" | tr -d '\n' | sed 's/"/\\"/g')
+            YC_SERVICE_ACCOUNT_KEY_JSON_CLEANED=$(printf '%s' "${YC_SERVICE_ACCOUNT_KEY_JSON}" | tr '\n\r' ' ' | sed 's/  */ /g')
             YC_SERVICE_ACCOUNT_KEY_JSON_B64=$(printf '%s' "${YC_SERVICE_ACCOUNT_KEY_JSON_CLEANED}" | base64 -w 0)
             printf "IMAGE_OWNER=%s\nIMAGE_TAG=%s\nYC_SERVICE_ACCOUNT_KEY_JSON_B64=%s\nYC_FOLDER_ID=%s\nYC_LOG_GROUP_ID=%s\nYC_LOG_GROUP_NAME=%s\n" \
               "${IMAGE_OWNER}" "${IMAGE_TAG}" "${YC_SERVICE_ACCOUNT_KEY_JSON_B64}" "${YC_FOLDER_ID:-}" "${YC_LOG_GROUP_ID:-}" "${YC_LOG_GROUP_NAME:-default}" > .env

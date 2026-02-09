@@ -46,6 +46,8 @@ func normalizeKeyPart(s string) string {
 	if s == "" {
 		return ""
 	}
+	// Normalize hyphens to spaces for consistent matching (Al-Hilal → al hilal)
+	s = strings.ReplaceAll(s, "-", " ")
 	s = strings.Join(strings.Fields(s), " ")
 	// Keep it URL-friendly-ish (YDB key is Utf8, but we still avoid odd whitespace).
 	s = strings.ReplaceAll(s, "/", " ")
@@ -53,10 +55,32 @@ func normalizeKeyPart(s string) string {
 	s = strings.ReplaceAll(s, "|", " ")
 	s = strings.Join(strings.Fields(s), " ")
 
+	// Remove prepositions that differ between bookmakers (e.g. "de", "da", "del")
+	s = removePrepositions(s)
+
 	// Normalize team name using intelligent extraction of key words
 	s = normalizeTeamName(s)
 
 	return s
+}
+
+// removePrepositions removes common prepositions that vary between bookmakers.
+// "Internacional de Palmira" → "Internacional Palmira", "Vasco da Gama" → "Vasco Gama"
+func removePrepositions(s string) string {
+	preps := map[string]bool{
+		"de": true, "da": true, "do": true, "di": true, "del": true, "la": true,
+	}
+	words := strings.Fields(s)
+	filtered := make([]string, 0, len(words))
+	for _, w := range words {
+		if !preps[w] {
+			filtered = append(filtered, w)
+		}
+	}
+	if len(filtered) == 0 {
+		return s
+	}
+	return strings.Join(filtered, " ")
 }
 
 // normalizeTeamName normalizes team names by extracting key words and removing common suffixes
@@ -74,11 +98,17 @@ func normalizeTeamName(name string) string {
 		"ac": true, "a.c.": true, "a c": true,
 		"as": true, "a.s.": true, "a s": true,
 		"sc": true, "s.c.": true, "s c": true,
-		"bk": true, "b.k.": true,
+		"sfc": true, "s.f.c.": true, // e.g. Al-Hilal SFC
+		"bk": true, "b.k.": true, // e.g. Odense BK
+		"bb": true, "b.b.": true, // e.g. Erzurumspor BB
+		"hd": true, // e.g. Ulsan HD (Hyundai)
 		"ff": true, "f.f.": true,
 		"fk": true, "f.k.": true,
 		"if": true, "i.f.": true,
 		"og": true, "o.g.": true,
+		"cp": true, // e.g. Sporting CP
+		"ca": true, // e.g. CA Tigre
+		"cd": true, // e.g. CD Tenerife
 	}
 
 	// Common generic words that don't help identify teams

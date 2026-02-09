@@ -14,8 +14,163 @@
     "man united": "manchester united",
     "manchester utd": "manchester united",
     "man utd": "manchester united",
-    "real madrid": "real",
-    "real madrid cf": "real",
-    "real madrid c.f.": "real"
+    "real madrid": "real madrid",
+    "real madrid cf": "real madrid",
+    "real madrid c.f.": "real madrid",
+
+    "tottenham hotspur": "tottenham",
+    "tottenham hotspurs": "tottenham",
+    "newcastle united": "newcastle",
+
+    "hertha bsc": "hertha",
+    "hertha berlin": "hertha",
+
+    "sporting lisbon": "sporting",
+    "sporting cp": "sporting",
+    "sporting 2 lisbon": "sporting 2",
+    "sporting lisbon ii": "sporting 2",
+
+    "benfica ii": "benfica 2",
+    "benfica 2": "benfica 2",
+
+    "grasshopper club zurich": "grasshoppers zurich",
+    "grasshoppers zurich": "grasshoppers zurich",
+
+    "jong psv eindhoven": "jong psv",
+    "jong psv": "jong psv",
+    "top oss": "oss",
+
+    "kidderminster harriers": "kidderminster",
+    "kidderminster": "kidderminster",
+
+    "weston super mare": "weston sm",
+    "weston sm": "weston sm",
+
+    "cambuur leeuwaarden": "cambuur",
+    "cambuur": "cambuur",
+
+    "esteghlal tehran": "esteghlal",
+    "esteghlal": "esteghlal",
+
+    "al ittihad jeddah": "al ittihad",
+    "al ittihad": "al ittihad",
+
+    "shabab al ahli dubai": "shabab al ahli",
+    "shabab al ahli": "shabab al ahli",
+
+    "al hilal sfc": "al hilal",
+    "al hilal": "al hilal",
+
+    "al ahli jeddah": "al ahli",
+    "al ahli": "al ahli",
+
+    "al wahda abu dhabi": "al wahda",
+    "al wahda": "al wahda",
+
+    "al shorta baghdad": "al shorta",
+    "al shorta": "al shorta",
+
+    "al sharjah": "sharjah",
+    "sharjah fc": "sharjah",
+    "sharjah": "sharjah",
+
+    "al wehda mecca": "al wehda",
+    "al wehda": "al wehda",
+
+    "al faisaly harmah": "al faisaly",
+    "al faisaly": "al faisaly",
+
+    "al orobah": "al orouba",
+    "al orouba": "al orouba",
+
+    "traktor sazi": "tractor",
+    "tractor": "tractor",
+
+    "racing avellaneda": "racing",
+    "racing club": "racing",
+
+    "talleres cordoba": "talleres",
+    "talleres": "talleres",
+
+    "central cordoba sde": "central cordoba",
+    "central cordoba": "central cordoba",
+
+    "instituto cordoba": "instituto",
+    "instituto": "instituto",
+
+    "sarmiento junin": "sarmiento",
+    "sarmiento": "sarmiento",
+
+    "estudiantes plata": "estudiantes",
+    "estudiantes la plata": "estudiantes",
+    "estudiantes lp": "estudiantes",
+
+    "tigres uanl": "tigres mx",
+    "tigres monterrey": "tigres mx",
+
+    "tigres bogota": "tigres bogota",
+
+    "ulsan hd": "ulsan",
+    "ulsan hyundai": "ulsan",
+
+    "neftchi baku": "neftchi",
+    "neftchi": "neftchi",
+
+    "cerro montevideo": "cerro",
+    "cerro": "cerro",
+
+    "agf aarhus": "agf",
+    "agf": "agf",
+
+    "odense bk": "odense",
+    "odense": "odense",
+
+    "llaneros villavicencio": "llaneros",
+    "llaneros": "llaneros",
+
+    "patriotas boyaca": "patriotas",
+    "patriotas": "patriotas",
+
+    "asc hlm dakar": "hlm dakar",
+    "hlm dakar": "hlm dakar",
+
+    "team altamura": "altamura",
+    "altamura": "altamura",
+
+    "team fc cairo": "fc cairo",
+    "fc team": "fc cairo",
+
+    "kafr qasim": "kafr qasim",
+    "kafr qasem": "kafr qasim",
+
+    "akritas chlorakas": "akritas chloraka",
+    "akritas chloraka": "akritas chloraka",
+
+    "krasava ypsonas": "ypsonas",
+    "ypsonas": "ypsonas",
+
+    "etehad al reef": "etihad al reef",
+    "etihad al reef": "etihad al reef",
+
+    "sao jose porto alegre": "sao jose rs",
+    "sao jose rs": "sao jose rs",
+
+    "juventude rs": "juventude",
+    "juventude": "juventude",
+
+    "vitoria salvador": "vitoria",
+    "vitoria": "vitoria",
+
+    "flamengo rj": "flamengo",
+    "flamengo": "flamengo",
+
+    "serra espirito santo": "serra",
+    "serra": "serra",
+
+    "maracana cearense": "maracana",
+    "maracana": "maracana",
+
+    "misr elmaqasah": "misr makasa",
+    "misr lel makasa": "misr makasa"
   }
 }

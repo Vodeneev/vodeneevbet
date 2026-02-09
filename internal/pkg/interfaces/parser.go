@@ -1,6 +1,9 @@
 package interfaces
 
-import "context"
+import (
+	"context"
+	"time"
+)
 
 // Parser interface for bookmaker data parsers
 type Parser interface {
@@ -15,6 +18,21 @@ type Parser interface {
 	
 	// ParseOnce triggers a single parsing run (on-demand parsing)
 	ParseOnce(ctx context.Context) error
+}
+
+// IncrementalParser interface for parsers that support incremental/continuous parsing
+// Parsers implementing this interface can parse data in batches and update storage incrementally
+type IncrementalParser interface {
+	Parser
+	
+	// StartIncremental starts continuous incremental parsing in background
+	// It parses data continuously (e.g., by leagues) and updates storage as it progresses
+	// timeout is the maximum time allowed for one parsing cycle
+	StartIncremental(ctx context.Context, timeout time.Duration) error
+	
+	// TriggerNewCycle signals the parser to start a new parsing cycle
+	// This is non-blocking - it just triggers the start, doesn't wait for completion
+	TriggerNewCycle() error
 }
 
 // EventFetcher interface for fetching events from bookmaker APIs

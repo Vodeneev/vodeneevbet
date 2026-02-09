@@ -112,8 +112,9 @@ func AddMatch(match *models.Match) {
 	}
 
 	mergeMatchInto(globalMatchStore.matches, match)
+	totalMatches := len(globalMatchStore.matches)
 	if slog.Default().Enabled(nil, slog.LevelDebug) {
-		slog.Debug("Stored match", "match_id", match.ID, "bookmakers", bookmakerList)
+		slog.Debug("Stored match", "match_id", match.ID, "bookmakers", bookmakerList, "total_matches_in_store", totalMatches)
 	}
 }
 
@@ -126,7 +127,8 @@ func GetMatches() []models.Match {
 	globalMatchStore.mu.RLock()
 	defer globalMatchStore.mu.RUnlock()
 
-	matches := make([]models.Match, 0, len(globalMatchStore.matches))
+	storeSize := len(globalMatchStore.matches)
+	matches := make([]models.Match, 0, storeSize)
 	for _, match := range globalMatchStore.matches {
 		// Create copy to avoid race conditions
 		matchCopy := *match
@@ -141,5 +143,6 @@ func GetMatches() []models.Match {
 		return matches[i].UpdatedAt.After(matches[j].UpdatedAt)
 	})
 
+	slog.Debug("Retrieved matches from store", "count", len(matches), "store_size", storeSize)
 	return matches
 }

@@ -29,9 +29,22 @@ type ParserConfig struct {
 	// BookmakerServices: name -> base URL. If set, parser runs in orchestrator mode:
 	// no local parsers, /matches aggregates from these URLs, /parse proxies to them.
 	BookmakerServices map[string]string `yaml:"bookmaker_services"`
+	// IncrementalParsing enables continuous incremental parsing for bookmaker services
+	// When enabled, parsers work in background, parsing data in batches and updating storage incrementally
+	// This allows /matches endpoint to return partially ready data without blocking
+	IncrementalParsing IncrementalParsingConfig `yaml:"incremental_parsing"`
 	Fonbet            FonbetConfig      `yaml:"fonbet"`
 	Pinnacle          PinnacleConfig    `yaml:"pinnacle"`
 	Pinnacle888       Pinnacle888Config `yaml:"pinnacle888"`
+}
+
+// IncrementalParsingConfig configures incremental parsing for each parser
+type IncrementalParsingConfig struct {
+	// Enabled enables incremental parsing mode (default: false)
+	Enabled bool `yaml:"enabled"`
+	// Timeout is the maximum time allowed for one parsing cycle (default: 900s)
+	// Parsers will parse continuously without pauses between batches
+	Timeout time.Duration `yaml:"timeout"`
 }
 
 type FonbetConfig struct {

@@ -23,6 +23,12 @@ type Parser struct {
 	cfg     *config.Config
 	client  *Client
 	storage interfaces.Storage
+	
+	// Incremental parsing state
+	incMu            sync.Mutex
+	incrementalCtx   context.Context
+	incrementalCancel context.CancelFunc
+	cycleTrigger     chan struct{}
 }
 
 func NewParser(cfg *config.Config) *Parser {
@@ -166,9 +172,282 @@ func (p *Parser) ParseOnce(ctx context.Context) error {
 	return p.runOnce(ctx)
 }
 
-func (p *Parser) Stop() error { return nil }
+func (p *Parser) Stop() error {
+	p.incMu.Lock()
+	defer p.incMu.Unlock()
+	if p.incrementalCancel != nil {
+		p.incrementalCancel()
+		p.incrementalCancel = nil
+	}
+	return nil
+}
+
 func (p *Parser) GetName() string {
 	return "Pinnacle888"
+}
+
+// StartIncremental starts continuous incremental parsing in background
+// It parses leagues one by one with the specified interval and updates storage incrementally
+func (p *Parser) StartIncremental(ctx context.Context, timeout time.Duration) error {
+	p.incMu.Lock()
+	defer p.incMu.Unlock()
+	
+	if p.incrementalCancel != nil {
+		// Already running
+		slog.Warn("Pinnacle888: incremental parsing already started, skipping")
+		return nil
+	}
+	
+	slog.Info("Pinnacle888: initializing incremental parsing", "timeout", timeout)
+	incCtx, cancel := context.WithCancel(ctx)
+	p.incrementalCtx = incCtx
+	p.incrementalCancel = cancel
+	p.cycleTrigger = make(chan struct{}, 1)
+	
+	// Trigger first cycle immediately
+	p.cycleTrigger <- struct{}{}
+	slog.Info("Pinnacle888: triggered initial incremental parsing cycle")
+	
+	// Start background incremental parsing loop
+	go p.incrementalLoop(incCtx, timeout)
+	slog.Info("Pinnacle888: incremental parsing loop started in background")
+	
+	return nil
+}
+
+// TriggerNewCycle signals the parser to start a new parsing cycle
+func (p *Parser) TriggerNewCycle() error {
+	p.incMu.Lock()
+	defer p.incMu.Unlock()
+	
+	if p.cycleTrigger == nil {
+		slog.Error("Pinnacle888: cannot trigger cycle - incremental parsing not started")
+		return fmt.Errorf("incremental parsing not started")
+	}
+	
+	// Non-blocking trigger
+	select {
+	case p.cycleTrigger <- struct{}{}:
+		slog.Info("Pinnacle888: triggered new incremental parsing cycle")
+		return nil
+	default:
+		// Cycle already triggered, skip
+		slog.Debug("Pinnacle888: cycle already triggered, skipping duplicate trigger")
+		return nil
+	}
+}
+
+// incrementalLoop runs continuous incremental parsing
+func (p *Parser) incrementalLoop(ctx context.Context, timeout time.Duration) {
+	slog.Info("Pinnacle888: incremental parsing loop started", "timeout", timeout)
+	cycleCount := 0
+	
+	for {
+		select {
+		case <-ctx.Done():
+			slog.Info("Pinnacle888: incremental parsing loop stopped", "total_cycles", cycleCount)
+			return
+		case <-p.cycleTrigger:
+			cycleCount++
+			slog.Info("Pinnacle888: received cycle trigger", "cycle_number", cycleCount)
+			// Start new parsing cycle with timeout
+			p.runIncrementalCycle(ctx, timeout)
+			slog.Info("Pinnacle888: cycle completed, waiting for next trigger", "cycle_number", cycleCount)
+		}
+	}
+}
+
+// runIncrementalCycle runs one full parsing cycle incrementally (by leagues)
+func (p *Parser) runIncrementalCycle(ctx context.Context, timeout time.Duration) {
+	start := time.Now()
+	cycleID := time.Now().Unix()
+	slog.Info("Pinnacle888: starting incremental cycle", "cycle_id", cycleID, "timeout", timeout)
+	
+	// Create context with timeout for this cycle
+	cycleCtx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+	defer func() {
+		duration := time.Since(start)
+		slog.Info("Pinnacle888: incremental cycle finished", "cycle_id", cycleID, "duration", duration, "duration_sec", duration.Seconds())
+	}()
+	
+	// Resolve mirror once at the start of each cycle
+	if p.cfg.Parser.Pinnacle888.OddsURL != "" && (p.cfg.Parser.Pinnacle888.IncludeLive || p.cfg.Parser.Pinnacle888.IncludePrematch) {
+		slog.Info("Pinnacle888: resolving mirror URL", "cycle_id", cycleID)
+		if err := p.client.ensureResolved(); err != nil {
+			slog.Warn("Pinnacle888: mirror resolve failed at cycle start", "cycle_id", cycleID, "error", err)
+		} else {
+			slog.Info("Pinnacle888: mirror URL resolved successfully", "cycle_id", cycleID)
+		}
+	}
+	
+	// Process pre-match matches incrementally (continuously, no pauses)
+	if p.cfg.Parser.Pinnacle888.IncludePrematch && p.cfg.Parser.Pinnacle888.OddsURL != "" {
+		slog.Info("Pinnacle888: starting pre-match incremental processing", "cycle_id", cycleID)
+		p.processOddsLeaguesFlowIncremental(cycleCtx, false)
+		slog.Info("Pinnacle888: pre-match incremental processing completed", "cycle_id", cycleID)
+	}
+	
+	// Process live matches incrementally (continuously, no pauses)
+	if p.cfg.Parser.Pinnacle888.IncludeLive && p.cfg.Parser.Pinnacle888.OddsURL != "" {
+		slog.Info("Pinnacle888: starting live incremental processing", "cycle_id", cycleID)
+		p.processOddsLeaguesFlowIncremental(cycleCtx, true)
+		slog.Info("Pinnacle888: live incremental processing completed", "cycle_id", cycleID)
+	}
+}
+
+// processOddsLeaguesFlowIncremental processes leagues incrementally, updating storage after each league
+// Processes leagues continuously without pauses between them
+func (p *Parser) processOddsLeaguesFlowIncremental(ctx context.Context, isLive bool) {
+	oddsURL := p.cfg.Parser.Pinnacle888.OddsURL
+	if oddsURL == "" {
+		return
+	}
+	sportID := int64(29) // Soccer
+	
+	mode := "pre-match"
+	if isLive {
+		mode = "live"
+	}
+	slog.Info("Pinnacle888: starting incremental leagues flow", "mode", mode, "oddsURL", oddsURL)
+	
+	leagues, err := p.client.GetLeagues(oddsURL, sportID)
+	if err != nil {
+		slog.Error("Pinnacle888: failed to get leagues", "mode", mode, "error", err)
+		return
+	}
+	slog.Info("Pinnacle888: fetched leagues", "mode", mode, "count", len(leagues))
+	
+	// Filter leagues with events
+	var leaguesWithEvents []LeagueListItem
+	for _, l := range leagues {
+		if l.TotalEvents > 0 {
+			leaguesWithEvents = append(leaguesWithEvents, l)
+		}
+	}
+	slog.Info("Pinnacle888: filtering leagues with events", "mode", mode, "total", len(leagues), "with_events", len(leaguesWithEvents))
+	
+	totalLeagues := len(leaguesWithEvents)
+	
+	// Process leagues one by one continuously, updating storage incrementally
+	// No pauses between leagues - just continuous parsing until timeout or all leagues processed
+	matchesTotal := 0
+	for idx, league := range leaguesWithEvents {
+		select {
+		case <-ctx.Done():
+			slog.Warn("Pinnacle888: incremental processing interrupted", "mode", mode, "leagues_processed", idx, "leagues_total", totalLeagues)
+			return
+		default:
+		}
+		
+		leagueIdx := idx + 1
+		leagueStart := time.Now()
+		slog.Info("Pinnacle888: processing league incrementally", 
+			"mode", mode,
+			"league", league.Name, 
+			"league_code", league.LeagueCode,
+			"progress", fmt.Sprintf("%d/%d", leagueIdx, totalLeagues),
+			"percent", fmt.Sprintf("%.1f%%", float64(leagueIdx)/float64(totalLeagues)*100))
+		
+		// Process single league and update storage immediately
+		matches := p.processSingleLeague(ctx, oddsURL, league, sportID, isLive)
+		
+		// Update storage incrementally after each league
+		// These matches are immediately available via /matches endpoint
+		for _, match := range matches {
+			health.AddMatch(match)
+		}
+		slog.Debug("Pinnacle888: matches saved to store", "mode", mode, "league", league.Name, "matches_count", len(matches))
+		
+		matchesTotal += len(matches)
+		leagueDuration := time.Since(leagueStart)
+		slog.Info("Pinnacle888: league processed incrementally", 
+			"mode", mode,
+			"league", league.Name,
+			"matches", len(matches),
+			"matches_total", matchesTotal,
+			"duration", leagueDuration,
+			"progress", fmt.Sprintf("%d/%d", leagueIdx, totalLeagues),
+			"percent", fmt.Sprintf("%.1f%%", float64(leagueIdx)/float64(totalLeagues)*100))
+	}
+	
+	slog.Info("Pinnacle888: incremental leagues flow finished", 
+		"mode", mode, 
+		"leagues_processed", len(leaguesWithEvents),
+		"matches_total", matchesTotal)
+}
+
+// processSingleLeague processes a single league and returns matches
+func (p *Parser) processSingleLeague(ctx context.Context, oddsURL string, league LeagueListItem, sportID int64, isLive bool) []*models.Match {
+	var matches []*models.Match
+	leagueStart := time.Now()
+	
+	slog.Debug("Pinnacle888: fetching league odds", "league", league.Name, "league_code", league.LeagueCode, "total_events", league.TotalEvents)
+	data, err := p.client.GetLeagueOdds(oddsURL, league.LeagueCode, sportID, isLive)
+	if err != nil {
+		slog.Warn("Pinnacle888: failed to get league odds", "league", league.LeagueCode, "error", err)
+		return matches
+	}
+	
+	var leagueResp OddsResponse
+	if err := json.Unmarshal(data, &leagueResp); err != nil {
+		slog.Warn("Pinnacle888: failed to parse league odds", "league", league.LeagueCode, "error", err)
+		return matches
+	}
+	
+	eventsProcessed := 0
+	eventsSkipped := 0
+	eventsError := 0
+	
+	for _, lg := range leagueResp.Leagues {
+		leagueName := lg.Name
+		for _, ev := range lg.Events {
+			select {
+			case <-ctx.Done():
+				slog.Warn("Pinnacle888: league processing interrupted", "league", league.Name, "events_processed", eventsProcessed)
+				return matches
+			default:
+			}
+			
+			eventData, err := p.client.GetEventOdds(oddsURL, ev.ID)
+			if err != nil {
+				eventsError++
+				slog.Debug("Pinnacle888: get event odds failed", "eventId", ev.ID, "error", err)
+				continue
+			}
+			
+			match, err := ParseEventOddsResponse(eventData)
+			if err != nil {
+				eventsError++
+				slog.Debug("Pinnacle888: parse event odds failed", "eventId", ev.ID, "error", err)
+				continue
+			}
+			
+			if match == nil {
+				eventsSkipped++
+				continue
+			}
+			
+			eventsProcessed++
+			matchName := match.HomeTeam + " vs " + match.AwayTeam
+			if matchName == " vs " {
+				matchName = match.Name
+			}
+			slog.Debug("Pinnacle888: parsed match", "league", leagueName, "match", matchName)
+			matches = append(matches, match)
+		}
+	}
+	
+	leagueDuration := time.Since(leagueStart)
+	slog.Debug("Pinnacle888: league processing completed", 
+		"league", league.Name,
+		"matches", len(matches),
+		"events_processed", eventsProcessed,
+		"events_skipped", eventsSkipped,
+		"events_error", eventsError,
+		"duration", leagueDuration)
+	
+	return matches
 }
 
 func (p *Parser) processAll(ctx context.Context) error {

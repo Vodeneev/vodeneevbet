@@ -17,7 +17,16 @@ parser:
 
   user_agent: "ValueBetBot/1.0 (https://github.com/Vodeneev/vodeneevbet)"
   timeout: 120s
-  interval: 20m   # Periodic parsing interval; Pinnacle888 needs ~16min per cycle with rate limiting
+  interval: 2m   # Periodic parsing interval; triggers new parsing cycle for all parsers
+  
+  # Incremental parsing configuration
+  # When enabled, parsers work in background, parsing data continuously (e.g., by leagues)
+  # and updating storage incrementally. This allows /matches endpoint to return
+  # partially ready data without blocking on long-running parsers.
+  incremental_parsing:
+    enabled: true                    # Enable incremental parsing mode
+    timeout: 900s                    # Maximum time for one parsing cycle (15 minutes)
+  
   headers:
     "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8"
     "Accept-Language": "ru-RU,ru;q=0.9,en;q=0.8"

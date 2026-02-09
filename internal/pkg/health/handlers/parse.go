@@ -63,26 +63,48 @@ func HandleParse(w http.ResponseWriter, r *http.Request) {
 		targetParsers = parsers
 	}
 
-	// Create context with timeout
-	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
-	defer cancel()
-
 	// Run parsing
 	for _, p := range targetParsers {
 		parser := p.(interfaces.Parser)
 
 		startTime := time.Now()
-		err := parser.ParseOnce(ctx)
-		duration := time.Since(startTime)
+		var err error
+		var duration time.Duration
+		var triggered bool
+
+		// Check if parser supports incremental parsing
+		if incParser, ok := parser.(interfaces.IncrementalParser); ok {
+			// For incremental parsers, just trigger new cycle (non-blocking)
+			slog.Info("Triggering new incremental parsing cycle via /parse endpoint", "parser", parser.GetName())
+			err = incParser.TriggerNewCycle()
+			duration = time.Since(startTime)
+			triggered = true
+			if err == nil {
+				slog.Info("Successfully triggered new incremental parsing cycle", "parser", parser.GetName(), "duration", duration)
+			} else {
+				slog.Error("Failed to trigger incremental parsing cycle", "parser", parser.GetName(), "error", err)
+			}
+		} else {
+			// For regular parsers, run ParseOnce with timeout
+			ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+			err = parser.ParseOnce(ctx)
+			duration = time.Since(startTime)
+			cancel()
+		}
 
 		result := map[string]interface{}{
-			"parser":   parser.GetName(),
-			"duration": duration.String(),
-			"success":  err == nil,
+			"parser":    parser.GetName(),
+			"duration":  duration.String(),
+			"success":   err == nil,
+			"incremental": triggered,
 		}
 		if err != nil {
 			result["error"] = err.Error()
-			slog.Error("Manual parse failed", "parser", parser.GetName(), "error", err)
+			if triggered {
+				slog.Error("Failed to trigger incremental cycle", "parser", parser.GetName(), "error", err)
+			} else {
+				slog.Error("Manual parse failed", "parser", parser.GetName(), "error", err)
+			}
 		}
 		results = append(results, result)
 	}

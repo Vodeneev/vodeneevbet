@@ -76,6 +76,10 @@ jobs:
       REMOTE_DIR: /opt/vodeneevbet/bookmaker-services
       GHCR_USERNAME: ${{ secrets.GHCR_USERNAME || github.repository_owner }}
       GHCR_TOKEN: ${{ secrets.GHCR_TOKEN }}
+      YC_SERVICE_ACCOUNT_KEY_JSON: ${{ secrets.YC_SERVICE_ACCOUNT_KEY_JSON }}
+      YC_FOLDER_ID: ${{ secrets.YC_FOLDER_ID }}
+      YC_LOG_GROUP_ID: ${{ secrets.YC_LOG_GROUP_ID }}
+      YC_LOG_GROUP_NAME: ${{ secrets.YC_LOG_GROUP_NAME || 'default' }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -106,10 +110,18 @@ jobs:
             exit 1
           fi
           printf %s "${GHCR_TOKEN}" | ssh "${VM_USER}@${VM_HOST}" "sudo docker login ghcr.io -u \"${GHCR_USERNAME}\" --password-stdin"
-          ssh "${VM_USER}@${VM_HOST}" "REMOTE_DIR='${REMOTE_DIR}' IMAGE_OWNER='${IMAGE_OWNER}' IMAGE_TAG='${IMAGE_TAG}' bash -s" <<'EOF'
+          ssh "${VM_USER}@${VM_HOST}" "REMOTE_DIR='${REMOTE_DIR}' IMAGE_OWNER='${IMAGE_OWNER}' IMAGE_TAG='${IMAGE_TAG}' YC_SERVICE_ACCOUNT_KEY_JSON='${YC_SERVICE_ACCOUNT_KEY_JSON:-}' YC_FOLDER_ID='${YC_FOLDER_ID:-}' YC_LOG_GROUP_ID='${YC_LOG_GROUP_ID:-}' YC_LOG_GROUP_NAME='${YC_LOG_GROUP_NAME:-default}' bash -s" <<'EOF'
           set -euo pipefail
           cd "${REMOTE_DIR}"
-          printf "IMAGE_OWNER=%s\nIMAGE_TAG=%s\n" "${IMAGE_OWNER}" "${IMAGE_TAG}" > .env
+          if [ -n "${YC_SERVICE_ACCOUNT_KEY_JSON:-}" ]; then
+            YC_SERVICE_ACCOUNT_KEY_JSON_CLEANED=$(printf '%s' "${YC_SERVICE_ACCOUNT_KEY_JSON}" | tr -d '\n' | sed 's/"/\\"/g')
+            YC_SERVICE_ACCOUNT_KEY_JSON_B64=$(printf '%s' "${YC_SERVICE_ACCOUNT_KEY_JSON_CLEANED}" | base64 -w 0)
+            printf "IMAGE_OWNER=%s\nIMAGE_TAG=%s\nYC_SERVICE_ACCOUNT_KEY_JSON_B64=%s\nYC_FOLDER_ID=%s\nYC_LOG_GROUP_ID=%s\nYC_LOG_GROUP_NAME=%s\n" \
+              "${IMAGE_OWNER}" "${IMAGE_TAG}" "${YC_SERVICE_ACCOUNT_KEY_JSON_B64}" "${YC_FOLDER_ID:-}" "${YC_LOG_GROUP_ID:-}" "${YC_LOG_GROUP_NAME:-default}" > .env
+          else
+            printf "IMAGE_OWNER=%s\nIMAGE_TAG=%s\nYC_FOLDER_ID=%s\nYC_LOG_GROUP_ID=%s\nYC_LOG_GROUP_NAME=%s\n" \
+              "${IMAGE_OWNER}" "${IMAGE_TAG}" "${YC_FOLDER_ID:-}" "${YC_LOG_GROUP_ID:-}" "${YC_LOG_GROUP_NAME:-default}" > .env
+          fi
           export COMPOSE_PROJECT_NAME=vodeneevbet_bookmaker
           sudo docker compose down --remove-orphans || true
           sudo docker compose pull
@@ -163,7 +175,6 @@ jobs:
       - name: Upload docker-compose.yml and nginx.conf
         run: |
           ssh "${VM_USER}@${VM_HOST}" "sudo mkdir -p '${REMOTE_DIR}' && sudo chown -R '${VM_USER}:${VM_USER}' '${REMOTE_DIR}'"
-          # Remove nginx.conf if it exists as a directory (leftover from failed run when file was missing)
           ssh "${VM_USER}@${VM_HOST}" "rm -rf '${REMOTE_DIR}/nginx.conf'"
           scp "deploy/vm-parsers/docker-compose.yml" "${VM_USER}@${VM_HOST}:${REMOTE_DIR}/docker-compose.yml"
           scp "deploy/vm-parsers/nginx.conf" "${VM_USER}@${VM_HOST}:${REMOTE_DIR}/nginx.conf"
@@ -348,8 +359,6 @@ jobs:
             exit 1
           fi
 
-          # Wait for containers to be running (avoid flakiness right after up -d)
-          # Check calculator
           ok=0
           for i in {1..30}; do
             if [ "$(sudo docker ps -q -f name=vodeneevbet-calculator -f status=running | wc -l)" -ge 1 ]; then
@@ -366,7 +375,6 @@ jobs:
             exit 1
           fi
 
-          # Check telegram-bot
           ok=0
           for i in {1..30}; do
             if [ "$(sudo docker ps -q -f name=vodeneevbet-telegram-bot -f status=running | wc -l)" -ge 1 ]; then

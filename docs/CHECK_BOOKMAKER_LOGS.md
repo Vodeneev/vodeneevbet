@@ -1,5 +1,7 @@
 # Как проверить, что логи контор приходят в Yandex Cloud Logging
 
+Логи bookmaker-services отправляются напрямую через Yandex Cloud Logging SDK (как и на других ВМ).
+
 ## 1. Через Yandex Cloud CLI (yc)
 
 ```bash
@@ -9,14 +11,20 @@
 # Читай логи из каталога b1g7tng74uda3ahpg6oi
 yc logging read --folder-id=b1g7tng74uda3ahpg6oi --limit=50
 
-# Фильтр по resource_type (логи с VM контор)
-yc logging read --folder-id=b1g7tng74uda3ahpg6oi --filter='resource_type="bookmaker-vm"' --limit=20
+# Фильтр по метке сервиса (fonbet)
+yc logging read --folder-id=b1g7tng74uda3ahpg6oi --filter='service_label="bookmaker-fonbet"' --limit=20
 
-# Поиск тестового сообщения
-yc logging read --folder-id=b1g7tng74uda3ahpg6oi --filter='message:"TEST_LOG_FROM_BOOKMAKER_VM"' --limit=10
+# Фильтр по метке сервиса (pinnacle)
+yc logging read --folder-id=b1g7tng74uda3ahpg6oi --filter='service_label="bookmaker-pinnacle"' --limit=20
+
+# Фильтр по метке сервиса (pinnacle888)
+yc logging read --folder-id=b1g7tng74uda3ahpg6oi --filter='service_label="bookmaker-pinnacle888"' --limit=20
 
 # Поиск по маркеру из bookmaker-service
 yc logging read --folder-id=b1g7tng74uda3ahpg6oi --filter='message:"Bookmaker service running on separate VM"' --limit=10
+
+# Поиск тестового сообщения
+yc logging read --folder-id=b1g7tng74uda3ahpg6oi --filter='message:"TEST_LOG_CHECK"' --limit=10
 ```
 
 ## 2. Через веб-интерфейс Yandex Cloud Logging
@@ -26,9 +34,17 @@ yc logging read --folder-id=b1g7tng74uda3ahpg6oi --filter='message:"Bookmaker se
 3. Выбери каталог **b1g7tng74uda3ahpg6oi**
 4. В поиске используй фильтры:
 
-**Фильтр 1: по resource_type**
+**Фильтр 1: по метке сервиса**
 ```
-resource_type="bookmaker-vm"
+service_label="bookmaker-fonbet"
+```
+или
+```
+service_label="bookmaker-pinnacle"
+```
+или
+```
+service_label="bookmaker-pinnacle888"
 ```
 
 **Фильтр 2: по тексту из логов**
@@ -37,16 +53,12 @@ message:"Bookmaker service running on separate VM"
 ```
 или
 ```
-message:"TEST_LOG_FROM_BOOKMAKER_VM"
+message:"TEST_LOG_CHECK"
 ```
 
-**Фильтр 3: по имени контейнера (если Fluent Bit добавляет container_name)**
+**Фильтр 3: по метке проекта (все сервисы vodeneevbet)**
 ```
-container_name:"vodeneevbet-fonbet"
-```
-или
-```
-container_name:"vodeneevbet-pinnacle"
+project_label="vodeneevbet"
 ```
 
 **Фильтр 4: по времени (последние 10 минут)**
@@ -57,30 +69,31 @@ timestamp>="2026-02-09T11:40:00Z"
 ## 3. Что должно быть видно
 
 Если логи приходят, ты увидишь записи с:
-- **resource_type**: `bookmaker-vm`
+- **service_label**: `bookmaker-fonbet`, `bookmaker-pinnacle` или `bookmaker-pinnacle888`
+- **project_label**: `vodeneevbet`
+- **cluster_label**: `production`
 - **message**: содержит логи из контейнеров (например, "Fonbet: Successfully processed matches...", "Pinnacle888: processing league...")
 - **timestamp**: время записи
-- Возможно поля: `container_name`, `log`, `stream` (stdout/stderr)
 
 ## 4. Если логи не появляются
 
 Проверь на VM 158.160.159.73:
 
 ```bash
-# Статус Fluent Bit
-ssh -i ~/.ssh/github_actions_deploy -l dmgalochkin 158.160.159.73 "sudo systemctl status fluent-bit"
+# Проверка переменных окружения в контейнере
+ssh user@158.160.159.73 "sudo docker exec vodeneevbet-fonbet env | grep YC_"
 
-# Логи Fluent Bit (последние 50 строк)
-ssh -i ~/.ssh/github_actions_deploy -l dmgalochkin 158.160.159.73 "sudo journalctl -u fluent-bit -n 50 --no-pager"
+# Логи контейнера (последние 50 строк)
+ssh user@158.160.159.73 "sudo docker logs vodeneevbet-fonbet --tail 50"
 
-# Проверка отправки (ищи ошибки авторизации или сети)
-ssh -i ~/.ssh/github_actions_deploy -l dmgalochkin 158.160.159.73 "sudo journalctl -u fluent-bit --since '10 minutes ago' | grep -i 'error\|fail\|auth'"
+# Проверка .env файла на VM
+ssh user@158.160.159.73 "cat /opt/vodeneevbet/bookmaker-services/.env"
 
-# Проверка ключа
-ssh -i ~/.ssh/github_actions_deploy -l dmgalochkin 158.160.159.73 "sudo ls -la /opt/vodeneevbet/bookmaker-services/yc-logging-key.json"
+# Проверка статуса контейнеров
+ssh user@158.160.159.73 "sudo docker ps --filter name=vodeneevbet"
 
-# Проверка конфига
-ssh -i ~/.ssh/github_actions_deploy -l dmgalochkin 158.160.159.73 "sudo cat /etc/fluent-bit/fluent-bit.conf | grep -A 5 OUTPUT"
+# Проверка ошибок в логах (ищи сообщения об ошибках инициализации Yandex Cloud Logging)
+ssh user@158.160.159.73 "sudo docker logs vodeneevbet-fonbet 2>&1 | grep -i 'error\|fail\|logging'"
 ```
 
 ## 5. Тестовое сообщение
@@ -88,11 +101,24 @@ ssh -i ~/.ssh/github_actions_deploy -l dmgalochkin 158.160.159.73 "sudo cat /etc
 Чтобы сгенерировать тестовое сообщение прямо сейчас:
 
 ```bash
-ssh -i ~/.ssh/github_actions_deploy -l dmgalochkin 158.160.159.73 \
+ssh user@158.160.159.73 \
   "sudo docker exec vodeneevbet-fonbet sh -c 'echo \"TEST_LOG_CHECK_$(date +%Y%m%d_%H%M%S)\"'"
 ```
 
 Затем подожди 5-10 секунд и проверь в Yandex Cloud Logging по фильтру:
 ```
 message:"TEST_LOG_CHECK"
+```
+
+## 6. Проверка всех ВМ
+
+Для проверки логов со всех ВМ используй скрипт `scripts/check-all-vm-logs.sh` (если создан) или проверяй вручную:
+
+- **vm-parsers** (158.160.168.187): `service_label="parser"`
+- **vm-core** (158.160.222.217): `service_label="calculator"` или `service_label="telegram-bot"`
+- **vm-bookmaker-services** (158.160.159.73): `service_label="bookmaker-fonbet"`, `service_label="bookmaker-pinnacle"`, `service_label="bookmaker-pinnacle888"`
+
+Общий фильтр для всех сервисов:
+```
+project_label="vodeneevbet"
 ```

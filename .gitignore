@@ -46,6 +46,8 @@ logs/
 keys/*.json
 !keys/.gitkeep
 internal/export/keys/*.json
+deploy/vm-bookmaker-services/yc-logging-key.json
+deploy/vm-bookmaker-services/yc-logging-key.json
 
 # Database files
 *.db

@@ -318,9 +318,9 @@ func (h *YandexLoggingHandler) Handle(ctx context.Context, record slog.Record) e
 		Payload:   make(map[string]interface{}),
 	}
 
-	// Извлекаем атрибуты из записи
+	// Извлекаем атрибуты из записи, конвертируя в типы совместимые с structpb
 	record.Attrs(func(a slog.Attr) bool {
-		entry.Payload[a.Key] = a.Value.Any()
+		entry.Payload[a.Key] = toStructpbCompatible(a.Value)
 		return true
 	})
 
@@ -511,4 +511,38 @@ func (h *YandexLoggingHandler) Close() error {
 	h.wg.Wait()
 	h.flush()
 	return nil
+}
+
+// toStructpbCompatible конвертирует slog.Value в тип, совместимый с structpb.NewStruct.
+// structpb поддерживает только: nil, bool, float64, string, []interface{}, map[string]interface{}.
+// Все остальные типы (time.Duration, time.Time, fmt.Stringer и т.д.) конвертируются в строку.
+func toStructpbCompatible(v slog.Value) interface{} {
+	v = v.Resolve()
+
+	switch v.Kind() {
+	case slog.KindBool:
+		return v.Bool()
+	case slog.KindInt64:
+		return v.Int64()
+	case slog.KindUint64:
+		return v.Uint64()
+	case slog.KindFloat64:
+		return v.Float64()
+	case slog.KindString:
+		return v.String()
+	case slog.KindDuration:
+		return v.Duration().String()
+	case slog.KindTime:
+		return v.Time().Format(time.RFC3339Nano)
+	case slog.KindGroup:
+		attrs := v.Group()
+		m := make(map[string]interface{}, len(attrs))
+		for _, a := range attrs {
+			m[a.Key] = toStructpbCompatible(a.Value)
+		}
+		return m
+	default:
+		// Для любых других типов (LogValuer, etc.) используем строковое представление
+		return fmt.Sprintf("%v", v.Any())
+	}
 }

@@ -59,6 +59,9 @@ if [ -n \"${GHCR_TOKEN}\" ]; then
   echo \"${GHCR_TOKEN}\" | sudo docker login ghcr.io -u \"${GHCR_USERNAME}\" --password-stdin
 fi
 export COMPOSE_PROJECT_NAME=vodeneevbet_bookmaker
+# Clean up old images/containers/build cache to prevent disk from filling up
+sudo docker image prune -af --filter \"until=2h\" || true
+sudo docker builder prune -af || true
 if docker compose version >/dev/null 2>&1; then
   sudo docker compose down --remove-orphans || true
   sudo docker compose pull
@@ -71,6 +74,8 @@ else
   echo \"Docker Compose is not installed\" >&2
   exit 1
 fi
+# Final cleanup: remove dangling images left after recreate
+sudo docker image prune -f || true
 test \"\$(sudo docker ps -q -f name=vodeneevbet-fonbet -f status=running | wc -l)\" -ge 1
 test \"\$(sudo docker ps -q -f name=vodeneevbet-pinnacle -f status=running | wc -l)\" -ge 1
 test \"\$(sudo docker ps -q -f name=vodeneevbet-pinnacle888 -f status=running | wc -l)\" -ge 1

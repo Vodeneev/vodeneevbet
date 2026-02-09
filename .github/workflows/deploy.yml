@@ -124,8 +124,13 @@ jobs:
           fi
           export COMPOSE_PROJECT_NAME=vodeneevbet_bookmaker
           sudo docker compose down --remove-orphans || true
+          # Clean up old images/containers/build cache to prevent disk from filling up
+          sudo docker image prune -af --filter "until=2h" || true
+          sudo docker builder prune -af || true
           sudo docker compose pull
           sudo docker compose up -d --remove-orphans --force-recreate
+          # Final cleanup: remove dangling images left after recreate
+          sudo docker image prune -f || true
           for i in 1 2 3 4 5 6 7 8 9 10; do
             if [ "$(sudo docker ps -q -f name=vodeneevbet-fonbet -f status=running | wc -l)" -ge 1 ] && \
                [ "$(sudo docker ps -q -f name=vodeneevbet-pinnacle -f status=running | wc -l)" -ge 1 ] && \
@@ -218,6 +223,9 @@ jobs:
 
           # Prefer Compose v2 (docker compose). docker-compose v1 is incompatible with newer Docker versions (e.g. Docker 27+).
           export COMPOSE_PROJECT_NAME=vodeneevbet_parsers
+          # Clean up old images/containers/build cache to prevent disk from filling up
+          sudo docker image prune -af --filter "until=2h" || true
+          sudo docker builder prune -af || true
           if docker compose version >/dev/null 2>&1; then
             # Cleanup leftovers from previous runs to avoid container name conflicts
             sudo docker ps -a -q --filter "name=vodeneevbet-parser" | xargs -r sudo docker rm -f
@@ -233,6 +241,8 @@ jobs:
             echo "Docker Compose is not installed (need docker compose plugin or docker-compose)" >&2
             exit 1
           fi
+          # Final cleanup: remove dangling images left after recreate
+          sudo docker image prune -f || true
 
           # Wait for container to be running (avoid flakiness right after up -d)
           ok=0
@@ -346,6 +356,9 @@ jobs:
 
           # Prefer Compose v2 (docker compose). docker-compose v1 is incompatible with newer Docker versions (e.g. Docker 27+).
           export COMPOSE_PROJECT_NAME=vodeneevbet_core
+          # Clean up old images/containers/build cache to prevent disk from filling up
+          sudo docker image prune -af --filter "until=2h" || true
+          sudo docker builder prune -af || true
           if docker compose version >/dev/null 2>&1; then
             sudo docker compose down --remove-orphans || true
             sudo docker compose pull
@@ -358,6 +371,8 @@ jobs:
             echo "Docker Compose is not installed (need docker compose plugin or docker-compose)" >&2
             exit 1
           fi
+          # Final cleanup: remove dangling images left after recreate
+          sudo docker image prune -f || true
 
           ok=0
           for i in {1..30}; do

@@ -82,14 +82,21 @@ func NewYandexLoggingHandler(config YandexLoggingConfig) (*YandexLoggingHandler,
 	}
 
 	// Получаем метки из env, если не указаны в конфиге
+	// ВАЖНО: Проверяем переменные окружения ПЕРЕД использованием значений по умолчанию
 	if config.ProjectLabel == "" {
-		config.ProjectLabel = os.Getenv("YC_LOG_PROJECT_LABEL")
+		if envProjectLabel := os.Getenv("YC_LOG_PROJECT_LABEL"); envProjectLabel != "" {
+			config.ProjectLabel = envProjectLabel
+		}
 	}
 	if config.ServiceLabel == "" {
-		config.ServiceLabel = os.Getenv("YC_LOG_SERVICE_LABEL")
+		if envServiceLabel := os.Getenv("YC_LOG_SERVICE_LABEL"); envServiceLabel != "" {
+			config.ServiceLabel = envServiceLabel
+		}
 	}
 	if config.ClusterLabel == "" {
-		config.ClusterLabel = os.Getenv("YC_LOG_CLUSTER_LABEL")
+		if envClusterLabel := os.Getenv("YC_LOG_CLUSTER_LABEL"); envClusterLabel != "" {
+			config.ClusterLabel = envClusterLabel
+		}
 	}
 
 	// Устанавливаем значения по умолчанию
@@ -274,9 +281,11 @@ func NewYandexLoggingHandler(config YandexLoggingConfig) (*YandexLoggingHandler,
 	}
 
 	// Устанавливаем значения по умолчанию для меток, если не указаны
+	// ВАЖНО: Эти значения используются только если метки не были установлены из конфига или env
 	if handler.config.ProjectLabel == "" {
 		handler.config.ProjectLabel = "vodeneevbet"
 	}
+	// ServiceLabel не устанавливаем здесь - он должен быть установлен из env или serviceName в setupLoggerWithConfig
 	if handler.config.ServiceLabel == "" {
 		handler.config.ServiceLabel = "unknown"
 	}

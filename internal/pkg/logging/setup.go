@@ -24,10 +24,8 @@ func SetupLogger(cfg *config.LoggingConfig, serviceName string) (*slog.Logger, e
 		ClusterLabel:  cfg.ClusterLabel,
 	}
 
-	// Если ServiceLabel не указан, используем имя сервиса из параметра
-	if loggingConfig.ServiceLabel == "" {
-		loggingConfig.ServiceLabel = serviceName
-	}
+	// НЕ устанавливаем ServiceLabel здесь - пусть NewYandexLoggingHandler сначала проверит
+	// переменные окружения, а потом использует serviceName как fallback
 	return setupLoggerWithConfig(loggingConfig, serviceName)
 }
 
@@ -42,6 +40,11 @@ func setupLoggerWithConfig(config YandexLoggingConfig, serviceName string) (*slo
 
 	// Если включено логирование в Yandex Cloud, добавляем соответствующий handler
 	if config.Enabled {
+		// Устанавливаем ServiceLabel из serviceName только если он пустой и переменная окружения тоже пустая
+		// Это позволяет переменным окружения иметь приоритет
+		if config.ServiceLabel == "" && os.Getenv("YC_LOG_SERVICE_LABEL") == "" {
+			config.ServiceLabel = serviceName
+		}
 		yandexHandler, err := NewYandexLoggingHandler(config)
 		if err != nil {
 			slog.Warn("Failed to initialize Yandex Cloud Logging, continuing with stdout logging only", "error", err)

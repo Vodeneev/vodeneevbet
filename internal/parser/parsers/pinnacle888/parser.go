@@ -76,59 +76,48 @@ func (p *Parser) runOnce(ctx context.Context) error {
 		return nil
 	}
 
-	// Process live and pre-match matches asynchronously if configured
-	var wg sync.WaitGroup
+	// Process live and pre-match matches SEQUENTIALLY to avoid rate limiting.
+	// Both flows hit the same server; running them in parallel doubles the request rate
+	// and triggers Cloudflare rate limits (429).
 	var liveMatches []*models.Match
 	var prematchMatches []*models.Match
 	var liveErr, prematchErr error
 
 	slog.Info("Pinnacle888: runOnce started", "include_live", p.cfg.Parser.Pinnacle888.IncludeLive, "include_prematch", p.cfg.Parser.Pinnacle888.IncludePrematch, "odds_url_set", p.cfg.Parser.Pinnacle888.OddsURL != "")
 
-	// Fetch live matches asynchronously
-	if p.cfg.Parser.Pinnacle888.IncludeLive && p.cfg.Parser.Pinnacle888.OddsURL != "" {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			slog.Info("Pinnacle888: starting live matches processing")
-			matches, err := p.processLiveMatches(ctx)
-			if err != nil {
-				liveErr = err
-
-				if ctx.Err() != nil {
-					slog.Warn("Pinnacle888: live matches processing stopped (time limit or context canceled)", "error_msg", err.Error())
-				} else {
-					slog.Error("Pinnacle888: failed to process live matches", "error", err, "error_msg", err.Error())
-				}
-			} else {
-				liveMatches = matches
-				slog.Info("Pinnacle888: live matches processed", "count", len(matches))
-			}
-		}()
-	}
-
-	// Fetch pre-match matches asynchronously
+	// Fetch pre-match matches first (higher priority — more matches)
 	if p.cfg.Parser.Pinnacle888.IncludePrematch && p.cfg.Parser.Pinnacle888.OddsURL != "" {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			slog.Info("Pinnacle888: starting pre-match matches processing")
-			matches, err := p.processLineMatches(ctx)
-			if err != nil {
-				prematchErr = err
-				if ctx.Err() != nil {
-					slog.Warn("Pinnacle888: pre-match matches processing stopped (time limit or context canceled)", "error_msg", err.Error())
-				} else {
-					slog.Error("Pinnacle888: failed to process pre-match matches", "error", err, "error_msg", err.Error())
-				}
+		slog.Info("Pinnacle888: starting pre-match matches processing")
+		matches, err := p.processLineMatches(ctx)
+		if err != nil {
+			prematchErr = err
+			if ctx.Err() != nil {
+				slog.Warn("Pinnacle888: pre-match matches processing stopped (time limit or context canceled)", "error_msg", err.Error())
 			} else {
-				prematchMatches = matches
-				slog.Info("Pinnacle888: pre-match matches processed", "count", len(matches))
+				slog.Error("Pinnacle888: failed to process pre-match matches", "error", err, "error_msg", err.Error())
 			}
-		}()
+		} else {
+			prematchMatches = matches
+			slog.Info("Pinnacle888: pre-match matches processed", "count", len(matches))
+		}
 	}
 
-	// Wait for both to complete
-	wg.Wait()
+	// Then fetch live matches (sequential — same server, avoid rate limit)
+	if p.cfg.Parser.Pinnacle888.IncludeLive && p.cfg.Parser.Pinnacle888.OddsURL != "" {
+		slog.Info("Pinnacle888: starting live matches processing")
+		matches, err := p.processLiveMatches(ctx)
+		if err != nil {
+			liveErr = err
+			if ctx.Err() != nil {
+				slog.Warn("Pinnacle888: live matches processing stopped (time limit or context canceled)", "error_msg", err.Error())
+			} else {
+				slog.Error("Pinnacle888: failed to process live matches", "error", err, "error_msg", err.Error())
+			}
+		} else {
+			liveMatches = matches
+			slog.Info("Pinnacle888: live matches processed", "count", len(matches))
+		}
+	}
 
 	// Merge matches: combine live and pre-match matches, preferring live data when duplicates exist
 	mergedMatches := p.mergeMatches(liveMatches, prematchMatches)

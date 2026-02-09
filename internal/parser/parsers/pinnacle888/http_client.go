@@ -714,8 +714,45 @@ func (c *Client) buildOddsRequestURL(oddsPath string, pathSuffix string, query u
 	return u, nil
 }
 
+// oddsRequestCount tracks requests for rate limiting and User-Agent rotation.
+var (
+	oddsReqMu    sync.Mutex
+	oddsReqCount int64
+	oddsLastReq  time.Time
+)
+
+// oddsUserAgents is a pool of realistic browser User-Agents to rotate between requests.
+// Rotation helps avoid fingerprint-based rate limiting by Cloudflare.
+var oddsUserAgents = []string{
+	"Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36",
+	"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36",
+	"Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36",
+	"Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.3 Safari/605.1.15",
+	"Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:135.0) Gecko/20100101 Firefox/135.0",
+	"Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:135.0) Gecko/20100101 Firefox/135.0",
+	"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36 Edg/142.0.0.0",
+}
+
+// oddsRateLimit enforces a minimum delay between requests to avoid Cloudflare 429.
+const oddsMinDelay = 100 * time.Millisecond
+
 // doOddsRequest performs GET with common headers for odds domain.
+// Includes rate limiting (800ms between requests) and User-Agent rotation.
 func (c *Client) doOddsRequest(u *url.URL) ([]byte, error) {
+	// Rate limit: wait if last request was too recent
+	oddsReqMu.Lock()
+	sinceLastReq := time.Since(oddsLastReq)
+	if sinceLastReq < oddsMinDelay {
+		wait := oddsMinDelay - sinceLastReq
+		oddsReqMu.Unlock()
+		time.Sleep(wait)
+		oddsReqMu.Lock()
+	}
+	reqNum := oddsReqCount
+	oddsReqCount++
+	oddsLastReq = time.Now()
+	oddsReqMu.Unlock()
+
 	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, u.String(), nil)
 	if err != nil {
 		return nil, fmt.Errorf("create request: %w", err)
@@ -723,7 +760,9 @@ func (c *Client) doOddsRequest(u *url.URL) ([]byte, error) {
 	req.Header.Set("Accept", "application/json, text/plain, */*")
 	req.Header.Set("Accept-Language", "en,en-US;q=0.9")
 	req.Header.Set("Accept-Encoding", "gzip, deflate, br, zstd")
-	req.Header.Set("User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36")
+	// Rotate User-Agent to reduce fingerprint-based rate limiting
+	ua := oddsUserAgents[int(reqNum)%len(oddsUserAgents)]
+	req.Header.Set("User-Agent", ua)
 	req.Header.Set("Referer", u.Scheme+"://"+u.Host+"/")
 
 	resp, err := c.httpClient.Do(req)
@@ -734,6 +773,16 @@ func (c *Client) doOddsRequest(u *url.URL) ([]byte, error) {
 		return nil, fmt.Errorf("request failed: %w", err)
 	}
 	defer resp.Body.Close()
+
+	if resp.StatusCode == 429 {
+		b, _ := io.ReadAll(resp.Body)
+		// On rate limit, add extra backoff before next request
+		oddsReqMu.Lock()
+		oddsLastReq = time.Now().Add(3 * time.Second) // force 3s pause before next request
+		oddsReqMu.Unlock()
+		slog.Warn("Pinnacle888: rate limited (429), backing off 3s", "url", u.Path)
+		return nil, fmt.Errorf("unexpected status 429: %s", string(b))
+	}
 
 	if resp.StatusCode != http.StatusOK {
 		b, _ := io.ReadAll(resp.Body)

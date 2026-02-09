@@ -403,14 +403,36 @@ func (h *YandexLoggingHandler) sendLogs(entries []LogEntry) error {
 		}
 
 		// Преобразуем payload в structpb.Struct
+		// ВАЖНО: Всегда создаем payloadMap, чтобы гарантировать добавление меток
+		payloadMap := make(map[string]interface{})
+		
+		// Копируем существующие поля из payload
+		for k, v := range entry.Payload {
+			payloadMap[k] = v
+		}
+
+		// ВАЖНО: Добавляем метки в JSON payload для фильтрации в Yandex Cloud Logging
+		// Метки должны быть добавлены ПЕРЕД созданием structpb.Struct
+		// Метки добавляются всегда, даже если они перезаписывают существующие значения
+		if h.config.ProjectLabel != "" {
+			payloadMap["project_label"] = h.config.ProjectLabel
+		}
+		if h.config.ServiceLabel != "" {
+			payloadMap["service_label"] = h.config.ServiceLabel
+		}
+		if h.config.ClusterLabel != "" {
+			payloadMap["cluster_label"] = h.config.ClusterLabel
+		}
+
+		// Создаем structpb.Struct из map (включая метки)
+		// Всегда создаем jsonPayload, если есть хотя бы одно поле (включая метки)
 		var jsonPayload *structpb.Struct
-		if len(entry.Payload) > 0 {
-			jsonBytes, err := json.Marshal(entry.Payload)
-			if err == nil {
-				var jsonMap map[string]interface{}
-				if err := json.Unmarshal(jsonBytes, &jsonMap); err == nil {
-					jsonPayload, _ = structpb.NewStruct(jsonMap)
-				}
+		if len(payloadMap) > 0 {
+			var err error
+			jsonPayload, err = structpb.NewStruct(payloadMap)
+			if err != nil {
+				// Логируем ошибку, но продолжаем работу
+				slog.Default().Warn("Failed to create structpb.Struct from payload", "error", err, "payload_size", len(payloadMap), "has_labels", h.config.ServiceLabel != "")
 			}
 		}
 
@@ -438,19 +460,17 @@ func (h *YandexLoggingHandler) sendLogs(entries []LogEntry) error {
 
 	// Добавляем метки через LogEntryDefaults для всех записей в батче
 	// Это более эффективно, чем добавлять метки в каждую запись отдельно
-	// Используем имена полей, которые не конфликтуют с системными метками Yandex Cloud
-	// Системные метки project/service/cluster используются для построения пути к ресурсу,
-	// поэтому используем альтернативные имена для пользовательских меток
+	// Используем правильные имена меток для фильтрации в Yandex Cloud Logging
 	if h.config.ProjectLabel != "" || h.config.ServiceLabel != "" || h.config.ClusterLabel != "" {
 		defaultsPayload := make(map[string]interface{})
 		if h.config.ProjectLabel != "" {
-			defaultsPayload["project_name"] = h.config.ProjectLabel
+			defaultsPayload["project_label"] = h.config.ProjectLabel
 		}
 		if h.config.ServiceLabel != "" {
-			defaultsPayload["service_name"] = h.config.ServiceLabel
+			defaultsPayload["service_label"] = h.config.ServiceLabel
 		}
 		if h.config.ClusterLabel != "" {
-			defaultsPayload["cluster_name"] = h.config.ClusterLabel
+			defaultsPayload["cluster_label"] = h.config.ClusterLabel
 		}
 
 		if len(defaultsPayload) > 0 {

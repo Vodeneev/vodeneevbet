@@ -10,7 +10,10 @@ parser:
   #   fonbet: "http://fonbet-service:8080"
   #   pinnacle: "http://pinnacle-service:8080"
   #   pinnacle888: "http://pinnacle888-service:8080"
-  bookmaker_services: {}  # {} = local mode; set URLs for orchestrator mode
+  bookmaker_services:
+    fonbet: "http://158.160.159.73:8081"
+    pinnacle: "http://158.160.159.73:8082"
+    pinnacle888: "http://158.160.159.73:8083"
 
   user_agent: "ValueBetBot/1.0 (https://github.com/Vodeneev/vodeneevbet)"
   timeout: 120s

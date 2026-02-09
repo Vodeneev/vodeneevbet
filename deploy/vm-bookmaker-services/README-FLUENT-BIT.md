@@ -17,10 +17,20 @@ yc iam key create --service-account-name <имя_сервисного_аккау
 
 - Положить ключ, например: `/opt/vodeneevbet/bookmaker-services/yc-logging-key.json`
 - `chmod 600 yc-logging-key.json`
-- В `fluent-bit.conf` заменить `<FOLDER_ID_ГДЕ_ЛОГ_ГРУППА>` на реальный `folder_id` каталога (тот же, что в YC_FOLDER_ID у parser/core)
+- В `fluent-bit.conf`:
+  - Заменить `folder_id` на реальный ID каталога (тот же, что в YC_FOLDER_ID у parser/core)
+  - **ВАЖНО**: Заменить `<ЗАМЕНИ_НА_GROUP_ID_ИЛИ_УДАЛИ_ЭТУ_СТРОКУ>` на реальный `group_id` лог-группы
+    - Получить ID: `yc logging group list --folder-id=<folder_id>`
+    - Или из GitHub Secrets: `YC_LOG_GROUP_ID`
+    - Без `group_id` плагин может падать при отправке логов
 
 ## 3. Fluent Bit + плагин yc-logging
 
 По [документации](https://cloud.yandex.ru/docs/logging/operations/fluent-bit) установи Fluent Bit и плагин `fluent-bit-plugin-yandex`, затем используй конфиг из этой папки (`fluent-bit.conf`). Путь к ключу в конфиге должен совпадать с п. 2.
 
-После запуска Fluent Bit логи контейнеров vodeneevbet-* будут уходить в ту же лог-группу каталога (по умолчанию для этого folder_id) или можно задать `group_id` в конфиге OUTPUT.
+После запуска Fluent Bit логи контейнеров vodeneevbet-* будут уходить в указанную лог-группу.
+
+**Примечание**: Если логи не появляются и Fluent Bit падает (ABRT), проверь:
+1. Указан ли `group_id` в конфиге (рекомендуется указывать явно)
+2. Правильность пути к ключу и его доступность для пользователя fluent-bit (обычно root)
+3. Логи Fluent Bit: `sudo journalctl -u fluent-bit -n 100`

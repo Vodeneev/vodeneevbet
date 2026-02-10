@@ -4,12 +4,12 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
-	"sync"
 	"time"
 
 	"github.com/Vodeneev/vodeneevbet/internal/pkg/config"
 	"github.com/Vodeneev/vodeneevbet/internal/pkg/enums"
 	"github.com/Vodeneev/vodeneevbet/internal/pkg/interfaces"
+	"github.com/Vodeneev/vodeneevbet/internal/pkg/parserutil"
 	"github.com/Vodeneev/vodeneevbet/internal/pkg/performance"
 )
 
@@ -23,10 +23,7 @@ type Parser struct {
 	config         *config.Config
 	
 	// Incremental parsing state
-	incMu            sync.Mutex
-	incrementalCtx   context.Context
-	incrementalCancel context.CancelFunc
-	cycleTrigger     chan struct{}
+	incState *parserutil.IncrementalParserState
 }
 
 func NewParser(config *config.Config) *Parser {
@@ -94,11 +91,8 @@ func (p *Parser) ParseOnce(ctx context.Context) error {
 }
 
 func (p *Parser) Stop() error {
-	p.incMu.Lock()
-	defer p.incMu.Unlock()
-	if p.incrementalCancel != nil {
-		p.incrementalCancel()
-		p.incrementalCancel = nil
+	if p.incState != nil {
+		p.incState.Stop("Fonbet")
 	}
 	slog.Info("Stopping Fonbet parser...")
 	return nil
@@ -111,11 +105,7 @@ func (p *Parser) GetName() string {
 // StartIncremental starts continuous incremental parsing in background
 // It parses matches in batches and updates storage incrementally after each batch
 func (p *Parser) StartIncremental(ctx context.Context, timeout time.Duration) error {
-	p.incMu.Lock()
-	defer p.incMu.Unlock()
-	
-	if p.incrementalCancel != nil {
-		// Already running
+	if p.incState != nil && p.incState.IsRunning() {
 		slog.Warn("Fonbet: incremental parsing already started, skipping")
 		return nil
 	}
@@ -125,17 +115,14 @@ func (p *Parser) StartIncremental(ctx context.Context, timeout time.Duration) er
 	} else {
 		slog.Info("Fonbet: initializing incremental parsing", "timeout", "unlimited")
 	}
-	incCtx, cancel := context.WithCancel(ctx)
-	p.incrementalCtx = incCtx
-	p.incrementalCancel = cancel
-	p.cycleTrigger = make(chan struct{}, 1)
 	
-	// Trigger first cycle immediately
-	p.cycleTrigger <- struct{}{}
-	slog.Info("Fonbet: triggered initial incremental parsing cycle")
+	p.incState = parserutil.NewIncrementalParserState(ctx)
+	if err := p.incState.Start("Fonbet"); err != nil {
+		return err
+	}
 	
 	// Start background incremental parsing loop
-	go p.incrementalLoop(incCtx, timeout)
+	go parserutil.RunIncrementalLoop(p.incState.Ctx, timeout, "Fonbet", p.incState, p.runIncrementalCycle)
 	slog.Info("Fonbet: incremental parsing loop started in background")
 	
 	return nil
@@ -143,72 +130,26 @@ func (p *Parser) StartIncremental(ctx context.Context, timeout time.Duration) er
 
 // TriggerNewCycle signals the parser to start a new parsing cycle
 func (p *Parser) TriggerNewCycle() error {
-	p.incMu.Lock()
-	defer p.incMu.Unlock()
-	
-	if p.cycleTrigger == nil {
-		slog.Error("Fonbet: cannot trigger cycle - incremental parsing not started")
+	if p.incState == nil {
 		return fmt.Errorf("incremental parsing not started")
 	}
-	
-	// Non-blocking trigger
-	select {
-	case p.cycleTrigger <- struct{}{}:
-		slog.Info("Fonbet: triggered new incremental parsing cycle")
-		return nil
-	default:
-		// Cycle already triggered, skip
-		slog.Debug("Fonbet: cycle already triggered, skipping duplicate trigger")
-		return nil
-	}
+	return p.incState.TriggerNewCycle("Fonbet")
 }
 
-// incrementalLoop runs continuous incremental parsing
-func (p *Parser) incrementalLoop(ctx context.Context, timeout time.Duration) {
-	if timeout > 0 {
-		slog.Info("Fonbet: incremental parsing loop started", "timeout", timeout)
-	} else {
-		slog.Info("Fonbet: incremental parsing loop started", "timeout", "unlimited")
-	}
-	cycleCount := 0
-	
-	for {
-		select {
-		case <-ctx.Done():
-			slog.Info("Fonbet: incremental parsing loop stopped", "total_cycles", cycleCount)
-			return
-		case <-p.cycleTrigger:
-			cycleCount++
-			slog.Info("Fonbet: received cycle trigger", "cycle_number", cycleCount)
-			// Start new parsing cycle with timeout
-			p.runIncrementalCycle(ctx, timeout)
-			slog.Info("Fonbet: cycle completed, waiting for next trigger", "cycle_number", cycleCount)
-		}
-	}
-}
+// incrementalLoop is now handled by parserutil.RunIncrementalLoop
 
 // runIncrementalCycle runs one full incremental parsing cycle
 func (p *Parser) runIncrementalCycle(ctx context.Context, timeout time.Duration) {
 	start := time.Now()
 	cycleID := time.Now().Unix()
-	if timeout > 0 {
-		slog.Info("Fonbet: starting incremental cycle", "cycle_id", cycleID, "timeout", timeout)
-	} else {
-		slog.Info("Fonbet: starting incremental cycle", "cycle_id", cycleID, "timeout", "unlimited")
-	}
+	parserutil.LogCycleStart("Fonbet", cycleID, timeout)
 	
 	// Create context with timeout for this cycle (if timeout > 0)
-	var cycleCtx context.Context
-	var cancel context.CancelFunc
-	if timeout > 0 {
-		cycleCtx, cancel = context.WithTimeout(ctx, timeout)
-		defer cancel()
-	} else {
-		cycleCtx = ctx
-	}
+	cycleCtx, cancel := parserutil.CreateCycleContext(ctx, timeout)
+	defer cancel()
 	defer func() {
 		duration := time.Since(start)
-		slog.Info("Fonbet: incremental cycle finished", "cycle_id", cycleID, "duration", duration, "duration_sec", duration.Seconds())
+		parserutil.LogCycleFinish("Fonbet", cycleID, duration)
 	}()
 	
 	// Process all configured sports incrementally

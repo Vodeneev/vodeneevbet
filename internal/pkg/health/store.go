@@ -146,3 +146,17 @@ func GetMatches() []models.Match {
 	slog.Debug("Retrieved matches from store", "count", len(matches), "store_size", storeSize)
 	return matches
 }
+
+// ClearMatches clears all matches from the in-memory store
+// Should be called at the start of each parsing cycle to ensure fresh data
+func ClearMatches() {
+	if globalMatchStore == nil {
+		return
+	}
+	globalMatchStore.mu.Lock()
+	defer globalMatchStore.mu.Unlock()
+
+	clearedCount := len(globalMatchStore.matches)
+	globalMatchStore.matches = make(map[string]*models.Match)
+	slog.Info("Cleared matches from in-memory store", "cleared_count", clearedCount)
+}

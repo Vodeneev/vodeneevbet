@@ -439,7 +439,7 @@ func fetchAndSendDiffs(bot *tgbotapi.BotAPI, chatID int64, config BotConfig, lim
 
 		entry := fmt.Sprintf("*%d. %s*\n", i+1, escapeMarkdown(vb.MatchName))
 		entry += fmt.Sprintf("⚽ %s\n", betInfo)
-		entry += fmt.Sprintf("💰 Value: *%.2f%%* | Expected: %.4f\n", vb.ValuePercent, vb.ExpectedValue)
+		entry += fmt.Sprintf("💰 Value: *%.2f%%*\n", vb.ValuePercent)
 		entry += fmt.Sprintf("🎯 %s: *%.2f*\n", vb.Bookmaker, vb.BookmakerOdd)
 		entry += fmt.Sprintf("📊 Fair odd: %.2f (prob: %.2f%%)\n", vb.FairOdd, vb.FairProbability*100)
 

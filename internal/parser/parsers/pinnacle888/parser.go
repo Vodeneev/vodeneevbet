@@ -15,6 +15,7 @@ import (
 	"github.com/Vodeneev/vodeneevbet/internal/pkg/health"
 	"github.com/Vodeneev/vodeneevbet/internal/pkg/interfaces"
 	"github.com/Vodeneev/vodeneevbet/internal/pkg/models"
+	"github.com/Vodeneev/vodeneevbet/internal/pkg/parserutil"
 )
 
 var runOnceMu sync.Mutex
@@ -25,10 +26,7 @@ type Parser struct {
 	storage interfaces.Storage
 	
 	// Incremental parsing state
-	incMu            sync.Mutex
-	incrementalCtx   context.Context
-	incrementalCancel context.CancelFunc
-	cycleTrigger     chan struct{}
+	incState *parserutil.IncrementalParserState
 }
 
 func NewParser(cfg *config.Config) *Parser {
@@ -173,11 +171,8 @@ func (p *Parser) ParseOnce(ctx context.Context) error {
 }
 
 func (p *Parser) Stop() error {
-	p.incMu.Lock()
-	defer p.incMu.Unlock()
-	if p.incrementalCancel != nil {
-		p.incrementalCancel()
-		p.incrementalCancel = nil
+	if p.incState != nil {
+		p.incState.Stop("Pinnacle888")
 	}
 	return nil
 }
@@ -189,27 +184,24 @@ func (p *Parser) GetName() string {
 // StartIncremental starts continuous incremental parsing in background
 // It parses leagues one by one with the specified interval and updates storage incrementally
 func (p *Parser) StartIncremental(ctx context.Context, timeout time.Duration) error {
-	p.incMu.Lock()
-	defer p.incMu.Unlock()
-	
-	if p.incrementalCancel != nil {
-		// Already running
+	if p.incState != nil && p.incState.IsRunning() {
 		slog.Warn("Pinnacle888: incremental parsing already started, skipping")
 		return nil
 	}
 	
-	slog.Info("Pinnacle888: initializing incremental parsing", "timeout", timeout)
-	incCtx, cancel := context.WithCancel(ctx)
-	p.incrementalCtx = incCtx
-	p.incrementalCancel = cancel
-	p.cycleTrigger = make(chan struct{}, 1)
+	if timeout > 0 {
+		slog.Info("Pinnacle888: initializing incremental parsing", "timeout", timeout)
+	} else {
+		slog.Info("Pinnacle888: initializing incremental parsing", "timeout", "unlimited")
+	}
 	
-	// Trigger first cycle immediately
-	p.cycleTrigger <- struct{}{}
-	slog.Info("Pinnacle888: triggered initial incremental parsing cycle")
+	p.incState = parserutil.NewIncrementalParserState(ctx)
+	if err := p.incState.Start("Pinnacle888"); err != nil {
+		return err
+	}
 	
 	// Start background incremental parsing loop
-	go p.incrementalLoop(incCtx, timeout)
+	go parserutil.RunIncrementalLoop(p.incState.Ctx, timeout, "Pinnacle888", p.incState, p.runIncrementalCycle)
 	slog.Info("Pinnacle888: incremental parsing loop started in background")
 	
 	return nil
@@ -217,73 +209,27 @@ func (p *Parser) StartIncremental(ctx context.Context, timeout time.Duration) er
 
 // TriggerNewCycle signals the parser to start a new parsing cycle
 func (p *Parser) TriggerNewCycle() error {
-	p.incMu.Lock()
-	defer p.incMu.Unlock()
-	
-	if p.cycleTrigger == nil {
-		slog.Error("Pinnacle888: cannot trigger cycle - incremental parsing not started")
+	if p.incState == nil {
 		return fmt.Errorf("incremental parsing not started")
 	}
-	
-	// Non-blocking trigger
-	select {
-	case p.cycleTrigger <- struct{}{}:
-		slog.Info("Pinnacle888: triggered new incremental parsing cycle")
-		return nil
-	default:
-		// Cycle already triggered, skip
-		slog.Debug("Pinnacle888: cycle already triggered, skipping duplicate trigger")
-		return nil
-	}
+	return p.incState.TriggerNewCycle("Pinnacle888")
 }
 
-// incrementalLoop runs continuous incremental parsing
-func (p *Parser) incrementalLoop(ctx context.Context, timeout time.Duration) {
-	if timeout > 0 {
-		slog.Info("Pinnacle888: incremental parsing loop started", "timeout", timeout)
-	} else {
-		slog.Info("Pinnacle888: incremental parsing loop started", "timeout", "unlimited")
-	}
-	cycleCount := 0
-	
-	for {
-		select {
-		case <-ctx.Done():
-			slog.Info("Pinnacle888: incremental parsing loop stopped", "total_cycles", cycleCount)
-			return
-		case <-p.cycleTrigger:
-			cycleCount++
-			slog.Info("Pinnacle888: received cycle trigger", "cycle_number", cycleCount)
-			// Start new parsing cycle with timeout
-			p.runIncrementalCycle(ctx, timeout)
-			slog.Info("Pinnacle888: cycle completed, waiting for next trigger", "cycle_number", cycleCount)
-		}
-	}
-}
+// incrementalLoop is now handled by parserutil.RunIncrementalLoop
 
 // runIncrementalCycle runs one full parsing cycle incrementally (by leagues)
 func (p *Parser) runIncrementalCycle(ctx context.Context, timeout time.Duration) {
 	start := time.Now()
 	cycleID := time.Now().Unix()
-	if timeout > 0 {
-		slog.Info("Pinnacle888: starting incremental cycle", "cycle_id", cycleID, "timeout", timeout)
-	} else {
-		slog.Info("Pinnacle888: starting incremental cycle", "cycle_id", cycleID, "timeout", "unlimited")
-	}
+	parserutil.LogCycleStart("Pinnacle888", cycleID, timeout)
 	
 	// Create context with timeout for this cycle (if timeout > 0)
 	// If timeout is 0, use original context without timeout to process all leagues
-	var cycleCtx context.Context
-	var cancel context.CancelFunc
-	if timeout > 0 {
-		cycleCtx, cancel = context.WithTimeout(ctx, timeout)
-		defer cancel()
-	} else {
-		cycleCtx = ctx
-	}
+	cycleCtx, cancel := parserutil.CreateCycleContext(ctx, timeout)
+	defer cancel()
 	defer func() {
 		duration := time.Since(start)
-		slog.Info("Pinnacle888: incremental cycle finished", "cycle_id", cycleID, "duration", duration, "duration_sec", duration.Seconds())
+		parserutil.LogCycleFinish("Pinnacle888", cycleID, duration)
 	}()
 	
 	// Resolve mirror once at the start of each cycle

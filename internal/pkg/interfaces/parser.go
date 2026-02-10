@@ -27,7 +27,7 @@ type IncrementalParser interface {
 	
 	// StartIncremental starts continuous incremental parsing in background
 	// It parses data continuously (e.g., by leagues) and updates storage as it progresses
-	// timeout is the maximum time allowed for one parsing cycle
+	// timeout is the maximum time allowed for one parsing cycle (0 = no timeout, process all leagues)
 	StartIncremental(ctx context.Context, timeout time.Duration) error
 	
 	// TriggerNewCycle signals the parser to start a new parsing cycle

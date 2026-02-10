@@ -176,10 +176,10 @@ func runParsers(ctx context.Context, interfaceParsers []interfaces.Parser, appCo
 	if incConfig.Enabled {
 		timeout := incConfig.Timeout
 		if timeout <= 0 {
-			timeout = 900 * time.Second // Default: 15 minutes
-			slog.Info("Using default incremental parsing timeout", "timeout", timeout)
+			slog.Info("Incremental parsing mode enabled without timeout - will process all leagues", "timeout", "unlimited")
+		} else {
+			slog.Info("Incremental parsing mode enabled with timeout", "timeout", timeout)
 		}
-		slog.Info("Incremental parsing mode enabled", "timeout", timeout)
 		// Try to use incremental parsing if parser supports it
 		incrementalFound := false
 		for _, p := range interfaceParsers {
@@ -192,7 +192,7 @@ func runParsers(ctx context.Context, interfaceParsers []interfaces.Parser, appCo
 					slog.Error("Incremental parser failed", "parser", p.GetName(), "error", err)
 				}
 				_ = parserutil.RunParsers(ctx, []interfaces.Parser{p}, func(ctx context.Context, p interfaces.Parser) error {
-					slog.Info("Calling StartIncremental", "parser", p.GetName())
+					slog.Info("Calling StartIncremental", "parser", p.GetName(), "timeout", timeout)
 					return incParser.StartIncremental(ctx, timeout)
 				}, opts)
 				continue

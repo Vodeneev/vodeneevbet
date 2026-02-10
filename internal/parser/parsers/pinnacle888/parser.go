@@ -239,7 +239,11 @@ func (p *Parser) TriggerNewCycle() error {
 
 // incrementalLoop runs continuous incremental parsing
 func (p *Parser) incrementalLoop(ctx context.Context, timeout time.Duration) {
-	slog.Info("Pinnacle888: incremental parsing loop started", "timeout", timeout)
+	if timeout > 0 {
+		slog.Info("Pinnacle888: incremental parsing loop started", "timeout", timeout)
+	} else {
+		slog.Info("Pinnacle888: incremental parsing loop started", "timeout", "unlimited")
+	}
 	cycleCount := 0
 	
 	for {
@@ -261,11 +265,22 @@ func (p *Parser) incrementalLoop(ctx context.Context, timeout time.Duration) {
 func (p *Parser) runIncrementalCycle(ctx context.Context, timeout time.Duration) {
 	start := time.Now()
 	cycleID := time.Now().Unix()
-	slog.Info("Pinnacle888: starting incremental cycle", "cycle_id", cycleID, "timeout", timeout)
+	if timeout > 0 {
+		slog.Info("Pinnacle888: starting incremental cycle", "cycle_id", cycleID, "timeout", timeout)
+	} else {
+		slog.Info("Pinnacle888: starting incremental cycle", "cycle_id", cycleID, "timeout", "unlimited")
+	}
 	
-	// Create context with timeout for this cycle
-	cycleCtx, cancel := context.WithTimeout(ctx, timeout)
-	defer cancel()
+	// Create context with timeout for this cycle (if timeout > 0)
+	// If timeout is 0, use original context without timeout to process all leagues
+	var cycleCtx context.Context
+	var cancel context.CancelFunc
+	if timeout > 0 {
+		cycleCtx, cancel = context.WithTimeout(ctx, timeout)
+		defer cancel()
+	} else {
+		cycleCtx = ctx
+	}
 	defer func() {
 		duration := time.Since(start)
 		slog.Info("Pinnacle888: incremental cycle finished", "cycle_id", cycleID, "duration", duration, "duration_sec", duration.Seconds())

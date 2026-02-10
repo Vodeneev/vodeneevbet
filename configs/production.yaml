@@ -25,7 +25,7 @@ parser:
   # partially ready data without blocking on long-running parsers.
   incremental_parsing:
     enabled: true                    # Enable incremental parsing mode
-    timeout: 900s                    # Maximum time for one parsing cycle (15 minutes)
+    # timeout: 0                     # Timeout for one parsing cycle (0 = no timeout, process all leagues)
   
   headers:
     "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8"

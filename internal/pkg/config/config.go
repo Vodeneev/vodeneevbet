@@ -42,7 +42,8 @@ type ParserConfig struct {
 type IncrementalParsingConfig struct {
 	// Enabled enables incremental parsing mode (default: false)
 	Enabled bool `yaml:"enabled"`
-	// Timeout is the maximum time allowed for one parsing cycle (default: 900s)
+	// Timeout is the maximum time allowed for one parsing cycle (default: 0 = no timeout)
+	// If 0 or not set, parsing cycle will process all leagues without time limit
 	// Parsers will parse continuously without pauses between batches
 	Timeout time.Duration `yaml:"timeout"`
 }

@@ -76,6 +76,16 @@ parser:
     # Client will try proxies in order until one works
     # Format: http://user:pass@ip:port or http://ip:port
     proxy_list: []    # Can reuse pinnacle proxy_list if needed
+    # Authentication headers for logged-in user (for live matches with actual odds)
+    # Extract these from browser DevTools Network tab when making authenticated requests
+    # Note: Cookies and x-app-data contain session values that may need periodic updates
+    use_auth_headers: true  # Enable authenticated headers (default: false)
+    # Full cookie string - contains both static and session cookies
+    # Session cookies that may change: BrowserSessionId, session, _ga_5PLZ6DPTZ0, _lastView, PCTR
+    cookies: "skin=pa; lang=en_US; _vid=ac036dbc56a4a824a252ab979d7ddfb0; afrc=A609039776; dpLk3=E_MA3; _sig=Scy1ZbVZrTldJNFl6VXpOR1F3WldZNU53OnpVdTlZVnpkeEYwbUgxNTZ5akVOam9YM1g6LTU0MzQwMzEwMTo3NzA3NDAxNzk6Mi4xMS4wOllwVUxCcGlpQ3c%3D; _apt=YpULBpiiCw; _ga=GA1.1.414856407.1770740181; PCTR=1928506612714; custid=id=VODENEEVM&login=202602101216&roundTrip=202602101216&hash=B3F2F5AF8A4520AD4E3B474AA3567BD9; BrowserSessionId=b553b87d-9ce5-4e17-b375-745db116bf37; _og=QQ==; _ulp=TDV6YVJod0xqREFDUVBXc05McXBSb2k0dDRVbXdvcm04aUxHOFlUcEZ6ZEN5M2xRWUtFeHo2TW5LUHR5MDNPZWVqa041Nk1ySFlyWG1DaXVXRjY5REE9PXxmNjY4NjBmODNiZTJmMzYyMmYzMjEzYzhhNGMxMWQyYg==; uoc=450f4a9c12b96e79968ebfa6b0fe147e; _userDefaultView=FUTURE; SLID=73877049; pctag=889057e0-5962-4db2-b975-2acc20c61336; auth=true; __prefs=W251bGwsMSwxLDAsMCxudWxsLGZhbHNlLDAuMDAwMCxmYWxzZSx0cnVlLCJfMUxJTkUiLDAsbnVsbCx0cnVlLHRydWUsZmFsc2UsZmFsc2UsbnVsbCxudWxsLHRydWUsIlNNQUxMIiwwXQ==; u=AAAABAAAAAADp14LAAABnEjDsRIeQS07z6CJACeDQzAWPrR9y2IZZrqJKUFrFqdykW8Gzg==; lcu=AAAABAAAAAADp14LAAABnEjDsRIeQS07z6CJACeDQzAWPrR9y2IZZrqJKUFrFqdykW8Gzg==; isShowAcceptTC=false; locale=en_US; _loginId=; session=%7B%2522userName%2522%3A%2522undefined%2522%252C%2522id%2522%3A%2522undefined%2522%252C%2522role%2522%3A%7B%2522bitMask%2522%3A2%252C%2522title%2522%3A%2522user%2522%7D%7D; displayMessPopUp=true; closeAnnTime=0; currentPage=homePageContainer; _lastView=eyJ2b2RlbmVldm0iOiJDT01QQUNUIn0%3D; _ga_5PLZ6DPTZ0=GS2.1.s1770743149$o2$g1$t1770744469$j50$l0$h0"
+    # x-app-data contains session-specific values (BrowserSessionId, PCTR) - may need periodic updates
+    x_app_data: "directusToken=TwEdnphtyxsfMpXoJkCkWaPsL2KJJ3lo;BrowserSessionId=b553b87d-9ce5-4e17-b375-745db116bf37;PCTR=1928506612714;_og=QQ%3D%3D;_ulp=TDV6YVJod0xqREFDUVBXc05McXBSb2k0dDRVbXdvcm04aUxHOFlUcEZ6ZEN5M2xRWUtFeHo2TW5LUHR5MDNPZWVqa041Nk1ySFlyWG1DaXVXRjY5REE9PXxmNjY4NjBmODNiZTJmMzYyMmYzMjEzYzhhNGMxMWQyYg%3D%3D;custid=id%3DVODENEEVM%26login%3D202602101216%26roundTrip%3D202602101216%26hash%3DB3F2F5AF8A4520AD4E3B474AA3567BD9;_userDefaultView=FUTURE;__prefs=W251bGwsMSwxLDAsMCxudWxsLGZhbHNlLDAuMDAwMCxmYWxzZSx0cnVlLCJfMUxJTkUiLDAsbnVsbCx0cnVlLHRydWUsZmFsc2UsZmFsc2UsbnVsbCxudWxsLHRydWUsIlNNQUxMIiwwXQ%3D%3D;pctag=889057e0-5962-4db2-b975-2acc20c61336;lang=en_US;dpLk3=E_MA3"
+    x_custid: "id=VODENEEVM&login=202602101216&roundTrip=202602101216&hash=B3F2F5AF8A4520AD4E3B474AA3567BD9"  # User ID - more stable
 
 health:
   # HTTP server settings

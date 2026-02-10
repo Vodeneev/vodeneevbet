@@ -41,6 +41,11 @@ type Client struct {
 	resolveMu         sync.Mutex    // Serializes "who runs resolve"; waiters block until one resolve finishes
 	resolveCond       *sync.Cond    // Signalled when resolve finishes so waiting goroutines can proceed
 	resolving         bool          // True while one goroutine is running resolveMirror()
+	// Authentication headers for logged-in user (for live matches with actual odds)
+	cookies         string
+	xAppData        string
+	xCustID         string
+	useAuthHeaders  bool // Enable authenticated headers for odds requests
 }
 
 // resolveMirror resolves the actual URL from mirror link
@@ -402,7 +407,7 @@ func isIPAddress(s string) bool {
 	return net.ParseIP(s) != nil
 }
 
-func NewClient(baseURL, mirrorURL, apiKey, deviceUUID string, timeout time.Duration, proxyList []string) *Client {
+func NewClient(baseURL, mirrorURL, apiKey, deviceUUID string, timeout time.Duration, proxyList []string, authHeaders *AuthHeaders) *Client {
 	// Allow env overrides to avoid committing secrets into configs.
 	if apiKey == "" {
 		apiKey = os.Getenv("PINNACLE888_API_KEY")
@@ -443,12 +448,29 @@ func NewClient(baseURL, mirrorURL, apiKey, deviceUUID string, timeout time.Durat
 		resolveTimeout:    timeout,
 		resolveInterval:   2 * time.Hour, // Re-resolve mirror at most once every 2 hours (Chrome used only when needed)
 	}
+	
+	// Set auth headers if provided
+	if authHeaders != nil {
+		client.cookies = authHeaders.Cookies
+		client.xAppData = authHeaders.XAppData
+		client.xCustID = authHeaders.XCustID
+		client.useAuthHeaders = authHeaders.UseAuthHeaders
+	}
+	
 	client.resolveCond = sync.NewCond(&client.resolveMu)
 
 	// Don't resolve immediately - do lazy resolution when needed
 	// This avoids blocking startup and allows re-resolution when URL stops working
 
 	return client
+}
+
+// AuthHeaders contains authentication headers for logged-in user requests
+type AuthHeaders struct {
+	Cookies         string
+	XAppData        string
+	XCustID         string
+	UseAuthHeaders  bool
 }
 
 // checkURLHealth checks if a URL is accessible
@@ -738,7 +760,8 @@ const oddsMinDelay = 500 * time.Millisecond
 
 // doOddsRequest performs GET with common headers for odds domain.
 // Includes rate limiting (800ms between requests) and User-Agent rotation.
-func (c *Client) doOddsRequest(u *url.URL) ([]byte, error) {
+// If useAuthHeaders is enabled, adds authentication headers for logged-in user.
+func (c *Client) doOddsRequest(u *url.URL, refererPath string) ([]byte, error) {
 	// Rate limit: wait if last request was too recent
 	oddsReqMu.Lock()
 	sinceLastReq := time.Since(oddsLastReq)
@@ -757,13 +780,50 @@ func (c *Client) doOddsRequest(u *url.URL) ([]byte, error) {
 	if err != nil {
 		return nil, fmt.Errorf("create request: %w", err)
 	}
+	
+	// Set common headers
 	req.Header.Set("Accept", "application/json, text/plain, */*")
-	req.Header.Set("Accept-Language", "en,en-US;q=0.9")
 	req.Header.Set("Accept-Encoding", "gzip, deflate, br, zstd")
+	
+	// Set Accept-Language based on auth mode
+	if c.useAuthHeaders {
+		req.Header.Set("Accept-Language", "ru,en;q=0.9")
+		req.Header.Set("Content-Type", "application/json; charset=utf-8")
+	} else {
+		req.Header.Set("Accept-Language", "en,en-US;q=0.9")
+	}
+	
 	// Rotate User-Agent to reduce fingerprint-based rate limiting
 	ua := oddsUserAgents[int(reqNum)%len(oddsUserAgents)]
 	req.Header.Set("User-Agent", ua)
-	req.Header.Set("Referer", u.Scheme+"://"+u.Host+"/")
+	
+	// Set Referer - use provided path or default to root
+	if refererPath != "" {
+		req.Header.Set("Referer", u.Scheme+"://"+u.Host+refererPath)
+	} else {
+		req.Header.Set("Referer", u.Scheme+"://"+u.Host+"/")
+	}
+	
+	// Add authentication headers if enabled
+	if c.useAuthHeaders {
+		if c.cookies != "" {
+			req.Header.Set("Cookie", c.cookies)
+		}
+		if c.xAppData != "" {
+			req.Header.Set("x-app-data", c.xAppData)
+		}
+		if c.xCustID != "" {
+			req.Header.Set("x-custid", c.xCustID)
+		}
+		// Add sec-ch-ua headers to mimic browser
+		req.Header.Set("sec-ch-ua", `"Chromium";v="142", "YaBrowser";v="25.12", "Not_A Brand";v="99", "Yowser";v="2.5"`)
+		req.Header.Set("sec-ch-ua-mobile", "?0")
+		req.Header.Set("sec-ch-ua-platform", `"macOS"`)
+		req.Header.Set("sec-fetch-dest", "empty")
+		req.Header.Set("sec-fetch-mode", "cors")
+		req.Header.Set("sec-fetch-site", "same-origin")
+		req.Header.Set("priority", "u=1, i")
+	}
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
@@ -805,7 +865,7 @@ func (c *Client) GetLeagues(oddsPath string, sportID int64) ([]LeagueListItem, e
 	if err != nil {
 		return nil, err
 	}
-	body, err := c.doOddsRequest(u)
+	body, err := c.doOddsRequest(u, "")
 	if err != nil {
 		return nil, err
 	}
@@ -835,16 +895,21 @@ func (c *Client) GetLeagueOdds(oddsPath string, leagueCode string, sportID int64
 	}
 	q.Set("eventType", "0")
 	q.Set("_", fmt.Sprintf("%d", time.Now().UnixMilli()))
+	if c.useAuthHeaders {
+		q.Set("withCredentials", "true")
+	}
 
 	u, err := c.buildOddsRequestURL(oddsPath, "/odds/league", q)
 	if err != nil {
 		return nil, err
 	}
-	return c.doOddsRequest(u)
+	// Use league path as referer
+	refererPath := fmt.Sprintf("/en/standard/soccer/%s", leagueCode)
+	return c.doOddsRequest(u, refererPath)
 }
 
 // GetEventOdds fetches full odds for one event from /sports-service/sv/euro/odds/event
-func (c *Client) GetEventOdds(oddsPath string, eventID int64) ([]byte, error) {
+func (c *Client) GetEventOdds(oddsPath string, eventID int64, refererPath string) ([]byte, error) {
 	q := url.Values{}
 	q.Set("eventId", fmt.Sprintf("%d", eventID))
 	q.Set("oddsType", "1")
@@ -852,12 +917,15 @@ func (c *Client) GetEventOdds(oddsPath string, eventID int64) ([]byte, error) {
 	q.Set("specialVersion", "0")
 	q.Set("locale", "en_US")
 	q.Set("_", fmt.Sprintf("%d", time.Now().UnixMilli()))
+	if c.useAuthHeaders {
+		q.Set("withCredentials", "true")
+	}
 
 	u, err := c.buildOddsRequestURL(oddsPath, "/odds/event", q)
 	if err != nil {
 		return nil, err
 	}
-	return c.doOddsRequest(u)
+	return c.doOddsRequest(u, refererPath)
 }
 
 // GetOddsEvents gets events from the odds endpoint (sports-service/sv/euro/odds)

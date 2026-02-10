@@ -39,7 +39,18 @@ func NewParser(cfg *config.Config) *Parser {
 
 	mirrorURL := cfg.Parser.Pinnacle888.MirrorURL
 
-	client := NewClient(baseURL, mirrorURL, cfg.Parser.Pinnacle888.APIKey, cfg.Parser.Pinnacle888.DeviceUUID, cfg.Parser.Timeout, cfg.Parser.Pinnacle888.ProxyList)
+	// Prepare auth headers if configured
+	var authHeaders *AuthHeaders
+	if cfg.Parser.Pinnacle888.UseAuthHeaders {
+		authHeaders = &AuthHeaders{
+			Cookies:         cfg.Parser.Pinnacle888.Cookies,
+			XAppData:        cfg.Parser.Pinnacle888.XAppData,
+			XCustID:         cfg.Parser.Pinnacle888.XCustID,
+			UseAuthHeaders:  cfg.Parser.Pinnacle888.UseAuthHeaders,
+		}
+	}
+
+	client := NewClient(baseURL, mirrorURL, cfg.Parser.Pinnacle888.APIKey, cfg.Parser.Pinnacle888.DeviceUUID, cfg.Parser.Timeout, cfg.Parser.Pinnacle888.ProxyList, authHeaders)
 
 	return &Parser{
 		cfg:     cfg,
@@ -362,6 +373,8 @@ func (p *Parser) processSingleLeague(ctx context.Context, oddsURL string, league
 	
 	for _, lg := range leagueResp.Leagues {
 		leagueName := lg.Name
+		// Build referer path for this league
+		refererPath := fmt.Sprintf("/en/standard/soccer/%s", league.LeagueCode)
 		for _, ev := range lg.Events {
 			select {
 			case <-ctx.Done():
@@ -370,7 +383,7 @@ func (p *Parser) processSingleLeague(ctx context.Context, oddsURL string, league
 			default:
 			}
 			
-			eventData, err := p.client.GetEventOdds(oddsURL, ev.ID)
+			eventData, err := p.client.GetEventOdds(oddsURL, ev.ID, refererPath)
 			if err != nil {
 				eventsError++
 				slog.Debug("Pinnacle888: get event odds failed", "eventId", ev.ID, "error", err)
@@ -652,6 +665,8 @@ func (p *Parser) processOddsLeaguesFlow(ctx context.Context, isLive bool) ([]*mo
 		var firstGetErrMsg string
 		for _, lg := range leagueResp.Leagues {
 			leagueName := lg.Name
+			// Build referer path for this league
+			refererPath := fmt.Sprintf("/en/standard/soccer/%s", league.LeagueCode)
 			for _, ev := range lg.Events {
 				eventsTotal++
 				select {
@@ -659,7 +674,7 @@ func (p *Parser) processOddsLeaguesFlow(ctx context.Context, isLive bool) ([]*mo
 					return allMatches, ctx.Err()
 				default:
 				}
-				eventData, err := p.client.GetEventOdds(oddsURL, ev.ID)
+				eventData, err := p.client.GetEventOdds(oddsURL, ev.ID, refererPath)
 				if err != nil {
 					getEventErr++
 					if firstGetErrMsg == "" {

@@ -73,6 +73,11 @@ type Pinnacle888Config struct {
 	IncludeLive     bool     `yaml:"include_live"`     // Include live matches (default: false)
 	IncludePrematch bool     `yaml:"include_prematch"` // Include pre-match/line matches (default: false)
 	LeagueWorkers   int      `yaml:"league_workers"`   // Max concurrent leagues (default: 5); events within a league are processed sequentially
+	// Authentication headers for logged-in user (for live matches with actual odds)
+	Cookies         string `yaml:"cookies"`          // Cookie header value for authenticated requests
+	XAppData        string `yaml:"x_app_data"`      // x-app-data header
+	XCustID         string `yaml:"x_custid"`         // x-custid header
+	UseAuthHeaders  bool   `yaml:"use_auth_headers"` // Enable authenticated headers for odds requests (default: false)
 }
 
 type ValueCalculatorConfig struct {

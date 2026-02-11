@@ -154,6 +154,7 @@ func (p *Parser) ParseOnce(ctx context.Context) error {
 			slog.Warn("Marathonbet: league failed", "path", leaguePath, "error", err)
 			continue
 		}
+		slog.Info("Marathonbet: found events in league", "league", leaguePath, "count", len(events))
 		for _, eventPath := range events {
 			select {
 			case <-ctx.Done():
@@ -162,11 +163,12 @@ func (p *Parser) ParseOnce(ctx context.Context) error {
 			}
 			match, err := p.fetchEventMatch(ctx, eventPath)
 			if err != nil {
-				slog.Debug("Marathonbet: event failed", "path", eventPath, "error", err)
+				slog.Warn("Marathonbet: event failed", "path", eventPath, "error", err)
 				continue
 			}
 			if match != nil {
 				health.AddMatch(match)
+				slog.Info("Marathonbet: match added", "match", match.Name, "home", match.HomeTeam, "away", match.AwayTeam, "events", len(match.Events))
 			}
 		}
 	}
@@ -201,6 +203,9 @@ func (p *Parser) fetchLeagueEvents(ctx context.Context, leaguePath string) ([]st
 			seen[path] = true
 			eventPaths = append(eventPaths, path)
 		}
+	}
+	if len(eventPaths) == 0 {
+		slog.Debug("Marathonbet: no events found in league", "path", leaguePath)
 	}
 	return eventPaths, nil
 }

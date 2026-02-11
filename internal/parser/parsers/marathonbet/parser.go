@@ -38,8 +38,43 @@ type eventJSON struct {
 }
 
 type selJSON struct {
-	Epr float64 `json:"epr"` // decimal odds
-	Prt int     `json:"prt"` // market/price type, optional
+	Epr float64 `json:"epr"` // decimal odds (may come as string)
+	Prt string  `json:"prt"` // market/price type (comes as string like "CP")
+}
+
+// UnmarshalJSON handles epr field that can be either string or number
+func (s *selJSON) UnmarshalJSON(data []byte) error {
+	type Alias selJSON
+	aux := &struct {
+		Epr interface{} `json:"epr"` // accept both string and number
+		Prt interface{} `json:"prt"` // accept both string and number (not used, but may vary)
+		*Alias
+	}{
+		Alias: (*Alias)(s),
+	}
+	if err := json.Unmarshal(data, &aux); err != nil {
+		return err
+	}
+	// Convert epr to float64 if it's a string
+	switch v := aux.Epr.(type) {
+	case float64:
+		s.Epr = v
+	case string:
+		var f float64
+		if _, err := fmt.Sscanf(v, "%f", &f); err == nil {
+			s.Epr = f
+		}
+	}
+	// Convert prt to string (not used, but parse anyway)
+	if aux.Prt != nil {
+		switch v := aux.Prt.(type) {
+		case string:
+			s.Prt = v
+		case float64:
+			s.Prt = fmt.Sprintf("%.0f", v)
+		}
+	}
+	return nil
 }
 
 // Parser parses Marathonbet HTML: all-events → leagues → event pages (full data per match).
@@ -219,7 +254,7 @@ func (p *Parser) fetchEventMatch(ctx context.Context, eventPath string) (*models
 }
 
 // parseEventPage extracts event info and odds from event HTML, builds Match.
-func parseEventPage(htmlBody []byte, _ string) (*models.Match, error) {
+func parseEventPage(htmlBody []byte, eventPath string) (*models.Match, error) {
 	bodyStr := string(htmlBody)
 
 	// Event info from data-json (may be HTML-encoded)

@@ -7,6 +7,7 @@ import (
 	"html"
 	"log/slog"
 	"regexp"
+	"sort"
 	"strings"
 	"time"
 
@@ -32,6 +33,32 @@ var dataSelRegex = regexp.MustCompile(`data-sel=(?:"([^"]*)"|'([^']*)')`)
 
 // marketTitleRegex matches market titles/headers before odds (Russian and English)
 var marketTitleRegex = regexp.MustCompile(`(?i)(?:угл|corner|фол|foul|карт|card|желт|yellow|красн|red|тотал|total|гол|goal|удар|shot)`)
+
+// dateTimeRegex matches date and time in format "12 фев 23:00" in nav-event-date element
+// Handles whitespace and newlines between tags
+var dateTimeRegex = regexp.MustCompile(`<td[^>]*class="[^"]*nav-event-date[^"]*"[^>]*>\s*([^\s<]+\s+[^\s<]+\s+[^\s<]+)\s*</td>`)
+
+// marketTypeRegex matches data-market-type attribute
+var marketTypeRegex = regexp.MustCompile(`data-market-type="([^"]+)"`)
+
+// marketOddsRegex matches data-sel with data-market-type in the same or nearby element
+// Captures: market type, mutable id, odds JSON
+var marketOddsRegex = regexp.MustCompile(`data-market-type="([^"]+)"[^>]*>\s*<[^>]*data-sel=(?:"([^"]*)"|'([^']*)')`)
+
+// handicapParamRegex extracts handicap parameter from context (e.g., "(0)", "(-1.5)")
+var handicapParamRegex = regexp.MustCompile(`\(([+-]?\d+\.?\d*)\)`)
+
+// totalParamRegex extracts total parameter from context (e.g., "(2.5)")
+var totalParamRegex = regexp.MustCompile(`\((\d+\.?\d*)\)`)
+
+// mutableIdRegex matches data-mutable-id for market identification
+var mutableIdRegex = regexp.MustCompile(`data-mutable-id="([^"]+)"`)
+
+// preferenceIdRegex matches data-preference-id for market identification
+var preferenceIdRegex = regexp.MustCompile(`data-preference-id="([^"]+)"`)
+
+// selectionKeyRegex extracts selection key for parameter extraction (e.g., "Total_Corners6.Under_5.5")
+var selectionKeyRegex = regexp.MustCompile(`data-selection-key="[^"]*\.(Under|Over)_([0-9.]+)"`)
 
 // parseAdditionalMarkets parses corners, fouls, and other markets from remaining odds
 func parseAdditionalMarkets(match *models.Match, matchID, bookmakerKey string, oddsWithContexts []oddWithContext, now time.Time) {
@@ -229,6 +256,34 @@ type oddWithContext struct {
 	odds     float64
 	position int
 	context  string // HTML context before this odd
+}
+
+// marketOdd represents a single odd with its market information
+type marketOdd struct {
+	marketType string  // RESULT, DOUBLE_CHANCE, HANDICAP, TOTAL, etc.
+	mutableID  string  // e.g., S_0_1, S_1_2, etc.
+	odds       float64
+	param      string  // parameter for handicap/total (e.g., "0", "2.5")
+	context    string  // HTML context around this odd
+	position   int     // position in HTML
+}
+
+// marketGroup groups odds by market type and parameter
+type marketGroup struct {
+	marketType string
+	param      string
+	odds       []marketOdd
+}
+
+// preferenceMarket represents a market parsed by data-preference-id
+type preferenceMarket struct {
+	preferenceID string  // e.g., "MATCH_TOTALS_CORNERS_-1574381410"
+	marketType   string  // "corners", "yellow_cards", etc.
+	subType      string  // "totals", "handicap", "double_chance"
+	param        string  // parameter value (e.g., "5.5", "6.5")
+	outcomeType  string  // "over", "under", "home", "away", etc.
+	odds         float64
+	position     int
 }
 
 type selJSON struct {
@@ -447,6 +502,318 @@ func (p *Parser) fetchEventMatch(ctx context.Context, eventPath string) (*models
 	return parseEventPage(body, eventPath)
 }
 
+// parseDateTimeFromHTML extracts date and time from HTML page
+// Looks for format like "12 фев 23:00" in nav-event-date element
+func parseDateTimeFromHTML(htmlBody string) time.Time {
+	// Try to find date-time in nav-event-date element
+	matches := dateTimeRegex.FindStringSubmatch(htmlBody)
+	if len(matches) < 2 {
+		return time.Time{}
+	}
+	
+	dateTimeStr := strings.TrimSpace(matches[1])
+	if dateTimeStr == "" {
+		return time.Time{}
+	}
+	
+	// Parse format "12 фев 23:00" (day month time)
+	// Russian month names
+	monthMap := map[string]string{
+		"янв": "01", "фев": "02", "мар": "03", "апр": "04",
+		"май": "05", "июн": "06", "июл": "07", "авг": "08",
+		"сен": "09", "окт": "10", "ноя": "11", "дек": "12",
+	}
+	
+	// Match pattern: "12 фев 23:00" or "12 фев 23:00" (with optional spaces)
+	parts := strings.Fields(dateTimeStr)
+	if len(parts) < 3 {
+		return time.Time{}
+	}
+	
+	day := parts[0]
+	monthName := strings.ToLower(parts[1])
+	timeStr := parts[2]
+	
+	month, ok := monthMap[monthName]
+	if !ok {
+		return time.Time{}
+	}
+	
+	// Get current year (assume matches are in current or next year)
+	now := time.Now()
+	year := now.Year()
+	
+	// Parse time
+	timeParts := strings.Split(timeStr, ":")
+	if len(timeParts) != 2 {
+		return time.Time{}
+	}
+	
+	// Build date string in format "2006-01-02 15:04:05"
+	// Parse day as integer to handle both "1" and "12" formats
+	var dayInt int
+	if _, err := fmt.Sscanf(day, "%d", &dayInt); err != nil {
+		return time.Time{}
+	}
+	dateStr := fmt.Sprintf("%d-%s-%02d %s:00", year, month, dayInt, timeStr)
+	
+	// Parse with Moscow timezone (UTC+3)
+	loc, err := time.LoadLocation("Europe/Moscow")
+	if err != nil {
+		loc = time.FixedZone("MSK", 3*60*60) // UTC+3
+	}
+	
+	if t, err := time.ParseInLocation("2006-01-02 15:04:05", dateStr, loc); err == nil {
+		// If parsed date is in the past, try next year
+		if t.Before(now.Add(-24 * time.Hour)) {
+			year++
+			dateStr = fmt.Sprintf("%d-%s-%02s %s:00", year, month, day, timeStr)
+			if t, err := time.ParseInLocation("2006-01-02 15:04:05", dateStr, loc); err == nil {
+				return t.UTC()
+			}
+		}
+		return t.UTC()
+	}
+	
+	return time.Time{}
+}
+
+// min returns the minimum of two integers
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
+}
+
+// max returns the maximum of two integers
+func max(a, b int) int {
+	if a > b {
+		return a
+	}
+	return b
+}
+
+// parseMarketsByType extracts all markets from HTML using data-market-type attribute
+func parseMarketsByType(htmlBody string) []marketOdd {
+	var markets []marketOdd
+	
+	// Find all elements with data-market-type and nearby data-sel
+	// Pattern: look for data-market-type, then find nearest data-sel within reasonable distance
+	marketTypeMatches := marketTypeRegex.FindAllStringSubmatchIndex(htmlBody, -1)
+	
+	for _, mtMatch := range marketTypeMatches {
+		marketType := htmlBody[mtMatch[2]:mtMatch[3]]
+		startPos := mtMatch[0]
+		
+		// Find data-mutable-id nearby
+		mutableID := ""
+		mutableIDMatch := mutableIdRegex.FindStringSubmatchIndex(htmlBody[max(0, startPos-100):startPos+100])
+		if len(mutableIDMatch) >= 3 {
+			mutableID = htmlBody[max(0, startPos-100)+mutableIDMatch[2]:max(0, startPos-100)+mutableIDMatch[3]]
+		}
+		
+		// Find data-sel in the same element or nearby (within 500 chars)
+		searchStart := startPos
+		searchEnd := min(len(htmlBody), startPos+500)
+		searchArea := htmlBody[searchStart:searchEnd]
+		
+		selMatches := dataSelRegex.FindAllStringSubmatchIndex(searchArea, -1)
+		if len(selMatches) == 0 {
+			continue
+		}
+		
+		// Take first data-sel found
+		selMatch := selMatches[0]
+		raw := ""
+		if selMatch[2] != -1 {
+			raw = searchArea[selMatch[2]:selMatch[3]]
+		} else if selMatch[4] != -1 {
+			raw = searchArea[selMatch[4]:selMatch[5]]
+		}
+		if raw == "" {
+			continue
+		}
+		
+		raw = html.UnescapeString(raw)
+		var s selJSON
+		if err := json.Unmarshal([]byte(raw), &s); err != nil {
+			continue
+		}
+		if s.Epr <= 0 {
+			continue
+		}
+		
+		// Get context around this market (300 chars before)
+		contextStart := max(0, startPos-300)
+		context := htmlBody[contextStart:startPos]
+		
+		// Extract parameter based on market type
+		// Also search in the element itself (after data-market-type)
+		elementArea := htmlBody[startPos:min(len(htmlBody), startPos+200)]
+		fullContext := context + elementArea
+		
+		param := ""
+		if marketType == "HANDICAP" {
+			if matches := handicapParamRegex.FindStringSubmatch(fullContext); len(matches) > 1 {
+				param = matches[1]
+			}
+		} else if marketType == "TOTAL" {
+			if matches := totalParamRegex.FindStringSubmatch(fullContext); len(matches) > 1 {
+				param = matches[1]
+			} else {
+				// Try to find in data-selection-key if available
+				selectionKeyRegex := regexp.MustCompile(`data-selection-key="[^"]*\.(Under|Over)_(\d+\.?\d*)"`)
+				if matches := selectionKeyRegex.FindStringSubmatch(fullContext); len(matches) > 2 {
+					param = matches[2]
+				} else {
+					// Default to 2.5 for main match total
+					param = "2.5"
+				}
+			}
+		}
+		
+		markets = append(markets, marketOdd{
+			marketType: marketType,
+			mutableID:  mutableID,
+			odds:       s.Epr,
+			param:      param,
+			context:    context,
+			position:   startPos,
+		})
+	}
+	
+	return markets
+}
+
+// parseMarketsByPreferenceID extracts markets using data-preference-id (for corners, yellow cards, etc.)
+func parseMarketsByPreferenceID(htmlBody string) []preferenceMarket {
+	var markets []preferenceMarket
+	
+	// Find all data-preference-id blocks
+	prefMatches := preferenceIdRegex.FindAllStringSubmatchIndex(htmlBody, -1)
+	
+	for _, prefMatch := range prefMatches {
+		preferenceID := htmlBody[prefMatch[2]:prefMatch[3]]
+		startPos := prefMatch[0]
+		
+		// Determine market type from preference ID
+		marketType := ""
+		subType := ""
+		prefLower := strings.ToLower(preferenceID)
+		
+		if strings.Contains(prefLower, "corner") {
+			marketType = "corners"
+			if strings.Contains(prefLower, "total") || strings.Contains(prefLower, "totals") {
+				subType = "totals"
+			} else if strings.Contains(prefLower, "handicap") {
+				subType = "handicap"
+			} else if strings.Contains(prefLower, "double_chance") || strings.Contains(prefLower, "doble_chance") {
+				subType = "double_chance"
+			} else {
+				subType = "totals" // default for corners
+			}
+		} else if strings.Contains(prefLower, "yellow") || strings.Contains(prefLower, "card") {
+			marketType = "yellow_cards"
+			if strings.Contains(prefLower, "total") || strings.Contains(prefLower, "totals") {
+				subType = "totals"
+			} else if strings.Contains(prefLower, "handicap") {
+				subType = "handicap"
+			} else {
+				subType = "totals" // default
+			}
+		} else if strings.Contains(prefLower, "foul") {
+			marketType = "fouls"
+			subType = "totals"
+		} else {
+			continue // Skip unknown market types
+		}
+		
+		// Find all data-sel within this preference block (within 5000 chars)
+		searchStart := startPos
+		searchEnd := min(len(htmlBody), startPos+5000)
+		searchArea := htmlBody[searchStart:searchEnd]
+		
+		// Find next preference-id or end of block
+		nextPrefMatch := preferenceIdRegex.FindStringSubmatchIndex(searchArea[100:])
+		if len(nextPrefMatch) > 0 {
+			searchEnd = searchStart + 100 + nextPrefMatch[0]
+			searchArea = htmlBody[searchStart:searchEnd]
+		}
+		
+		// Find all data-sel in this block
+		selMatches := dataSelRegex.FindAllStringSubmatchIndex(searchArea, -1)
+		
+		for _, selMatch := range selMatches {
+			raw := ""
+			if selMatch[2] != -1 {
+				raw = searchArea[selMatch[2]:selMatch[3]]
+			} else if selMatch[4] != -1 {
+				raw = searchArea[selMatch[4]:selMatch[5]]
+			}
+			if raw == "" {
+				continue
+			}
+			
+			raw = html.UnescapeString(raw)
+			var s selJSON
+			if err := json.Unmarshal([]byte(raw), &s); err != nil {
+				continue
+			}
+			if s.Epr <= 0 {
+				continue
+			}
+			
+			// Get context around this selection (200 chars before and after)
+			selPos := searchStart + selMatch[0]
+			contextStart := max(0, selPos-200)
+			contextEnd := min(len(htmlBody), selPos+200)
+			context := htmlBody[contextStart:contextEnd]
+			
+			// Extract parameter and outcome type
+			param := ""
+			outcomeType := ""
+			
+			// Try to extract from data-selection-key first
+			keyMatch := selectionKeyRegex.FindStringSubmatch(context)
+			if len(keyMatch) >= 3 {
+				outcomeType = strings.ToLower(keyMatch[1]) // "under" or "over"
+				param = keyMatch[2]
+			} else {
+				// Fallback: extract from context (e.g., "(5.5)")
+				paramMatch := totalParamRegex.FindStringSubmatch(context)
+				if len(paramMatch) > 1 {
+					param = paramMatch[1]
+				}
+				
+				// Determine outcome type from context
+				contextLower := strings.ToLower(context)
+				if strings.Contains(contextLower, "under") || strings.Contains(contextLower, "меньше") {
+					outcomeType = "under"
+				} else if strings.Contains(contextLower, "over") || strings.Contains(contextLower, "больше") {
+					outcomeType = "over"
+				}
+			}
+			
+			if param == "" {
+				continue // Skip if we can't determine parameter
+			}
+			
+			markets = append(markets, preferenceMarket{
+				preferenceID: preferenceID,
+				marketType:   marketType,
+				subType:      subType,
+				param:        param,
+				outcomeType:  outcomeType,
+				odds:         s.Epr,
+				position:     selPos,
+			})
+		}
+	}
+	
+	return markets
+}
+
 // parseEventPage extracts event info and odds from event HTML, builds Match.
 func parseEventPage(htmlBody []byte, eventPath string) (*models.Match, error) {
 	bodyStr := string(htmlBody)
@@ -484,45 +851,22 @@ func parseEventPage(htmlBody []byte, eventPath string) (*models.Match, error) {
 			startTime = t.UTC()
 		}
 	}
-
-	// Find all data-sel with their positions and context
-	var oddsWithContexts []oddWithContext
-	allMatches := dataSelRegex.FindAllStringSubmatchIndex(bodyStr, -1)
 	
-	for _, match := range allMatches {
-		raw := ""
-		if match[2] != -1 {
-			raw = bodyStr[match[2]:match[3]]
-		} else if match[4] != -1 {
-			raw = bodyStr[match[4]:match[5]]
-		}
-		if raw == "" {
-			continue
-		}
-		
-		raw = html.UnescapeString(raw)
-		var s selJSON
-		if err := json.Unmarshal([]byte(raw), &s); err != nil {
-			continue
-		}
-		if s.Epr > 0 {
-			// Get context (200 chars before this data-sel)
-			start := match[0] - 200
-			if start < 0 {
-				start = 0
-			}
-			context := bodyStr[start:match[0]]
-			
-			oddsWithContexts = append(oddsWithContexts, oddWithContext{
-				odds:     s.Epr,
-				position: match[0],
-				context:  context,
-			})
+	// If time not found in JSON, try to parse from HTML
+	if startTime.IsZero() {
+		startTime = parseDateTimeFromHTML(bodyStr)
+		if !startTime.IsZero() {
+			slog.Debug("Marathonbet: parsed start time from HTML", "time", startTime.Format(time.RFC3339))
+		} else {
+			slog.Warn("Marathonbet: could not parse start time from JSON or HTML", "event_path", eventPath)
 		}
 	}
 
-	if len(oddsWithContexts) < 3 {
-		return nil, fmt.Errorf("event has fewer than 3 odds")
+	// Parse markets by type using data-market-type attribute
+	markets := parseMarketsByType(bodyStr)
+	
+	if len(markets) == 0 {
+		return nil, fmt.Errorf("no markets found")
 	}
 
 	matchID := models.CanonicalMatchID(home, away, startTime)
@@ -542,10 +886,25 @@ func parseEventPage(htmlBody []byte, eventPath string) (*models.Match, error) {
 		UpdatedAt:  now,
 	}
 
-	// Group odds by market type based on context
-	// Main match (1X2): first three odds (default)
-	mainOdds := oddsWithContexts[:3]
-	if len(mainOdds) >= 3 {
+	// Group markets by type and parameter
+	marketsByType := make(map[string][]marketOdd)
+	for _, m := range markets {
+		key := m.marketType + ":" + m.param + ":" + m.mutableID
+		marketsByType[key] = append(marketsByType[key], m)
+	}
+
+	// Parse RESULT market (1X2)
+	resultMarkets := []marketOdd{}
+	for _, m := range markets {
+		if m.marketType == "RESULT" {
+			resultMarkets = append(resultMarkets, m)
+		}
+	}
+	if len(resultMarkets) >= 3 {
+		// Sort by mutableID to get correct order (S_0_1, S_0_2, S_0_3)
+		sort.Slice(resultMarkets, func(i, j int) bool {
+			return resultMarkets[i].mutableID < resultMarkets[j].mutableID
+		})
 		mainEventID := matchID + "_" + bookmakerKey + "_" + string(models.StandardEventMainMatch)
 		mainEvent := models.Event{
 			ID:         mainEventID,
@@ -554,9 +913,9 @@ func parseEventPage(htmlBody []byte, eventPath string) (*models.Match, error) {
 			MarketName: models.GetMarketName(models.StandardEventMainMatch),
 			Bookmaker:  bookmakerName,
 			Outcomes: []models.Outcome{
-				{ID: mainEventID + "_1", EventID: mainEventID, OutcomeType: string(models.OutcomeTypeHomeWin), Odds: mainOdds[0].odds, Bookmaker: bookmakerName, CreatedAt: now, UpdatedAt: now},
-				{ID: mainEventID + "_X", EventID: mainEventID, OutcomeType: string(models.OutcomeTypeDraw), Odds: mainOdds[1].odds, Bookmaker: bookmakerName, CreatedAt: now, UpdatedAt: now},
-				{ID: mainEventID + "_2", EventID: mainEventID, OutcomeType: string(models.OutcomeTypeAwayWin), Odds: mainOdds[2].odds, Bookmaker: bookmakerName, CreatedAt: now, UpdatedAt: now},
+				{ID: mainEventID + "_1", EventID: mainEventID, OutcomeType: string(models.OutcomeTypeHomeWin), Odds: resultMarkets[0].odds, Bookmaker: bookmakerName, CreatedAt: now, UpdatedAt: now},
+				{ID: mainEventID + "_X", EventID: mainEventID, OutcomeType: string(models.OutcomeTypeDraw), Odds: resultMarkets[1].odds, Bookmaker: bookmakerName, CreatedAt: now, UpdatedAt: now},
+				{ID: mainEventID + "_2", EventID: mainEventID, OutcomeType: string(models.OutcomeTypeAwayWin), Odds: resultMarkets[2].odds, Bookmaker: bookmakerName, CreatedAt: now, UpdatedAt: now},
 			},
 			CreatedAt: now,
 			UpdatedAt: now,
@@ -564,9 +923,254 @@ func parseEventPage(htmlBody []byte, eventPath string) (*models.Match, error) {
 		match.Events = append(match.Events, mainEvent)
 	}
 
-	// Parse additional markets from remaining odds
-	remainingOdds := oddsWithContexts[3:]
-	parseAdditionalMarkets(match, matchID, bookmakerKey, remainingOdds, now)
+	// Parse DOUBLE_CHANCE market (1X, X2, 12)
+	doubleChanceMarkets := []marketOdd{}
+	for _, m := range markets {
+		if m.marketType == "DOUBLE_CHANCE" {
+			doubleChanceMarkets = append(doubleChanceMarkets, m)
+		}
+	}
+	if len(doubleChanceMarkets) >= 3 {
+		sort.Slice(doubleChanceMarkets, func(i, j int) bool {
+			return doubleChanceMarkets[i].mutableID < doubleChanceMarkets[j].mutableID
+		})
+		// S_1_1 = 1X, S_1_2 = 12, S_1_3 = X2
+		dcEventID := matchID + "_" + bookmakerKey + "_double_chance"
+		dcEvent := models.Event{
+			ID:         dcEventID,
+			MatchID:    matchID,
+			EventType:  "double_chance",
+			MarketName: "Double Chance",
+			Bookmaker:  bookmakerName,
+			Outcomes: []models.Outcome{
+				{ID: dcEventID + "_1X", EventID: dcEventID, OutcomeType: "double_chance_1x", Odds: doubleChanceMarkets[0].odds, Bookmaker: bookmakerName, CreatedAt: now, UpdatedAt: now},
+				{ID: dcEventID + "_12", EventID: dcEventID, OutcomeType: "double_chance_12", Odds: doubleChanceMarkets[1].odds, Bookmaker: bookmakerName, CreatedAt: now, UpdatedAt: now},
+				{ID: dcEventID + "_X2", EventID: dcEventID, OutcomeType: "double_chance_x2", Odds: doubleChanceMarkets[2].odds, Bookmaker: bookmakerName, CreatedAt: now, UpdatedAt: now},
+			},
+			CreatedAt: now,
+			UpdatedAt: now,
+		}
+		match.Events = append(match.Events, dcEvent)
+	}
+
+	// Parse HANDICAP markets
+	handicapMarkets := []marketOdd{}
+	for _, m := range markets {
+		if m.marketType == "HANDICAP" {
+			handicapMarkets = append(handicapMarkets, m)
+		}
+	}
+	if len(handicapMarkets) >= 2 {
+		sort.Slice(handicapMarkets, func(i, j int) bool {
+			return handicapMarkets[i].mutableID < handicapMarkets[j].mutableID
+		})
+		// Group by parameter
+		handicapsByParam := make(map[string][]marketOdd)
+		for _, m := range handicapMarkets {
+			handicapsByParam[m.param] = append(handicapsByParam[m.param], m)
+		}
+		for param, hMarkets := range handicapsByParam {
+			if len(hMarkets) >= 2 {
+				// S_2_1 = home handicap, S_2_3 = away handicap
+				sort.Slice(hMarkets, func(i, j int) bool {
+					return hMarkets[i].mutableID < hMarkets[j].mutableID
+				})
+				handicapEventID := matchID + "_" + bookmakerKey + "_handicap_" + strings.ReplaceAll(param, "-", "neg")
+				handicapEvent := models.Event{
+					ID:         handicapEventID,
+					MatchID:    matchID,
+					EventType:  "handicap",
+					MarketName: "Handicap " + param,
+					Bookmaker:  bookmakerName,
+					Outcomes: []models.Outcome{
+						{ID: handicapEventID + "_home", EventID: handicapEventID, OutcomeType: "handicap_home", Parameter: param, Odds: hMarkets[0].odds, Bookmaker: bookmakerName, CreatedAt: now, UpdatedAt: now},
+						{ID: handicapEventID + "_away", EventID: handicapEventID, OutcomeType: "handicap_away", Parameter: param, Odds: hMarkets[1].odds, Bookmaker: bookmakerName, CreatedAt: now, UpdatedAt: now},
+					},
+					CreatedAt: now,
+					UpdatedAt: now,
+				}
+				match.Events = append(match.Events, handicapEvent)
+			}
+		}
+	}
+
+	// Parse TOTAL markets
+	totalMarkets := []marketOdd{}
+	for _, m := range markets {
+		if m.marketType == "TOTAL" {
+			totalMarkets = append(totalMarkets, m)
+		}
+	}
+	if len(totalMarkets) >= 2 {
+		sort.Slice(totalMarkets, func(i, j int) bool {
+			return totalMarkets[i].mutableID < totalMarkets[j].mutableID
+		})
+		// Group by parameter
+		totalsByParam := make(map[string][]marketOdd)
+		for _, m := range totalMarkets {
+			param := m.param
+			if param == "" {
+				param = "2.5" // default
+			}
+			totalsByParam[param] = append(totalsByParam[param], m)
+		}
+		for param, tMarkets := range totalsByParam {
+			if len(tMarkets) >= 2 {
+				// S_3_1 = Under, S_3_3 = Over
+				sort.Slice(tMarkets, func(i, j int) bool {
+					return tMarkets[i].mutableID < tMarkets[j].mutableID
+				})
+				totalEventID := matchID + "_" + bookmakerKey + "_total_" + strings.ReplaceAll(param, ".", "_")
+				totalEvent := models.Event{
+					ID:         totalEventID,
+					MatchID:    matchID,
+					EventType:  string(models.StandardEventMainMatch),
+					MarketName: "Total " + param,
+					Bookmaker:  bookmakerName,
+					Outcomes: []models.Outcome{
+						{ID: totalEventID + "_under", EventID: totalEventID, OutcomeType: string(models.OutcomeTypeTotalUnder), Parameter: param, Odds: tMarkets[0].odds, Bookmaker: bookmakerName, CreatedAt: now, UpdatedAt: now},
+						{ID: totalEventID + "_over", EventID: totalEventID, OutcomeType: string(models.OutcomeTypeTotalOver), Parameter: param, Odds: tMarkets[1].odds, Bookmaker: bookmakerName, CreatedAt: now, UpdatedAt: now},
+					},
+					CreatedAt: now,
+					UpdatedAt: now,
+				}
+				match.Events = append(match.Events, totalEvent)
+			}
+		}
+	}
+
+	// Parse markets by preference-id (corners, yellow cards, etc.)
+	prefMarkets := parseMarketsByPreferenceID(bodyStr)
+	
+	// Group preference markets by type, subtype, and parameter
+	prefMarketsByKey := make(map[string][]preferenceMarket)
+	for _, pm := range prefMarkets {
+		key := pm.marketType + ":" + pm.subType + ":" + pm.param
+		prefMarketsByKey[key] = append(prefMarketsByKey[key], pm)
+	}
+	
+	// Process preference markets
+	for _, pMarkets := range prefMarketsByKey {
+		if len(pMarkets) < 2 {
+			continue
+		}
+		
+		// Group by outcome type (over/under pairs)
+		overMarkets := []preferenceMarket{}
+		underMarkets := []preferenceMarket{}
+		for _, pm := range pMarkets {
+			if pm.outcomeType == "over" {
+				overMarkets = append(overMarkets, pm)
+			} else if pm.outcomeType == "under" {
+				underMarkets = append(underMarkets, pm)
+			}
+		}
+		
+		// Create events for over/under pairs
+		if len(overMarkets) > 0 && len(underMarkets) > 0 {
+			// Take first over and under for this parameter
+			overMarket := overMarkets[0]
+			underMarket := underMarkets[0]
+			
+			// Determine event type
+			var eventType models.StandardEventType
+			switch overMarket.marketType {
+			case "corners":
+				eventType = models.StandardEventCorners
+			case "yellow_cards":
+				eventType = models.StandardEventYellowCards
+			case "fouls":
+				eventType = models.StandardEventFouls
+			default:
+				continue
+			}
+			
+			eventID := matchID + "_" + bookmakerKey + "_" + string(eventType) + "_" + strings.ReplaceAll(overMarket.param, ".", "_")
+			event := models.Event{
+				ID:         eventID,
+				MatchID:    matchID,
+				EventType:  string(eventType),
+				MarketName: models.GetMarketName(eventType) + " " + overMarket.param,
+				Bookmaker:  bookmakerName,
+				Outcomes: []models.Outcome{
+					{
+						ID:          eventID + "_over",
+						EventID:     eventID,
+						OutcomeType: string(models.OutcomeTypeTotalOver),
+						Parameter:   overMarket.param,
+						Odds:        overMarket.odds,
+						Bookmaker:   bookmakerName,
+						CreatedAt:   now,
+						UpdatedAt:   now,
+					},
+					{
+						ID:          eventID + "_under",
+						EventID:     eventID,
+						OutcomeType: string(models.OutcomeTypeTotalUnder),
+						Parameter:   underMarket.param,
+						Odds:        underMarket.odds,
+						Bookmaker:   bookmakerName,
+						CreatedAt:   now,
+						UpdatedAt:   now,
+					},
+				},
+				CreatedAt: now,
+				UpdatedAt: now,
+			}
+			match.Events = append(match.Events, event)
+		}
+	}
+	
+	// Parse remaining markets using old method as fallback (for markets without preference-id)
+	// Find all remaining data-sel that weren't processed
+	var remainingOdds []oddWithContext
+	allMatches := dataSelRegex.FindAllStringSubmatchIndex(bodyStr, -1)
+	processedPositions := make(map[int]bool)
+	for _, m := range markets {
+		processedPositions[m.position] = true
+	}
+	for _, pm := range prefMarkets {
+		processedPositions[pm.position] = true
+	}
+	
+	for _, match := range allMatches {
+		if processedPositions[match[0]] {
+			continue // Skip already processed markets
+		}
+		raw := ""
+		if match[2] != -1 {
+			raw = bodyStr[match[2]:match[3]]
+		} else if match[4] != -1 {
+			raw = bodyStr[match[4]:match[5]]
+		}
+		if raw == "" {
+			continue
+		}
+		
+		raw = html.UnescapeString(raw)
+		var s selJSON
+		if err := json.Unmarshal([]byte(raw), &s); err != nil {
+			continue
+		}
+		if s.Epr > 0 {
+			start := match[0] - 200
+			if start < 0 {
+				start = 0
+			}
+			context := bodyStr[start:match[0]]
+			
+			remainingOdds = append(remainingOdds, oddWithContext{
+				odds:     s.Epr,
+				position: match[0],
+				context:  context,
+			})
+		}
+	}
+	
+	// Only use fallback for markets that are NOT corners, yellow cards, or fouls
+	if len(remainingOdds) > 0 {
+		parseAdditionalMarkets(match, matchID, bookmakerKey, remainingOdds, now)
+	}
 
 	return match, nil
 }

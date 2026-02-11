@@ -30,11 +30,205 @@ var eventJSONRegex = regexp.MustCompile(`data-json="([^"]+)"`)
 // dataSelRegex extracts data-sel JSON (odds); single or double quotes
 var dataSelRegex = regexp.MustCompile(`data-sel=(?:"([^"]*)"|'([^']*)')`)
 
+// marketTitleRegex matches market titles/headers before odds (Russian and English)
+var marketTitleRegex = regexp.MustCompile(`(?i)(?:угл|corner|фол|foul|карт|card|желт|yellow|красн|red|тотал|total|гол|goal|удар|shot)`)
+
+// parseAdditionalMarkets parses corners, fouls, and other markets from remaining odds
+func parseAdditionalMarkets(match *models.Match, matchID, bookmakerKey string, oddsWithContexts []oddWithContext, now time.Time) {
+	type marketGroup struct {
+		eventType models.StandardEventType
+		odds      []float64
+		param     string
+	}
+	
+	var currentMarket *marketGroup
+	var markets []*marketGroup
+	
+	for idx, oc := range oddsWithContexts {
+		// Detect market type from context
+		contextLower := strings.ToLower(oc.context)
+		var detectedType models.StandardEventType
+		var param string
+		
+		// Check for corners (угловые) - look for "угл" or "corner" followed by a number
+		if strings.Contains(contextLower, "угл") || strings.Contains(contextLower, "corner") {
+			detectedType = models.StandardEventCorners
+			// Try to extract parameter near the keyword (e.g., "10.5", "11")
+			paramRegex := regexp.MustCompile(`(?:угл|corner)[^0-9]*(\d+\.?\d*)`)
+			if matches := paramRegex.FindStringSubmatch(contextLower); len(matches) > 1 {
+				param = matches[1]
+			} else {
+				// Try to find any number in the last 50 chars
+				if numMatches := regexp.MustCompile(`(\d+\.?\d*)`).FindAllString(contextLower[len(contextLower)-50:], -1); len(numMatches) > 0 {
+					param = numMatches[len(numMatches)-1]
+				} else {
+					param = "10.5" // default
+				}
+			}
+		} else if strings.Contains(contextLower, "фол") || strings.Contains(contextLower, "foul") {
+			detectedType = models.StandardEventFouls
+			paramRegex := regexp.MustCompile(`(?:фол|foul)[^0-9]*(\d+\.?\d*)`)
+			if matches := paramRegex.FindStringSubmatch(contextLower); len(matches) > 1 {
+				param = matches[1]
+			} else {
+				if numMatches := regexp.MustCompile(`(\d+\.?\d*)`).FindAllString(contextLower[len(contextLower)-50:], -1); len(numMatches) > 0 {
+					param = numMatches[len(numMatches)-1]
+				} else {
+					param = "10.5" // default
+				}
+			}
+		} else if strings.Contains(contextLower, "карт") || strings.Contains(contextLower, "card") || strings.Contains(contextLower, "желт") || strings.Contains(contextLower, "yellow") {
+			detectedType = models.StandardEventYellowCards
+			paramRegex := regexp.MustCompile(`(?:карт|card|желт|yellow)[^0-9]*(\d+\.?\d*)`)
+			if matches := paramRegex.FindStringSubmatch(contextLower); len(matches) > 1 {
+				param = matches[1]
+			} else {
+				if numMatches := regexp.MustCompile(`(\d+\.?\d*)`).FindAllString(contextLower[len(contextLower)-50:], -1); len(numMatches) > 0 {
+					param = numMatches[len(numMatches)-1]
+				} else {
+					param = "4.5" // default
+				}
+			}
+		} else if strings.Contains(contextLower, "тотал") || strings.Contains(contextLower, "total") {
+			// Total goals or other totals
+			paramRegex := regexp.MustCompile(`(?:тотал|total)[^0-9]*(\d+\.?\d*)`)
+			if matches := paramRegex.FindStringSubmatch(contextLower); len(matches) > 1 {
+				param = matches[1]
+			} else {
+				if numMatches := regexp.MustCompile(`(\d+\.?\d*)`).FindAllString(contextLower[len(contextLower)-50:], -1); len(numMatches) > 0 {
+					param = numMatches[len(numMatches)-1]
+				} else {
+					param = "2.5"
+				}
+			}
+			// Check if it's a total for main match (already parsed) or something else
+			if idx < 2 && len(oddsWithContexts) >= 5 {
+				// Likely total 2.5 for goals
+				continue
+			}
+		}
+		
+		// If we detected a market type, start or continue grouping
+		if detectedType != "" {
+			if currentMarket != nil && currentMarket.eventType == detectedType && currentMarket.param == param {
+				// Continue current market
+				currentMarket.odds = append(currentMarket.odds, oc.odds)
+			} else {
+				// Start new market
+				if currentMarket != nil {
+					markets = append(markets, currentMarket)
+				}
+				currentMarket = &marketGroup{
+					eventType: detectedType,
+					odds:      []float64{oc.odds},
+					param:     param,
+				}
+			}
+		} else if currentMarket != nil {
+			// No market detected, but we have a current market - try to add if it makes sense
+			if len(currentMarket.odds) < 2 && oc.odds >= 1.2 && oc.odds <= 5 {
+				currentMarket.odds = append(currentMarket.odds, oc.odds)
+			} else {
+				// Finish current market
+				markets = append(markets, currentMarket)
+				currentMarket = nil
+			}
+		}
+	}
+	
+	// Add last market if exists
+	if currentMarket != nil {
+		markets = append(markets, currentMarket)
+	}
+	
+	// Create events from detected markets
+	for _, mkt := range markets {
+		if len(mkt.odds) < 2 {
+			continue
+		}
+		
+		eventID := matchID + "_" + bookmakerKey + "_" + string(mkt.eventType) + "_" + strings.ReplaceAll(mkt.param, ".", "_")
+		event := models.Event{
+			ID:         eventID,
+			MatchID:    matchID,
+			EventType:  string(mkt.eventType),
+			MarketName: models.GetMarketName(mkt.eventType) + " " + mkt.param,
+			Bookmaker:  bookmakerName,
+			Outcomes:   []models.Outcome{},
+			CreatedAt:  now,
+			UpdatedAt:  now,
+		}
+		
+		// Add outcomes (usually over/under pairs)
+		if len(mkt.odds) >= 2 {
+			event.Outcomes = append(event.Outcomes, models.Outcome{
+				ID:          eventID + "_over",
+				EventID:     eventID,
+				OutcomeType: string(models.OutcomeTypeTotalOver),
+				Parameter:   mkt.param,
+				Odds:        mkt.odds[0],
+				Bookmaker:   bookmakerName,
+				CreatedAt:   now,
+				UpdatedAt:   now,
+			})
+			event.Outcomes = append(event.Outcomes, models.Outcome{
+				ID:          eventID + "_under",
+				EventID:     eventID,
+				OutcomeType: string(models.OutcomeTypeTotalUnder),
+				Parameter:   mkt.param,
+				Odds:        mkt.odds[1],
+				Bookmaker:   bookmakerName,
+				CreatedAt:   now,
+				UpdatedAt:   now,
+			})
+		}
+		
+		if len(event.Outcomes) > 0 {
+			match.Events = append(match.Events, event)
+		}
+	}
+	
+	// Also add Total 2.5 if we have enough odds and it wasn't detected as another market
+	if len(oddsWithContexts) >= 5 {
+		hasTotal := false
+		for _, evt := range match.Events {
+			if evt.MarketName == "Total 2.5" {
+				hasTotal = true
+				break
+			}
+		}
+		if !hasTotal && oddsWithContexts[3].odds >= 1.2 && oddsWithContexts[3].odds <= 5 && oddsWithContexts[4].odds >= 1.2 && oddsWithContexts[4].odds <= 5 {
+			totalParam := "2.5"
+			totalEventID := matchID + "_" + bookmakerKey + "_total_2.5"
+			totalEvent := models.Event{
+				ID:         totalEventID,
+				MatchID:    matchID,
+				EventType:  string(models.StandardEventMainMatch),
+				MarketName: "Total 2.5",
+				Bookmaker:  bookmakerName,
+				Outcomes: []models.Outcome{
+					{ID: totalEventID + "_over", EventID: totalEventID, OutcomeType: string(models.OutcomeTypeTotalOver), Parameter: totalParam, Odds: oddsWithContexts[3].odds, Bookmaker: bookmakerName, CreatedAt: now, UpdatedAt: now},
+					{ID: totalEventID + "_under", EventID: totalEventID, OutcomeType: string(models.OutcomeTypeTotalUnder), Parameter: totalParam, Odds: oddsWithContexts[4].odds, Bookmaker: bookmakerName, CreatedAt: now, UpdatedAt: now},
+				},
+				CreatedAt: now,
+				UpdatedAt: now,
+			}
+			match.Events = append(match.Events, totalEvent)
+		}
+	}
+}
+
 type eventJSON struct {
 	TreeID          int64    `json:"treeId"`
 	MarathonEventID int64    `json:"marathonEventId"`
 	TeamNames       []string `json:"teamNames"`
 	StartTime       string   `json:"startTime,omitempty"`
+}
+
+type oddWithContext struct {
+	odds     float64
+	position int
+	context  string // HTML context before this odd
 }
 
 type selJSON struct {
@@ -291,24 +485,43 @@ func parseEventPage(htmlBody []byte, eventPath string) (*models.Match, error) {
 		}
 	}
 
-	// All odds from data-sel in order
-	var odds []float64
-	for _, m := range dataSelRegex.FindAllStringSubmatch(bodyStr, -1) {
-		raw := m[1]
-		if raw == "" {
-			raw = m[2]
+	// Find all data-sel with their positions and context
+	var oddsWithContexts []oddWithContext
+	allMatches := dataSelRegex.FindAllStringSubmatchIndex(bodyStr, -1)
+	
+	for _, match := range allMatches {
+		raw := ""
+		if match[2] != -1 {
+			raw = bodyStr[match[2]:match[3]]
+		} else if match[4] != -1 {
+			raw = bodyStr[match[4]:match[5]]
 		}
+		if raw == "" {
+			continue
+		}
+		
 		raw = html.UnescapeString(raw)
 		var s selJSON
 		if err := json.Unmarshal([]byte(raw), &s); err != nil {
 			continue
 		}
 		if s.Epr > 0 {
-			odds = append(odds, s.Epr)
+			// Get context (200 chars before this data-sel)
+			start := match[0] - 200
+			if start < 0 {
+				start = 0
+			}
+			context := bodyStr[start:match[0]]
+			
+			oddsWithContexts = append(oddsWithContexts, oddWithContext{
+				odds:     s.Epr,
+				position: match[0],
+				context:  context,
+			})
 		}
 	}
 
-	if len(odds) < 3 {
+	if len(oddsWithContexts) < 3 {
 		return nil, fmt.Errorf("event has fewer than 3 odds")
 	}
 
@@ -329,43 +542,31 @@ func parseEventPage(htmlBody []byte, eventPath string) (*models.Match, error) {
 		UpdatedAt:  now,
 	}
 
-	// Main match (1X2): first three odds
-	mainEventID := matchID + "_" + bookmakerKey + "_" + string(models.StandardEventMainMatch)
-	mainEvent := models.Event{
-		ID:         mainEventID,
-		MatchID:    matchID,
-		EventType:  string(models.StandardEventMainMatch),
-		MarketName: models.GetMarketName(models.StandardEventMainMatch),
-		Bookmaker:  bookmakerName,
-		Outcomes: []models.Outcome{
-			{ID: mainEventID + "_1", EventID: mainEventID, OutcomeType: string(models.OutcomeTypeHomeWin), Odds: odds[0], Bookmaker: bookmakerName, CreatedAt: now, UpdatedAt: now},
-			{ID: mainEventID + "_X", EventID: mainEventID, OutcomeType: string(models.OutcomeTypeDraw), Odds: odds[1], Bookmaker: bookmakerName, CreatedAt: now, UpdatedAt: now},
-			{ID: mainEventID + "_2", EventID: mainEventID, OutcomeType: string(models.OutcomeTypeAwayWin), Odds: odds[2], Bookmaker: bookmakerName, CreatedAt: now, UpdatedAt: now},
-		},
-		CreatedAt: now,
-		UpdatedAt: now,
-	}
-	match.Events = append(match.Events, mainEvent)
-
-	// Total 2.5: if we have at least 5 odds, 4th and 5th are often total over/under 2.5
-	if len(odds) >= 5 && odds[3] >= 1.2 && odds[3] <= 5 && odds[4] >= 1.2 && odds[4] <= 5 {
-		totalParam := "2.5"
-		totalEventID := matchID + "_" + bookmakerKey + "_total_2.5"
-		totalEvent := models.Event{
-			ID:         totalEventID,
+	// Group odds by market type based on context
+	// Main match (1X2): first three odds (default)
+	mainOdds := oddsWithContexts[:3]
+	if len(mainOdds) >= 3 {
+		mainEventID := matchID + "_" + bookmakerKey + "_" + string(models.StandardEventMainMatch)
+		mainEvent := models.Event{
+			ID:         mainEventID,
 			MatchID:    matchID,
 			EventType:  string(models.StandardEventMainMatch),
-			MarketName: "Total 2.5",
+			MarketName: models.GetMarketName(models.StandardEventMainMatch),
 			Bookmaker:  bookmakerName,
 			Outcomes: []models.Outcome{
-				{ID: totalEventID + "_over", EventID: totalEventID, OutcomeType: string(models.OutcomeTypeTotalOver), Parameter: totalParam, Odds: odds[3], Bookmaker: bookmakerName, CreatedAt: now, UpdatedAt: now},
-				{ID: totalEventID + "_under", EventID: totalEventID, OutcomeType: string(models.OutcomeTypeTotalUnder), Parameter: totalParam, Odds: odds[4], Bookmaker: bookmakerName, CreatedAt: now, UpdatedAt: now},
+				{ID: mainEventID + "_1", EventID: mainEventID, OutcomeType: string(models.OutcomeTypeHomeWin), Odds: mainOdds[0].odds, Bookmaker: bookmakerName, CreatedAt: now, UpdatedAt: now},
+				{ID: mainEventID + "_X", EventID: mainEventID, OutcomeType: string(models.OutcomeTypeDraw), Odds: mainOdds[1].odds, Bookmaker: bookmakerName, CreatedAt: now, UpdatedAt: now},
+				{ID: mainEventID + "_2", EventID: mainEventID, OutcomeType: string(models.OutcomeTypeAwayWin), Odds: mainOdds[2].odds, Bookmaker: bookmakerName, CreatedAt: now, UpdatedAt: now},
 			},
 			CreatedAt: now,
 			UpdatedAt: now,
 		}
-		match.Events = append(match.Events, totalEvent)
+		match.Events = append(match.Events, mainEvent)
 	}
+
+	// Parse additional markets from remaining odds
+	remainingOdds := oddsWithContexts[3:]
+	parseAdditionalMarkets(match, matchID, bookmakerKey, remainingOdds, now)
 
 	return match, nil
 }

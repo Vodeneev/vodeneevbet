@@ -41,10 +41,11 @@ type ParserConfig struct {
 
 // MarathonbetConfig configures Marathonbet HTML parser (all-events → leagues → event pages).
 type MarathonbetConfig struct {
-	BaseURL  string        `yaml:"base_url"`  // e.g. "https://www.marathonbet.ru"
-	SportID  int           `yaml:"sport_id"`  // Football = 11 (default)
-	Timeout  time.Duration `yaml:"timeout"`   // HTTP timeout (default: 30s)
-	UserAgent string      `yaml:"user_agent"` // Override from Parser.UserAgent if empty
+	BaseURL   string        `yaml:"base_url"`   // e.g. "https://www.marathonbet.ru"
+	SportID   int           `yaml:"sport_id"`   // Football = 11 (default)
+	Timeout   time.Duration `yaml:"timeout"`    // HTTP timeout (default: 30s)
+	UserAgent string        `yaml:"user_agent"` // Override from Parser.UserAgent if empty
+	ProxyList []string      `yaml:"proxy_list"` // List of proxies to try in order
 }
 
 // IncrementalParsingConfig configures incremental parsing for each parser

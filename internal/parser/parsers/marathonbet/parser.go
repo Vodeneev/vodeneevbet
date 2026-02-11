@@ -68,7 +68,11 @@ func NewParser(cfg *config.Config) *Parser {
 	if userAgent == "" {
 		userAgent = cfg.Parser.UserAgent
 	}
-	client := NewClient(baseURL, userAgent, timeout)
+	proxyList := mc.ProxyList
+	if len(proxyList) > 0 {
+		slog.Info("Marathonbet: Using proxy list from config", "proxy_count", len(proxyList))
+	}
+	client := NewClient(baseURL, userAgent, timeout, proxyList)
 	return &Parser{cfg: cfg, client: client}
 }
 
@@ -109,7 +113,10 @@ func (p *Parser) StartIncremental(ctx context.Context, timeout time.Duration) er
 func (p *Parser) runIncrementalCycle(ctx context.Context, timeout time.Duration) {
 	cycleCtx, cancel := parserutil.CreateCycleContext(ctx, timeout)
 	defer cancel()
-	_ = p.ParseOnce(cycleCtx)
+	err := p.ParseOnce(cycleCtx)
+	if err != nil {
+		slog.Error("Marathonbet: parse cycle failed", "error", err)
+	}
 }
 
 // TriggerNewCycle signals start of a new parsing cycle.

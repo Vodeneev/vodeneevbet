@@ -451,6 +451,16 @@ func (p *Parser) ParseOnce(ctx context.Context) error {
 				continue
 			}
 			if match != nil {
+				// Strictly exclude live matches (matches that have already started)
+				if !match.StartTime.IsZero() {
+					matchStartTime := match.StartTime.UTC()
+					now := time.Now().UTC()
+					if !matchStartTime.After(now) {
+						// Match has already started, skip it
+						slog.Debug("Marathonbet: filtered live match", "match_id", match.ID, "start", matchStartTime.Format(time.RFC3339), "now", now.Format(time.RFC3339))
+						continue
+					}
+				}
 				health.AddMatch(match)
 				slog.Info("Marathonbet: match added", "match", match.Name, "home", match.HomeTeam, "away", match.AwayTeam, "events", len(match.Events))
 			}

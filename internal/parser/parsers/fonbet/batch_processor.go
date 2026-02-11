@@ -393,6 +393,24 @@ func (p *BatchProcessor) worker(
 		startTime := time.Now()
 		buildStart := time.Now()
 
+		// Strictly exclude live matches (matches that have already started)
+		matchStartTime := time.Unix(match.MainEvent.StartTime, 0).UTC()
+		now := time.Now().UTC()
+		if !matchStartTime.After(now) {
+			// Match has already started, skip it
+			slog.Debug("Fonbet: filtered live match", "match_id", match.ID, "start", matchStartTime.Format(time.RFC3339), "now", now.Format(time.RFC3339))
+			resultsChan <- ProcessResult{
+				MatchID:  match.ID,
+				Success:  false,
+				Error:     fmt.Errorf("live match filtered"),
+				Duration:  time.Since(startTime),
+				EventsCount: 0,
+				OutcomesCount: 0,
+				YDBWriteTime: 0,
+			}
+			continue
+		}
+
 		// Process the match
 		// Note: CustomFactors from main API response should already contain updated odds for live matches
 		matchModel, err := p.buildMatchWithEventsAndFactors(

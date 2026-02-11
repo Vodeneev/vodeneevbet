@@ -74,16 +74,16 @@ parser:
     # Client will try proxies in order until one works
     # Format: http://user:pass@ip:port or http://ip:port
     proxy_list:
-      - "http://rzarbuxl:r9u5g3bynx8r@142.111.48.253:7030"  # USA, Los Angeles
-      - "http://rzarbuxl:r9u5g3bynx8r@23.95.150.145:6114"   # USA, Buffalo
-      - "http://rzarbuxl:r9u5g3bynx8r@198.23.239.134:6540"  # USA, Buffalo
-      - "http://rzarbuxl:r9u5g3bynx8r@107.172.163.27:6543"  # USA, Bloomingdale
-      - "http://rzarbuxl:r9u5g3bynx8r@198.105.121.200:6462" # USA, Bloomingdale
-      - "http://rzarbuxl:r9u5g3bynx8r@64.137.96.74:6641"   # UK, London
-      - "http://rzarbuxl:r9u5g3bynx8r@84.247.60.125:6095"   # Spain, Madrid
-      - "http://rzarbuxl:r9u5g3bynx8r@216.10.27.159:6837"   # Poland, Warsaw
-      - "http://rzarbuxl:r9u5g3bynx8r@23.26.71.145:5628"     # USA, Dallas
-      - "http://rzarbuxl:r9u5g3bynx8r@23.27.208.120:5830"   # USA, Orem
+      - "http://tdqhhche:plckg23leso8@31.59.20.176:6754"     # UK, London
+      - "http://tdqhhche:plckg23leso8@23.95.150.145:6114"   # USA, Buffalo
+      - "http://tdqhhche:plckg23leso8@198.23.239.134:6540"  # USA, Buffalo
+      - "http://tdqhhche:plckg23leso8@45.38.107.97:6014"    # UK, London
+      - "http://tdqhhche:plckg23leso8@107.172.163.27:6543"  # USA, Bloomingdale
+      - "http://tdqhhche:plckg23leso8@198.105.121.200:6462" # UK, City Of London
+      - "http://tdqhhche:plckg23leso8@64.137.96.74:6641"    # Spain, Madrid
+      - "http://tdqhhche:plckg23leso8@216.10.27.159:6837"   # USA, Dallas
+      - "http://tdqhhche:plckg23leso8@23.26.71.145:5628"    # USA, Orem
+      - "http://tdqhhche:plckg23leso8@23.229.19.94:8689"    # USA, Los Angeles
 
   pinnacle888:
     base_url: ""       # Optional: direct base URL (if mirror_url is not provided)

@@ -48,29 +48,55 @@ func NewClient(baseURL, userAgent string, timeout time.Duration) *Client {
 }
 
 // Get fetches a path (e.g. /su/all-events/11) and returns the response body.
+// Retries on 429 (Too Many Requests) with exponential backoff.
 func (c *Client) Get(ctx context.Context, path string) ([]byte, error) {
-	url := c.baseURL + path
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
-	if err != nil {
-		return nil, err
-	}
-	req.Header.Set("User-Agent", c.userAgent)
-	req.Header.Set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
-	req.Header.Set("Accept-Language", "ru-RU,ru;q=0.9,en;q=0.8")
+	const maxRetries = 3
+	const initialDelay = 2 * time.Second
+	
+	var lastErr error
+	for attempt := 0; attempt <= maxRetries; attempt++ {
+		if attempt > 0 {
+			// Exponential backoff: 2s, 4s, 8s
+			delay := initialDelay * time.Duration(1<<uint(attempt-1))
+			select {
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			case <-time.After(delay):
+			}
+		}
+		
+		url := c.baseURL + path
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+		if err != nil {
+			return nil, err
+		}
+		req.Header.Set("User-Agent", c.userAgent)
+		req.Header.Set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
+		req.Header.Set("Accept-Language", "ru-RU,ru;q=0.9,en;q=0.8")
 
-	resp, err := c.client.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
+		resp, err := c.client.Do(req)
+		if err != nil {
+			lastErr = err
+			continue
+		}
+		
+		body, readErr := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		
+		if resp.StatusCode == http.StatusOK {
+			return body, readErr
+		}
+		
+		// Retry on 429, fail immediately on other errors
+		if resp.StatusCode == http.StatusTooManyRequests && attempt < maxRetries {
+			lastErr = fmt.Errorf("marathonbet: GET %s: status %d (retrying)", path, resp.StatusCode)
+			continue
+		}
+		
+		if readErr != nil {
+			return nil, readErr
+		}
 		return nil, fmt.Errorf("marathonbet: GET %s: status %d", path, resp.StatusCode)
 	}
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, err
-	}
-	return body, nil
+	return nil, lastErr
 }

@@ -134,22 +134,42 @@ func (p *Parser) ParseOnce(ctx context.Context) error {
 	leaguePaths := extractLeaguePaths(body)
 	slog.Info("Marathonbet: found leagues", "count", len(leaguePaths), "sport_id", sportID)
 
-	for _, leaguePath := range leaguePaths {
+	// Rate limiting: delay between league requests (300ms) and event requests (150ms)
+	leagueDelay := 300 * time.Millisecond
+	eventDelay := 150 * time.Millisecond
+
+	for i, leaguePath := range leaguePaths {
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
 		default:
+		}
+		// Delay before each league request (except first)
+		if i > 0 {
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			case <-time.After(leagueDelay):
+			}
 		}
 		events, err := p.fetchLeagueEvents(ctx, leaguePath)
 		if err != nil {
 			slog.Warn("Marathonbet: league failed", "path", leaguePath, "error", err)
 			continue
 		}
-		for _, eventPath := range events {
+		for j, eventPath := range events {
 			select {
 			case <-ctx.Done():
 				return ctx.Err()
 			default:
+			}
+			// Delay before each event request (except first in league)
+			if j > 0 {
+				select {
+				case <-ctx.Done():
+					return ctx.Err()
+				case <-time.After(eventDelay):
+				}
 			}
 			match, err := p.fetchEventMatch(ctx, eventPath)
 			if err != nil {

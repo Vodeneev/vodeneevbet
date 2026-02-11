@@ -198,9 +198,18 @@ func LogIncrementalLoopStop(parserName string, totalCycles int) {
 
 // RunIncrementalLoop runs the incremental parsing loop
 // cycleFunc is called for each cycle and should implement the actual parsing logic
+// After each cycle completes, immediately triggers the next cycle (no delay)
 func RunIncrementalLoop(ctx context.Context, timeout time.Duration, parserName string, state *IncrementalParserState, cycleFunc func(context.Context, time.Duration)) {
 	LogIncrementalLoopStart(parserName, timeout)
 	cycleCount := 0
+	
+	// Start first cycle immediately
+	go func() {
+		select {
+		case state.CycleTrigger <- struct{}{}:
+		case <-ctx.Done():
+		}
+	}()
 	
 	for {
 		select {
@@ -214,7 +223,16 @@ func RunIncrementalLoop(ctx context.Context, timeout time.Duration, parserName s
 			ClearMatchesBeforeCycle(parserName)
 			// Run the cycle
 			cycleFunc(ctx, timeout)
-			slog.Info("Cycle completed, waiting for next trigger", "parser", parserName, "cycle_number", cycleCount)
+			slog.Info("Cycle completed, triggering next cycle immediately", "parser", parserName, "cycle_number", cycleCount)
+			
+			// Immediately trigger next cycle (no delay)
+			// Use goroutine to avoid blocking if channel is full
+			go func() {
+				select {
+				case state.CycleTrigger <- struct{}{}:
+				case <-ctx.Done():
+				}
+			}()
 		}
 	}
 }

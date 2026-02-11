@@ -20,6 +20,9 @@ yc logging read --folder-id=b1g7tng74uda3ahpg6oi --filter='service_label="bookma
 # Фильтр по метке сервиса (pinnacle888)
 yc logging read --folder-id=b1g7tng74uda3ahpg6oi --filter='service_label="bookmaker-pinnacle888"' --limit=20
 
+# Фильтр по метке сервиса (marathonbet)
+yc logging read --folder-id=b1g7tng74uda3ahpg6oi --filter='service_label="bookmaker-marathonbet"' --limit=20
+
 # Поиск по маркеру из bookmaker-service
 yc logging read --folder-id=b1g7tng74uda3ahpg6oi --filter='message:"Bookmaker service running on separate VM"' --limit=10
 
@@ -46,6 +49,10 @@ service_label="bookmaker-pinnacle"
 ```
 service_label="bookmaker-pinnacle888"
 ```
+или
+```
+service_label="bookmaker-marathonbet"
+```
 
 **Фильтр 2: по тексту из логов**
 ```
@@ -69,7 +76,7 @@ timestamp>="2026-02-09T11:40:00Z"
 ## 3. Что должно быть видно
 
 Если логи приходят, ты увидишь записи с:
-- **service_label**: `bookmaker-fonbet`, `bookmaker-pinnacle` или `bookmaker-pinnacle888`
+- **service_label**: `bookmaker-fonbet`, `bookmaker-pinnacle`, `bookmaker-pinnacle888` или `bookmaker-marathonbet`
 - **project_label**: `vodeneevbet`
 - **cluster_label**: `production`
 - **message**: содержит логи из контейнеров (например, "Fonbet: Successfully processed matches...", "Pinnacle888: processing league...")
@@ -116,7 +123,7 @@ message:"TEST_LOG_CHECK"
 
 - **vm-parsers** (158.160.168.187): `service_label="parser"`
 - **vm-core** (158.160.222.217): `service_label="calculator"` или `service_label="telegram-bot"`
-- **vm-bookmaker-services** (158.160.159.73): `service_label="bookmaker-fonbet"`, `service_label="bookmaker-pinnacle"`, `service_label="bookmaker-pinnacle888"`
+- **vm-bookmaker-services** (158.160.159.73): `service_label="bookmaker-fonbet"`, `service_label="bookmaker-pinnacle"`, `service_label="bookmaker-pinnacle888"`, `service_label="bookmaker-marathonbet"`
 
 Общий фильтр для всех сервисов:
 ```

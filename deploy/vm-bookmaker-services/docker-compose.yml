@@ -77,3 +77,28 @@ services:
     volumes:
       - ./configs:/app/configs:ro
       - ./keys:/app/keys:ro
+
+  marathonbet:
+    image: ghcr.io/${IMAGE_OWNER:-vodeneev}/vodeneevbet-bookmaker-service:${IMAGE_TAG:-main}
+    container_name: vodeneevbet-marathonbet
+    restart: unless-stopped
+    command: ["-parser", "marathonbet", "-config", "/app/configs/production.yaml"]
+    logging:
+      driver: json-file
+      options:
+        max-size: "50m"
+        max-file: "3"
+    ports:
+      - "8084:8080"
+    environment:
+      - YC_SERVICE_ACCOUNT_KEY_JSON_B64=${YC_SERVICE_ACCOUNT_KEY_JSON_B64:-}
+      - YC_SERVICE_ACCOUNT_KEY_FILE=${YC_SERVICE_ACCOUNT_KEY_FILE:-}
+      - YC_FOLDER_ID=${YC_FOLDER_ID:-}
+      - YC_LOG_GROUP_ID=${YC_LOG_GROUP_ID:-}
+      - YC_LOG_GROUP_NAME=${YC_LOG_GROUP_NAME:-default}
+      - YC_LOG_PROJECT_LABEL=${YC_LOG_PROJECT_LABEL:-vodeneevbet}
+      - YC_LOG_SERVICE_LABEL=${YC_LOG_SERVICE_LABEL:-bookmaker-marathonbet}
+      - YC_LOG_CLUSTER_LABEL=${YC_LOG_CLUSTER_LABEL:-production}
+    volumes:
+      - ./configs:/app/configs:ro
+      - ./keys:/app/keys:ro

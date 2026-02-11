@@ -36,6 +36,15 @@ type ParserConfig struct {
 	Fonbet            FonbetConfig      `yaml:"fonbet"`
 	Pinnacle          PinnacleConfig    `yaml:"pinnacle"`
 	Pinnacle888       Pinnacle888Config `yaml:"pinnacle888"`
+	Marathonbet       MarathonbetConfig `yaml:"marathonbet"`
+}
+
+// MarathonbetConfig configures Marathonbet HTML parser (all-events → leagues → event pages).
+type MarathonbetConfig struct {
+	BaseURL  string        `yaml:"base_url"`  // e.g. "https://www.marathonbet.ru"
+	SportID  int           `yaml:"sport_id"`  // Football = 11 (default)
+	Timeout  time.Duration `yaml:"timeout"`   // HTTP timeout (default: 30s)
+	UserAgent string      `yaml:"user_agent"` // Override from Parser.UserAgent if empty
 }
 
 // IncrementalParsingConfig configures incremental parsing for each parser

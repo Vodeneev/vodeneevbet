@@ -5,7 +5,7 @@ The automatic deployment system ensures that the latest version of services is a
 ## Deployment Architecture
 
 - **vm-parsers** (158.160.168.187): Runs Parser Service (local mode or orchestrator)
-- **vm-bookmaker-services** (158.160.159.73): Runs bookmaker services (fonbet, pinnacle, pinnacle888) — по одной конторе на контейнер
+- **vm-bookmaker-services** (158.160.159.73): Runs bookmaker services (fonbet, pinnacle, pinnacle888, marathonbet) — по одной конторе на контейнер
 - **vm-core-services** (158.160.222.217): Runs Calculator Service
 
 ### Orchestrator mode and bookmaker services
@@ -19,7 +19,7 @@ You can run **one service per bookmaker** (контора) and deploy them on di
 Как развернуть:
 
 1. **Bookmaker services** — на каждой машине (или на одной) поднимаете сервисы по одной конторе:
-   - Используйте бинарник `bookmaker-service` с флагом `-parser=fonbet` / `-parser=pinnacle` / `-parser=pinnacle888`.
+   - Используйте бинарник `bookmaker-service` с флагом `-parser=fonbet` / `-parser=pinnacle` / `-parser=pinnacle888` / `-parser=marathonbet`.
    - Пример compose: `deploy/vm-bookmaker-services/docker-compose.yml` (три контейнера: fonbet, pinnacle, pinnacle888).
    - Запуск локально: `./bin/bookmaker-service -parser=fonbet -config=configs/production.yaml`.
 

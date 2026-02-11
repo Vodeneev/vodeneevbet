@@ -24,7 +24,7 @@ if [[ -z "${IMAGE_OWNER}" ]]; then
   exit 1
 fi
 
-echo "🚀 Deploying bookmaker services (fonbet, pinnacle, pinnacle888) to ${VM_HOST}"
+echo "🚀 Deploying bookmaker services (fonbet, pinnacle, pinnacle888, marathonbet) to ${VM_HOST}"
 
 echo "📡 Checking SSH connection..."
 ssh -o ConnectTimeout=5 -o StrictHostKeyChecking=no "${VM_USER}@${VM_HOST}" "echo 'Connection OK'" >/dev/null
@@ -79,14 +79,16 @@ sudo docker image prune -f || true
 test \"\$(sudo docker ps -q -f name=vodeneevbet-fonbet -f status=running | wc -l)\" -ge 1
 test \"\$(sudo docker ps -q -f name=vodeneevbet-pinnacle -f status=running | wc -l)\" -ge 1
 test \"\$(sudo docker ps -q -f name=vodeneevbet-pinnacle888 -f status=running | wc -l)\" -ge 1
+test \"\$(sudo docker ps -q -f name=vodeneevbet-marathonbet -f status=running | wc -l)\" -ge 1
 '"
 
 echo "✅ Bookmaker services deployed on ${VM_HOST}"
 echo ""
-echo "Ports: fonbet :8081, pinnacle :8082, pinnacle888 :8083"
+echo "Ports: fonbet :8081, pinnacle :8082, pinnacle888 :8083, marathonbet :8084"
 echo "Orchestrator config (parser.bookmaker_services):"
 echo "  fonbet: \"http://${VM_HOST}:8081\""
 echo "  pinnacle: \"http://${VM_HOST}:8082\""
 echo "  pinnacle888: \"http://${VM_HOST}:8083\""
+echo "  marathonbet: \"http://${VM_HOST}:8084\""
 echo ""
 echo "Logs: ssh ${VM_USER}@${VM_HOST} 'sudo docker logs -f vodeneevbet-fonbet'"

@@ -64,6 +64,7 @@ check_service_logs "telegram-bot" "Telegram Bot" "vm-core (158.160.222.217)"
 check_service_logs "bookmaker-fonbet" "Bookmaker Fonbet" "vm-bookmaker-services (158.160.159.73)"
 check_service_logs "bookmaker-pinnacle" "Bookmaker Pinnacle" "vm-bookmaker-services (158.160.159.73)"
 check_service_logs "bookmaker-pinnacle888" "Bookmaker Pinnacle888" "vm-bookmaker-services (158.160.159.73)"
+check_service_logs "bookmaker-marathonbet" "Bookmaker Marathonbet" "vm-bookmaker-services (158.160.159.73)"
 
 echo "=== Общая статистика ==="
 echo "Все логи проекта vodeneevbet за последние ${SINCE}:"

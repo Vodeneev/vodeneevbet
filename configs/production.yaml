@@ -1,7 +1,7 @@
 parser:
   # Production parser management
   # Empty array [] = run all registered parsers (local mode)
-  enabled_parsers: ["fonbet", "pinnacle", "pinnacle888"]
+  enabled_parsers: ["fonbet", "pinnacle", "pinnacle888", "marathonbet"]
 
   # Orchestrator mode: if bookmaker_services is set, parser does NOT run parsers locally,
   # but aggregates /matches from these URLs and triggers /parse on them.
@@ -10,10 +10,12 @@ parser:
   #   fonbet: "http://fonbet-service:8080"
   #   pinnacle: "http://pinnacle-service:8080"
   #   pinnacle888: "http://pinnacle888-service:8080"
+  #   marathonbet: "http://marathonbet-service:8080"
   bookmaker_services:
     fonbet: "http://158.160.159.73:8081"
     pinnacle: "http://158.160.159.73:8082"
     pinnacle888: "http://158.160.159.73:8083"
+    marathonbet: "http://158.160.159.73:8084"
 
   user_agent: "ValueBetBot/1.0 (https://github.com/Vodeneev/vodeneevbet)"
   timeout: 120s
@@ -62,6 +64,13 @@ parser:
       - "http://rzarbuxl:r9u5g3bynx8r@23.27.208.120:5830"   # USA, Orem
 
   # Pinnacle888 guest API with mirror URL support
+  # Marathonbet HTML parser (all-events → leagues → full event page per match)
+  marathonbet:
+    base_url: "https://www.marathonbet.ru"
+    sport_id: 11       # Football
+    timeout: 45s
+    # user_agent: ""   # uses parser.user_agent if not set
+
   pinnacle888:
     base_url: ""       # Optional: direct base URL (if mirror_url is not provided)
     mirror_url: "https://bit.ly/pinnacle_mirror"  # Mirror URL to resolve actual baseURL
@@ -109,6 +118,7 @@ value_calculator:
     pinnacle: 1.0      # Reference bookmaker - maximum weight
     fonbet: 0.95       # High weight - reliable bookmaker
     pinnacle888: 0.7   # Lower weight - newer bookmaker
+    marathonbet: 0.9   # High weight - reliable line, Russian market
   
   # Minimum value percent to show value bets (default: 5.0)
   min_value_percent: 5.0

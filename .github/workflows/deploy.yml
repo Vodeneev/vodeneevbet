@@ -134,7 +134,8 @@ jobs:
           for i in 1 2 3 4 5 6 7 8 9 10; do
             if [ "$(sudo docker ps -q -f name=vodeneevbet-fonbet -f status=running | wc -l)" -ge 1 ] && \
                [ "$(sudo docker ps -q -f name=vodeneevbet-pinnacle -f status=running | wc -l)" -ge 1 ] && \
-               [ "$(sudo docker ps -q -f name=vodeneevbet-pinnacle888 -f status=running | wc -l)" -ge 1 ]; then
+               [ "$(sudo docker ps -q -f name=vodeneevbet-pinnacle888 -f status=running | wc -l)" -ge 1 ] && \
+               [ "$(sudo docker ps -q -f name=vodeneevbet-marathonbet -f status=running | wc -l)" -ge 1 ]; then
               echo "All bookmaker containers running"
               exit 0
             fi

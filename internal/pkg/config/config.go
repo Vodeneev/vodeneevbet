@@ -80,10 +80,9 @@ type Pinnacle888Config struct {
 	DeviceUUID      string   `yaml:"device_uuid"`
 	MatchupIDs      []int64  `yaml:"matchup_ids"`
 	ProxyList       []string `yaml:"proxy_list"`       // List of proxies to try in order
-	IncludeLive     bool     `yaml:"include_live"`     // Include live matches (default: false)
 	IncludePrematch bool     `yaml:"include_prematch"` // Include pre-match/line matches (default: false)
 	LeagueWorkers   int      `yaml:"league_workers"`   // Max concurrent leagues (default: 5); events within a league are processed sequentially
-	// Authentication headers for logged-in user (for live matches with actual odds)
+	// Authentication headers for logged-in user
 	Cookies         string `yaml:"cookies"`          // Cookie header value for authenticated requests
 	XAppData        string `yaml:"x_app_data"`      // x-app-data header
 	XCustID         string `yaml:"x_custid"`         // x-custid header

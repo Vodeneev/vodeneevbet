@@ -69,7 +69,7 @@ func (p *Parser) runOnce(ctx context.Context) error {
 	defer func() { slog.Info("Pinnacle888: runOnce finished", "duration", time.Since(start)) }()
 
 	// Resolve mirror once at the start of each run; cache is reused. On error we don't re-resolve, next iteration will retry.
-	if p.cfg.Parser.Pinnacle888.OddsURL != "" && (p.cfg.Parser.Pinnacle888.IncludeLive || p.cfg.Parser.Pinnacle888.IncludePrematch) {
+	if p.cfg.Parser.Pinnacle888.OddsURL != "" && p.cfg.Parser.Pinnacle888.IncludePrematch {
 		if err := p.client.ensureResolved(); err != nil {
 			slog.Warn("Pinnacle888: mirror resolve failed at run start, will retry next iteration", "error", err, "error_msg", err.Error())
 			// continue anyway — requests will fail; next runOnce() will try resolve again
@@ -91,69 +91,34 @@ func (p *Parser) runOnce(ctx context.Context) error {
 		return nil
 	}
 
-	// Process live and pre-match matches SEQUENTIALLY to avoid rate limiting.
-	// Both flows hit the same server; running them in parallel doubles the request rate
-	// and triggers Cloudflare rate limits (429).
-	var liveMatches []*models.Match
-	var prematchMatches []*models.Match
-	var liveErr, prematchErr error
+	slog.Info("Pinnacle888: runOnce started", "include_prematch", p.cfg.Parser.Pinnacle888.IncludePrematch, "odds_url_set", p.cfg.Parser.Pinnacle888.OddsURL != "")
 
-	slog.Info("Pinnacle888: runOnce started", "include_live", p.cfg.Parser.Pinnacle888.IncludeLive, "include_prematch", p.cfg.Parser.Pinnacle888.IncludePrematch, "odds_url_set", p.cfg.Parser.Pinnacle888.OddsURL != "")
-
-	// Fetch pre-match matches first (higher priority — more matches)
+	// Process pre-match matches
 	if p.cfg.Parser.Pinnacle888.IncludePrematch && p.cfg.Parser.Pinnacle888.OddsURL != "" {
 		slog.Info("Pinnacle888: starting pre-match matches processing")
 		matches, err := p.processLineMatches(ctx)
 		if err != nil {
-			prematchErr = err
 			if ctx.Err() != nil {
 				slog.Warn("Pinnacle888: pre-match matches processing stopped (time limit or context canceled)", "error_msg", err.Error())
 			} else {
 				slog.Error("Pinnacle888: failed to process pre-match matches", "error", err, "error_msg", err.Error())
 			}
 		} else {
-			prematchMatches = matches
+			// Add matches to in-memory store
+			for _, match := range matches {
+				select {
+				case <-ctx.Done():
+					return nil
+				default:
+				}
+				health.AddMatch(match)
+			}
 			slog.Info("Pinnacle888: pre-match matches processed", "count", len(matches))
 		}
 	}
 
-	// Then fetch live matches (sequential — same server, avoid rate limit)
-	if p.cfg.Parser.Pinnacle888.IncludeLive && p.cfg.Parser.Pinnacle888.OddsURL != "" {
-		slog.Info("Pinnacle888: starting live matches processing")
-		matches, err := p.processLiveMatches(ctx)
-		if err != nil {
-			liveErr = err
-			if ctx.Err() != nil {
-				slog.Warn("Pinnacle888: live matches processing stopped (time limit or context canceled)", "error_msg", err.Error())
-			} else {
-				slog.Error("Pinnacle888: failed to process live matches", "error", err, "error_msg", err.Error())
-			}
-		} else {
-			liveMatches = matches
-			slog.Info("Pinnacle888: live matches processed", "count", len(matches))
-		}
-	}
-
-	// Merge matches: combine live and pre-match matches, preferring live data when duplicates exist
-	mergedMatches := p.mergeMatches(liveMatches, prematchMatches)
-
-	// Add merged matches to in-memory store
-	for _, match := range mergedMatches {
-		select {
-		case <-ctx.Done():
-			return nil
-		default:
-		}
-		health.AddMatch(match)
-	}
-
-	// If there were errors but we still got some matches, log but don't fail
-	if liveErr != nil || prematchErr != nil {
-		slog.Warn("Some matches processed successfully despite errors", "live_count", len(liveMatches), "prematch_count", len(prematchMatches), "merged_count", len(mergedMatches))
-	}
-
 	// Otherwise, discover and process all matchups for relevant sports (legacy mode)
-	if !p.cfg.Parser.Pinnacle888.IncludeLive && !p.cfg.Parser.Pinnacle888.IncludePrematch {
+	if !p.cfg.Parser.Pinnacle888.IncludePrematch {
 		if err := p.processAll(ctx); err != nil {
 			slog.Error("Failed to process all matchups", "error", err)
 			return err
@@ -244,7 +209,7 @@ func (p *Parser) runIncrementalCycle(ctx context.Context, timeout time.Duration)
 	}()
 	
 	// Resolve mirror once at the start of each cycle
-	if p.cfg.Parser.Pinnacle888.OddsURL != "" && (p.cfg.Parser.Pinnacle888.IncludeLive || p.cfg.Parser.Pinnacle888.IncludePrematch) {
+	if p.cfg.Parser.Pinnacle888.OddsURL != "" && p.cfg.Parser.Pinnacle888.IncludePrematch {
 		slog.Info("Pinnacle888: resolving mirror URL", "cycle_id", cycleID)
 		if err := p.client.ensureResolved(); err != nil {
 			slog.Warn("Pinnacle888: mirror resolve failed at cycle start", "cycle_id", cycleID, "error", err)
@@ -258,13 +223,6 @@ func (p *Parser) runIncrementalCycle(ctx context.Context, timeout time.Duration)
 		slog.Info("Pinnacle888: starting pre-match incremental processing", "cycle_id", cycleID)
 		p.processOddsLeaguesFlowIncremental(cycleCtx, false)
 		slog.Info("Pinnacle888: pre-match incremental processing completed", "cycle_id", cycleID)
-	}
-	
-	// Process live matches incrementally (continuously, no pauses)
-	if p.cfg.Parser.Pinnacle888.IncludeLive && p.cfg.Parser.Pinnacle888.OddsURL != "" {
-		slog.Info("Pinnacle888: starting live incremental processing", "cycle_id", cycleID)
-		p.processOddsLeaguesFlowIncremental(cycleCtx, true)
-		slog.Info("Pinnacle888: live incremental processing completed", "cycle_id", cycleID)
 	}
 }
 
@@ -506,21 +464,14 @@ func (p *Parser) processAll(ctx context.Context) error {
 			st = st.UTC()
 
 			// Include only matches that haven't started yet (up to 48 hours in the future)
-			// Exclude live matches unless include_live is enabled
+			// Strictly exclude live matches (matches that have already started)
 			if !st.After(now) || st.After(maxStart) {
 				if !st.After(now) {
-					// Live match - include only if configured
-					if !p.cfg.Parser.Pinnacle888.IncludeLive {
-						slog.Debug("Pinnacle888: filtered live match", "matchup_id", mu.ID, "start", st.Format(time.RFC3339), "now", now.Format(time.RFC3339))
-						filteredByTime++
-						continue
-					}
-					// Include live match
-				} else {
-					// Future match beyond window
-					filteredByTime++
-					continue
+					// Live match - skip it
+					slog.Debug("Pinnacle888: filtered live match", "matchup_id", mu.ID, "start", st.Format(time.RFC3339), "now", now.Format(time.RFC3339))
 				}
+				filteredByTime++
+				continue
 			}
 			mainID := mu.ID
 			if mu.ParentID != nil && *mu.ParentID > 0 {
@@ -576,19 +527,15 @@ func (p *Parser) processAll(ctx context.Context) error {
 				continue
 			}
 
-			// Double-check: skip live matches unless include_live is enabled
+			// Double-check: do not add live matches (matches that have already started)
 			// This is a safety check in case the time filter above missed something
 			if !m.StartTime.IsZero() {
 				matchStartTime := m.StartTime.UTC()
 				checkNow := time.Now().UTC()
 				if !matchStartTime.After(checkNow) {
-					// Match has already started
-					if !p.cfg.Parser.Pinnacle888.IncludeLive {
-						// Skip live match
-						slog.Debug("Pinnacle888: double-check filtered live match", "match_id", m.ID, "start", matchStartTime.Format(time.RFC3339), "now", checkNow.Format(time.RFC3339))
-						continue
-					}
-					// Include live match
+					// Match has already started, skip it
+					slog.Debug("Pinnacle888: double-check filtered live match", "match_id", m.ID, "start", matchStartTime.Format(time.RFC3339), "now", checkNow.Format(time.RFC3339))
+					continue
 				}
 			}
 
@@ -601,10 +548,6 @@ func (p *Parser) processAll(ctx context.Context) error {
 	return nil
 }
 
-// processLiveMatches processes live matches: leagues -> league odds (async) -> event odds (async)
-func (p *Parser) processLiveMatches(ctx context.Context) ([]*models.Match, error) {
-	return p.processOddsLeaguesFlow(ctx, true)
-}
 
 // processLineMatches processes pre-match matches: leagues -> league odds (async) -> event odds (async)
 func (p *Parser) processLineMatches(ctx context.Context) ([]*models.Match, error) {
@@ -720,66 +663,6 @@ func (p *Parser) processOddsLeaguesFlow(ctx context.Context, isLive bool) ([]*mo
 	return allMatches, nil
 }
 
-// mergeMatches merges live and pre-match matches, preferring live data when duplicates exist
-// Duplicates are identified by CanonicalMatchID
-func (p *Parser) mergeMatches(liveMatches, prematchMatches []*models.Match) []*models.Match {
-	// Create a map to track matches by ID
-	matchMap := make(map[string]*models.Match)
-
-	// First, add all pre-match matches
-	for _, match := range prematchMatches {
-		matchMap[match.ID] = match
-	}
-
-	// Then, add/override with live matches (live takes precedence)
-	for _, match := range liveMatches {
-		// If match already exists, merge events (live events are more up-to-date)
-		if existing, ok := matchMap[match.ID]; ok {
-			// Merge events: prefer live events, but keep pre-match events that don't exist in live
-			existing.Events = p.mergeEvents(existing.Events, match.Events)
-			existing.UpdatedAt = time.Now() // Update timestamp
-		} else {
-			matchMap[match.ID] = match
-		}
-	}
-
-	// Convert map to slice
-	merged := make([]*models.Match, 0, len(matchMap))
-	for _, match := range matchMap {
-		merged = append(merged, match)
-	}
-
-	return merged
-}
-
-// mergeEvents merges two event slices, preferring events from the second slice (live)
-func (p *Parser) mergeEvents(prematchEvents, liveEvents []models.Event) []models.Event {
-	// Create a map of live events by EventType
-	liveMap := make(map[string]models.Event)
-	for _, event := range liveEvents {
-		liveMap[event.EventType] = event
-	}
-
-	// Start with pre-match events
-	merged := make([]models.Event, 0, len(prematchEvents)+len(liveEvents))
-	seenTypes := make(map[string]bool)
-
-	// Add live events first (they take precedence)
-	for _, event := range liveEvents {
-		merged = append(merged, event)
-		seenTypes[event.EventType] = true
-	}
-
-	// Add pre-match events that don't exist in live
-	for _, event := range prematchEvents {
-		if !seenTypes[event.EventType] {
-			merged = append(merged, event)
-			seenTypes[event.EventType] = true
-		}
-	}
-
-	return merged
-}
 
 func (p *Parser) processMatchup(ctx context.Context, matchupID int64) error {
 	related, err := p.client.GetRelatedMatchups(matchupID)
@@ -800,17 +683,13 @@ func (p *Parser) processMatchup(ctx context.Context, matchupID int64) error {
 		return nil
 	}
 
-	// Skip live matches unless include_live is enabled
+	// Do not add live matches (matches that have already started)
 	if !m.StartTime.IsZero() {
 		matchStartTime := m.StartTime.UTC()
 		checkNow := time.Now().UTC()
 		if !matchStartTime.After(checkNow) {
-			// Match has already started
-			if !p.cfg.Parser.Pinnacle888.IncludeLive {
-				// Skip live match
-				return nil
-			}
-			// Include live match
+			// Match has already started, skip it
+			return nil
 		}
 	}
 

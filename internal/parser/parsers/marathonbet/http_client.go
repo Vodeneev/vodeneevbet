@@ -158,7 +158,7 @@ func (c *Client) getWithProxyRetry(ctx context.Context, path string) ([]byte, er
 
 		proxyURL, err := url.Parse(proxyURLStr)
 		if err != nil {
-			slog.Debug("Marathonbet: Invalid proxy URL", "proxy", maskProxyURL(proxyURLStr), "error", err)
+			slog.Warn("Marathonbet: Invalid proxy URL", "proxy", maskProxyURL(proxyURLStr), "error", err)
 			continue
 		}
 
@@ -179,7 +179,7 @@ func (c *Client) getWithProxyRetry(ctx context.Context, path string) ([]byte, er
 
 		req, err := http.NewRequestWithContext(ctx, http.MethodGet, requestURL, nil)
 		if err != nil {
-			slog.Debug("Marathonbet: Failed to create request, trying next proxy", "error", err)
+			slog.Warn("Marathonbet: Failed to create request, trying next proxy", "error", err)
 			continue
 		}
 
@@ -187,14 +187,14 @@ func (c *Client) getWithProxyRetry(ctx context.Context, path string) ([]byte, er
 
 		resp, err := client.Do(req)
 		if err != nil {
-			slog.Debug("Marathonbet: Proxy failed, trying next", "proxy", maskProxyURL(proxyURLStr), "error", err)
+			slog.Info("Marathonbet: Proxy failed, trying next", "proxy", maskProxyURL(proxyURLStr), "error", err)
 			continue
 		}
 
 		body, err := io.ReadAll(resp.Body)
 		resp.Body.Close()
 		if err != nil {
-			slog.Debug("Marathonbet: Failed to read response body, trying next proxy", "proxy", maskProxyURL(proxyURLStr), "error", err)
+			slog.Warn("Marathonbet: Failed to read response body, trying next proxy", "proxy", maskProxyURL(proxyURLStr), "error", err)
 			continue
 		}
 
@@ -208,7 +208,7 @@ func (c *Client) getWithProxyRetry(ctx context.Context, path string) ([]byte, er
 			c.proxyMu.Lock()
 			c.currentProxyIndex = proxyIndex
 			c.proxyMu.Unlock()
-			slog.Debug("Marathonbet: Using working proxy", "proxy", maskProxyURL(proxyURLStr))
+			slog.Info("Marathonbet: Using working proxy", "proxy", maskProxyURL(proxyURLStr))
 
 			// Update last request time
 			marathonReqMu.Lock()
@@ -223,14 +223,14 @@ func (c *Client) getWithProxyRetry(ctx context.Context, path string) ([]byte, er
 		if len(bodyStr) > 200 {
 			bodyStr = bodyStr[:200] + "..."
 		}
-		slog.Debug("Marathonbet: Proxy returned blocked/invalid response, trying next", 
+		slog.Info("Marathonbet: Proxy returned blocked/invalid response, trying next", 
 			"proxy", maskProxyURL(proxyURLStr), 
 			"status", resp.StatusCode,
 			"body_preview", bodyStr)
 	}
 
 	// All proxies failed, try direct connection as last resort
-	slog.Debug("Marathonbet: All proxies failed, trying direct connection")
+	slog.Warn("Marathonbet: All proxies failed, trying direct connection")
 	return c.getDirect(ctx, path)
 }
 

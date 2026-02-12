@@ -329,45 +329,130 @@ func (p *Parser) processSingleLeague(ctx context.Context, oddsURL string, league
 	eventsSkipped := 0
 	eventsError := 0
 	
+	// Group events by ParentID to handle statistical events (corners, fouls, yellow cards)
+	// Events with ParentID > 0 are statistical events linked to main match
+	eventsByParent := make(map[int64][]Event)
+	var mainEvents []Event
+	leagueName := ""
+	
 	for _, lg := range leagueResp.Leagues {
-		leagueName := lg.Name
-		// Build referer path for this league
-		refererPath := fmt.Sprintf("/en/standard/soccer/%s", league.LeagueCode)
-		for _, ev := range lg.Events {
-			select {
-			case <-ctx.Done():
-				slog.Warn("Pinnacle888: league processing interrupted", "league", league.Name, "events_processed", eventsProcessed)
-				return matches
-			default:
-			}
-			
-			eventData, err := p.client.GetEventOdds(oddsURL, ev.ID, refererPath)
-			if err != nil {
-				eventsError++
-				slog.Debug("Pinnacle888: get event odds failed", "eventId", ev.ID, "error", err)
-				continue
-			}
-			
-			match, err := ParseEventOddsResponse(eventData)
-			if err != nil {
-				eventsError++
-				slog.Debug("Pinnacle888: parse event odds failed", "eventId", ev.ID, "error", err)
-				continue
-			}
-			
-			if match == nil {
-				eventsSkipped++
-				continue
-			}
-			
-			eventsProcessed++
-			matchName := match.HomeTeam + " vs " + match.AwayTeam
-			if matchName == " vs " {
-				matchName = match.Name
-			}
-			slog.Debug("Pinnacle888: parsed match", "league", leagueName, "match", matchName)
-			matches = append(matches, match)
+		if leagueName == "" {
+			leagueName = lg.Name
 		}
+		for _, ev := range lg.Events {
+			if ev.ParentID > 0 {
+				// Statistical event (corners, fouls, etc.)
+				eventsByParent[ev.ParentID] = append(eventsByParent[ev.ParentID], ev)
+			} else {
+				// Main match event
+				mainEvents = append(mainEvents, ev)
+			}
+		}
+	}
+	
+	// Build referer path for this league
+	refererPath := fmt.Sprintf("/en/standard/soccer/%s", league.LeagueCode)
+	
+	// Process main events and merge with their statistical events
+	for _, ev := range mainEvents {
+		select {
+		case <-ctx.Done():
+			slog.Warn("Pinnacle888: league processing interrupted", "league", league.Name, "events_processed", eventsProcessed)
+			return matches
+		default:
+		}
+		
+		eventData, err := p.client.GetEventOdds(oddsURL, ev.ID, refererPath)
+		if err != nil {
+			eventsError++
+			slog.Debug("Pinnacle888: get event odds failed", "eventId", ev.ID, "error", err)
+			continue
+		}
+		
+		match, err := ParseEventOddsResponse(eventData)
+		if err != nil {
+			eventsError++
+			slog.Debug("Pinnacle888: parse event odds failed", "eventId", ev.ID, "error", err)
+			continue
+		}
+		
+		if match == nil {
+			eventsSkipped++
+			continue
+		}
+		
+		// Check if this match has statistical events
+		if statEvents, ok := eventsByParent[ev.ID]; ok {
+			slog.Info("Pinnacle888: found statistical events for match", 
+				"matchId", ev.ID, 
+				"match", match.HomeTeam+" vs "+match.AwayTeam,
+				"statistical_events_count", len(statEvents))
+			
+			// Process statistical events
+			for _, statEv := range statEvents {
+				statEventData, err := p.client.GetEventOdds(oddsURL, statEv.ID, refererPath)
+				if err != nil {
+					slog.Debug("Pinnacle888: get statistical event odds failed", "eventId", statEv.ID, "resultingUnit", statEv.ResultingUnit, "error", err)
+					continue
+				}
+				
+				statMatch, err := ParseEventOddsResponse(statEventData)
+				if err != nil {
+					slog.Debug("Pinnacle888: parse statistical event odds failed", "eventId", statEv.ID, "resultingUnit", statEv.ResultingUnit, "error", err)
+					continue
+				}
+				
+				if statMatch != nil {
+					// Merge statistical event into main match
+					statEventType := inferEventTypeFromResultingUnit(statEv.ResultingUnit)
+					if statEventType != "" {
+						// Find or create statistical event in match
+						var statEvent *models.Event
+						for i := range match.Events {
+							if match.Events[i].EventType == string(statEventType) {
+								statEvent = &match.Events[i]
+								break
+							}
+						}
+						
+						if statEvent == nil {
+							// Create new statistical event
+							eventID := fmt.Sprintf("%s_pinnacle888_%s", match.ID, string(statEventType))
+							statEvent = &models.Event{
+								ID:         eventID,
+								MatchID:    match.ID,
+								EventType:  string(statEventType),
+								MarketName: models.GetMarketName(statEventType),
+								Bookmaker:  "Pinnacle888",
+								Outcomes:   []models.Outcome{},
+								CreatedAt:  match.CreatedAt,
+								UpdatedAt:  match.UpdatedAt,
+							}
+							match.Events = append(match.Events, *statEvent)
+							statEvent = &match.Events[len(match.Events)-1]
+						}
+						
+						// Merge outcomes from statistical event
+						if len(statMatch.Events) > 0 {
+							statEvent.Outcomes = append(statEvent.Outcomes, statMatch.Events[0].Outcomes...)
+							slog.Info("Pinnacle888: merged statistical event", 
+								"match", match.HomeTeam+" vs "+match.AwayTeam,
+								"eventType", string(statEventType),
+								"resultingUnit", statEv.ResultingUnit,
+								"outcomes", len(statEvent.Outcomes))
+						}
+					}
+				}
+			}
+		}
+		
+		eventsProcessed++
+		matchName := match.HomeTeam + " vs " + match.AwayTeam
+		if matchName == " vs " {
+			matchName = match.Name
+		}
+		slog.Debug("Pinnacle888: parsed match", "league", leagueName, "match", matchName, "events_count", len(match.Events))
+		matches = append(matches, match)
 	}
 	
 	leagueDuration := time.Since(leagueStart)
@@ -626,49 +711,124 @@ func (p *Parser) processOddsLeaguesFlow(ctx context.Context, isLive bool) ([]*mo
 			continue
 		}
 
+		// Group events by ParentID to handle statistical events (corners, fouls, yellow cards)
+		eventsByParent := make(map[int64][]Event)
+		var mainEvents []Event
+		leagueName := ""
+		
+		for _, lg := range leagueResp.Leagues {
+			if leagueName == "" {
+				leagueName = lg.Name
+			}
+			for _, ev := range lg.Events {
+				if ev.ParentID > 0 {
+					// Statistical event (corners, fouls, etc.)
+					eventsByParent[ev.ParentID] = append(eventsByParent[ev.ParentID], ev)
+				} else {
+					// Main match event
+					mainEvents = append(mainEvents, ev)
+				}
+			}
+		}
+		
 		var eventsTotal, getEventErr, parseErr, skipped, matchesAdded int
 		var firstGetErrMsg string
-		for _, lg := range leagueResp.Leagues {
-			leagueName := lg.Name
-			// Build referer path for this league
-			refererPath := fmt.Sprintf("/en/standard/soccer/%s", league.LeagueCode)
-			for _, ev := range lg.Events {
-				eventsTotal++
-				select {
-				case <-ctx.Done():
-					return allMatches, ctx.Err()
-				default:
+		// Build referer path for this league
+		refererPath := fmt.Sprintf("/en/standard/soccer/%s", league.LeagueCode)
+		
+		// Process main events and merge with their statistical events
+		for _, ev := range mainEvents {
+			eventsTotal++
+			select {
+			case <-ctx.Done():
+				return allMatches, ctx.Err()
+			default:
+			}
+			eventData, err := p.client.GetEventOdds(oddsURL, ev.ID, refererPath)
+			if err != nil {
+				getEventErr++
+				if firstGetErrMsg == "" {
+					firstGetErrMsg = err.Error()
+					if len(firstGetErrMsg) > 120 {
+						firstGetErrMsg = firstGetErrMsg[:117] + "..."
+					}
 				}
-				eventData, err := p.client.GetEventOdds(oddsURL, ev.ID, refererPath)
-				if err != nil {
-					getEventErr++
-					if firstGetErrMsg == "" {
-						firstGetErrMsg = err.Error()
-						if len(firstGetErrMsg) > 120 {
-							firstGetErrMsg = firstGetErrMsg[:117] + "..."
+				slog.Debug("Pinnacle888: get event odds", "eventId", ev.ID, "error", err)
+				continue
+			}
+			match, err := ParseEventOddsResponse(eventData)
+			if err != nil {
+				parseErr++
+				slog.Debug("Pinnacle888: parse event odds", "eventId", ev.ID, "error", err)
+				continue
+			}
+			if match == nil {
+				skipped++
+				continue
+			}
+			
+			// Check if this match has statistical events
+			if statEvents, ok := eventsByParent[ev.ID]; ok {
+				// Process statistical events
+				for _, statEv := range statEvents {
+					statEventData, err := p.client.GetEventOdds(oddsURL, statEv.ID, refererPath)
+					if err != nil {
+						slog.Debug("Pinnacle888: get statistical event odds failed", "eventId", statEv.ID, "resultingUnit", statEv.ResultingUnit, "error", err)
+						continue
+					}
+					
+					statMatch, err := ParseEventOddsResponse(statEventData)
+					if err != nil {
+						slog.Debug("Pinnacle888: parse statistical event odds failed", "eventId", statEv.ID, "resultingUnit", statEv.ResultingUnit, "error", err)
+						continue
+					}
+					
+					if statMatch != nil {
+						// Merge statistical event into main match
+						statEventType := inferEventTypeFromResultingUnit(statEv.ResultingUnit)
+						if statEventType != "" {
+							// Find or create statistical event in match
+							var statEvent *models.Event
+							for i := range match.Events {
+								if match.Events[i].EventType == string(statEventType) {
+									statEvent = &match.Events[i]
+									break
+								}
+							}
+							
+							if statEvent == nil {
+								// Create new statistical event
+								eventID := fmt.Sprintf("%s_pinnacle888_%s", match.ID, string(statEventType))
+								statEvent = &models.Event{
+									ID:         eventID,
+									MatchID:    match.ID,
+									EventType:  string(statEventType),
+									MarketName: models.GetMarketName(statEventType),
+									Bookmaker:  "Pinnacle888",
+									Outcomes:   []models.Outcome{},
+									CreatedAt:  match.CreatedAt,
+									UpdatedAt:  match.UpdatedAt,
+								}
+								match.Events = append(match.Events, *statEvent)
+								statEvent = &match.Events[len(match.Events)-1]
+							}
+							
+							// Merge outcomes from statistical event
+							if len(statMatch.Events) > 0 {
+								statEvent.Outcomes = append(statEvent.Outcomes, statMatch.Events[0].Outcomes...)
+							}
 						}
 					}
-					slog.Debug("Pinnacle888: get event odds", "eventId", ev.ID, "error", err)
-					continue
 				}
-				match, err := ParseEventOddsResponse(eventData)
-				if err != nil {
-					parseErr++
-					slog.Debug("Pinnacle888: parse event odds", "eventId", ev.ID, "error", err)
-					continue
-				}
-				if match == nil {
-					skipped++
-					continue
-				}
-				matchesAdded++
-				matchName := match.HomeTeam + " vs " + match.AwayTeam
-				if matchName == " vs " {
-					matchName = match.Name
-				}
-				slog.Info(fmt.Sprintf("Pinnacle888: parsed match: %s | %s", leagueName, matchName))
-				allMatches = append(allMatches, match)
 			}
+			
+			matchesAdded++
+			matchName := match.HomeTeam + " vs " + match.AwayTeam
+			if matchName == " vs " {
+				matchName = match.Name
+			}
+			slog.Info(fmt.Sprintf("Pinnacle888: parsed match: %s | %s", leagueName, matchName))
+			allMatches = append(allMatches, match)
 		}
 		finishMsg := fmt.Sprintf("Pinnacle888: league finished: %s | events=%d get_err=%d parse_err=%d skipped=%d matches=%d", league.Name, eventsTotal, getEventErr, parseErr, skipped, matchesAdded)
 		if getEventErr > 0 && firstGetErrMsg != "" {
@@ -1009,6 +1169,33 @@ func inferStandardEventType(r RelatedMatchup) (models.StandardEventType, bool) {
 		return models.StandardEventThrowIns, true
 	default:
 		return "", false
+	}
+}
+
+// inferEventTypeFromResultingUnit determines the event type from ResultingUnit field
+func inferEventTypeFromResultingUnit(resultingUnit string) models.StandardEventType {
+	s := strings.ToLower(strings.TrimSpace(resultingUnit))
+	
+	switch {
+	case strings.Contains(s, "corner"):
+		return models.StandardEventCorners
+	case strings.Contains(s, "booking"):
+		// Pinnacle uses "Bookings" for cards market; we standardize into yellow_cards for now.
+		return models.StandardEventYellowCards
+	case strings.Contains(s, "yellow"):
+		return models.StandardEventYellowCards
+	case strings.Contains(s, "card"):
+		return models.StandardEventYellowCards
+	case strings.Contains(s, "foul"):
+		return models.StandardEventFouls
+	case strings.Contains(s, "shot") && strings.Contains(s, "target"):
+		return models.StandardEventShotsOnTarget
+	case strings.Contains(s, "offside"):
+		return models.StandardEventOffsides
+	case strings.Contains(s, "throw"):
+		return models.StandardEventThrowIns
+	default:
+		return ""
 	}
 }
 

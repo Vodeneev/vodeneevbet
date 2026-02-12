@@ -756,6 +756,7 @@ func buildMatchFromPinnacle(matchupID int64, related []RelatedMatchup, markets [
 	}
 
 	foundByParent := false
+	statisticalEventsCount := 0
 	for _, r := range related {
 		if r.ParentID == nil || *r.ParentID != matchupID {
 			continue
@@ -763,6 +764,9 @@ func buildMatchFromPinnacle(matchupID int64, related []RelatedMatchup, markets [
 		if et, ok := inferStandardEventType(r); ok {
 			matchupEventType[r.ID] = et
 			foundByParent = true
+			if et != models.StandardEventMainMatch {
+				statisticalEventsCount++
+			}
 		}
 	}
 	// Fallback: some guest API responses may not include parentId; in that case
@@ -774,8 +778,20 @@ func buildMatchFromPinnacle(matchupID int64, related []RelatedMatchup, markets [
 			}
 			if et, ok := inferStandardEventType(r); ok {
 				matchupEventType[r.ID] = et
+				if et != models.StandardEventMainMatch {
+					statisticalEventsCount++
+				}
 			}
 		}
+	}
+	
+	// Log statistical events found for this match
+	if statisticalEventsCount > 0 {
+		slog.Info("Pinnacle888: statistical events found for match", 
+			"matchup_id", matchupID, 
+			"statistical_events_count", statisticalEventsCount,
+			"home_team", rm.HomeTeam,
+			"away_team", rm.AwayTeam)
 	}
 
 	eventsByType := map[models.StandardEventType]*models.Event{}
@@ -897,6 +913,28 @@ func buildMatchFromPinnacle(matchupID int64, related []RelatedMatchup, markets [
 		}
 	}
 
+	// Log final event count for debugging
+	statisticalEventsInMatch := 0
+	for _, ev := range match.Events {
+		if ev.EventType != string(models.StandardEventMainMatch) {
+			statisticalEventsInMatch++
+		}
+	}
+	if statisticalEventsInMatch > 0 {
+		slog.Info("Pinnacle888: match built with statistical events", 
+			"matchup_id", matchupID,
+			"match_id", matchID,
+			"total_events", len(match.Events),
+			"statistical_events", statisticalEventsInMatch,
+			"event_types", func() []string {
+				types := make([]string, 0, len(match.Events))
+				for _, ev := range match.Events {
+					types = append(types, ev.EventType)
+				}
+				return types
+			}())
+	}
+
 	return match, nil
 }
 
@@ -1013,6 +1051,7 @@ func logRelatedMapping(matchupID int64, related []RelatedMatchup) {
 		})
 	}
 	if len(rows) == 0 {
+		slog.Debug("Pinnacle888: no related matchups found", "matchup_id", matchupID)
 		return
 	}
 	slog.Debug("Related mapping", "main_matchup", matchupID, "related_count", len(rows))

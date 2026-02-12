@@ -48,6 +48,11 @@ func normalizeKeyPart(s string) string {
 	}
 	// Normalize hyphens to spaces for consistent matching (Al-Hilal → al hilal)
 	s = strings.ReplaceAll(s, "-", " ")
+	// Normalize apostrophes - remove them for consistent matching (Newell's → Newells, Queen's → Queens)
+	s = strings.ReplaceAll(s, "'", "")
+	s = strings.ReplaceAll(s, "’", "") // Also handle typographic apostrophe
+	// Normalize dots - remove them for consistent matching (D.C. → DC)
+	s = strings.ReplaceAll(s, ".", "")
 	s = strings.Join(strings.Fields(s), " ")
 	// Keep it URL-friendly-ish (YDB key is Utf8, but we still avoid odd whitespace).
 	s = strings.ReplaceAll(s, "/", " ")

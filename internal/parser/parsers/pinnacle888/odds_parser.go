@@ -41,7 +41,22 @@ func ParseEventOddsResponse(data []byte) (*models.Match, error) {
 	if leagueName == "" {
 		leagueName = resp.Info.LeagueCode
 	}
-	return buildMatchFromOddsEvent(leagueName, resp.Normal), nil
+	
+	// Build match from normal event
+	match := buildMatchFromOddsEvent(leagueName, resp.Normal)
+	if match == nil {
+		return nil, nil
+	}
+	
+	// Add statistical events (corners, bookings) if available
+	if resp.Corners != nil {
+		addStatisticalEvent(match, resp.Corners, models.StandardEventCorners)
+	}
+	if resp.Bookings != nil {
+		addStatisticalEvent(match, resp.Bookings, models.StandardEventYellowCards)
+	}
+	
+	return match, nil
 }
 
 // buildMatchFromOddsEvent builds a Match from an OddsResponse Event
@@ -321,6 +336,50 @@ func parseOddsMarkets(matchID string, period PeriodData) []models.Event {
 	}
 
 	return events
+}
+
+// addStatisticalEvent adds a statistical event (corners, bookings, etc.) to the match
+func addStatisticalEvent(match *models.Match, statEvent *Event, eventType models.StandardEventType) {
+	// Parse markets from period "0" (full match)
+	if period0, ok := statEvent.Periods["0"]; ok {
+		statEvents := parseOddsMarkets(match.ID, period0)
+		
+		// Find or create the statistical event
+		var statEventModel *models.Event
+		for i := range match.Events {
+			if match.Events[i].EventType == string(eventType) {
+				statEventModel = &match.Events[i]
+				break
+			}
+		}
+		
+		if statEventModel == nil {
+			// Create new statistical event
+			eventID := fmt.Sprintf("%s_pinnacle888_%s", match.ID, string(eventType))
+			statEventModel = &models.Event{
+				ID:         eventID,
+				MatchID:    match.ID,
+				EventType:  string(eventType),
+				MarketName: models.GetMarketName(eventType),
+				Bookmaker:  "Pinnacle888",
+				Outcomes:   []models.Outcome{},
+				CreatedAt:  match.CreatedAt,
+				UpdatedAt:  match.UpdatedAt,
+			}
+			match.Events = append(match.Events, *statEventModel)
+			statEventModel = &match.Events[len(match.Events)-1]
+		}
+		
+		// Merge outcomes from statistical event
+		if len(statEvents) > 0 {
+			statEventModel.Outcomes = append(statEventModel.Outcomes, statEvents[0].Outcomes...)
+			slog.Info("Pinnacle888: added statistical event", 
+				"match", match.HomeTeam+" vs "+match.AwayTeam,
+				"eventType", string(eventType),
+				"resultingUnit", statEvent.ResultingUnit,
+				"outcomes", len(statEventModel.Outcomes))
+		}
+	}
 }
 
 // parseOddsString parses odds from string (decimal format)

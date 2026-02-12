@@ -334,21 +334,57 @@ func (p *Parser) processSingleLeague(ctx context.Context, oddsURL string, league
 	eventsByParent := make(map[int64][]Event)
 	var mainEvents []Event
 	leagueName := ""
+	totalEvents := 0
+	eventsWithParentID := 0
 	
 	for _, lg := range leagueResp.Leagues {
 		if leagueName == "" {
 			leagueName = lg.Name
 		}
 		for _, ev := range lg.Events {
+			totalEvents++
+			// Check if this is a statistical event
+			// Statistical events have either ParentID > 0 OR ResultingUnit indicating statistical type
+			isStatistical := false
 			if ev.ParentID > 0 {
+				isStatistical = true
+			} else if ev.ResultingUnit != "" {
+				// Check if ResultingUnit indicates a statistical event type
+				statType := inferEventTypeFromResultingUnit(ev.ResultingUnit)
+				if statType != "" {
+					// This is a statistical event, but we need to find its parent
+					// For now, skip it - we'll handle it differently
+					slog.Debug("Pinnacle888: found event with ResultingUnit but no ParentID", 
+						"eventId", ev.ID,
+						"resultingUnit", ev.ResultingUnit,
+						"statType", statType)
+					// Skip for now - these might be handled differently
+					continue
+				}
+			}
+			
+			if isStatistical {
 				// Statistical event (corners, fouls, etc.)
 				eventsByParent[ev.ParentID] = append(eventsByParent[ev.ParentID], ev)
+				eventsWithParentID++
+				slog.Debug("Pinnacle888: found statistical event", 
+					"eventId", ev.ID, 
+					"parentId", ev.ParentID,
+					"resultingUnit", ev.ResultingUnit,
+					"league", leagueName)
 			} else {
 				// Main match event
 				mainEvents = append(mainEvents, ev)
 			}
 		}
 	}
+	
+	slog.Info("Pinnacle888: grouped events for league", 
+		"league", leagueName,
+		"total_events", totalEvents,
+		"main_events", len(mainEvents),
+		"statistical_events", eventsWithParentID,
+		"matches_with_stats", len(eventsByParent))
 	
 	// Build referer path for this league
 	refererPath := fmt.Sprintf("/en/standard/soccer/%s", league.LeagueCode)
@@ -381,12 +417,29 @@ func (p *Parser) processSingleLeague(ctx context.Context, oddsURL string, league
 			continue
 		}
 		
+		// Log event details for debugging
+		if ev.ResultingUnit != "" {
+			slog.Debug("Pinnacle888: event has ResultingUnit", 
+				"eventId", ev.ID,
+				"parentId", ev.ParentID,
+				"resultingUnit", ev.ResultingUnit,
+				"match", match.HomeTeam+" vs "+match.AwayTeam)
+		}
+		
 		// Check if this match has statistical events
 		if statEvents, ok := eventsByParent[ev.ID]; ok {
 			slog.Info("Pinnacle888: found statistical events for match", 
 				"matchId", ev.ID, 
 				"match", match.HomeTeam+" vs "+match.AwayTeam,
 				"statistical_events_count", len(statEvents))
+			
+			// Log details about statistical events
+			for _, se := range statEvents {
+				slog.Info("Pinnacle888: statistical event details",
+					"eventId", se.ID,
+					"parentId", se.ParentID,
+					"resultingUnit", se.ResultingUnit)
+			}
 			
 			// Process statistical events
 			for _, statEv := range statEvents {

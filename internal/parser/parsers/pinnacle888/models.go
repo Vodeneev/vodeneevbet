@@ -61,8 +61,10 @@ type LeagueListItem struct {
 
 // EventOddsResponse is the response from /sports-service/sv/euro/odds/event
 type EventOddsResponse struct {
-	Info   EventOddsInfo `json:"info"`
-	Normal Event         `json:"normal"`
+	Info     EventOddsInfo `json:"info"`
+	Normal   Event         `json:"normal"`
+	Corners  *Event        `json:"corners,omitempty"`  // Statistical event for corners
+	Bookings *Event        `json:"bookings,omitempty"` // Statistical event for bookings (yellow cards)
 }
 
 type EventOddsInfo struct {

@@ -8,6 +8,16 @@ import (
 	"github.com/Vodeneev/vodeneevbet/internal/pkg/models"
 )
 
+// getBookmakerFromEvents extracts bookmaker name from events (first non-empty bookmaker)
+func getBookmakerFromEvents(events []models.Event) string {
+	for _, ev := range events {
+		if ev.Bookmaker != "" {
+			return ev.Bookmaker
+		}
+	}
+	return ""
+}
+
 // MergeMatchLists merges multiple match lists by match ID (same logic as AddMatch).
 // Used by parser-orchestrator to aggregate matches from bookmaker services.
 func MergeMatchLists(lists [][]models.Match) []models.Match {
@@ -68,11 +78,19 @@ func mergeMatchInto(byID map[string]*models.Match, match *models.Match) {
 		if match.AwayTeam != "" {
 			existing.AwayTeam = match.AwayTeam
 		}
+		// Set bookmaker from events if match.Bookmaker is empty
+		if existing.Bookmaker == "" {
+			existing.Bookmaker = getBookmakerFromEvents(existing.Events)
+		}
 	} else {
 		matchCopy := *match
 		eventsCopy := make([]models.Event, len(match.Events))
 		copy(eventsCopy, match.Events)
 		matchCopy.Events = eventsCopy
+		// Set bookmaker from events if match.Bookmaker is empty
+		if matchCopy.Bookmaker == "" {
+			matchCopy.Bookmaker = getBookmakerFromEvents(matchCopy.Events)
+		}
 		byID[match.ID] = &matchCopy
 	}
 }

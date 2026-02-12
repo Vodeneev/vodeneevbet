@@ -109,9 +109,11 @@ func (c *Client) GetSportStraightMarkets(sportID int64) ([]Market, error) {
 func (c *Client) getJSON(path string, out any) error {
 	// Try proxies in order if available, fallback to direct connection
 	if len(c.proxyList) > 0 {
+		slog.Debug("Pinnacle: Using proxy list", "proxy_count", len(c.proxyList), "path", path)
 		return c.getJSONWithProxyRetry(path, out)
 	}
 
+	slog.Debug("Pinnacle: No proxy list configured, using direct connection", "path", path)
 	return c.getJSONDirect(path, out)
 }
 
@@ -120,6 +122,8 @@ func (c *Client) getJSONDirect(path string, out any) error {
 		c.baseURL = "https://guest.api.arcadia.pinnacle.com"
 	}
 	url := c.baseURL + path
+
+	slog.Info("Pinnacle: Using direct connection (no proxy)", "path", path)
 
 	req, err := http.NewRequest(http.MethodGet, url, nil)
 	if err != nil {
@@ -148,7 +152,7 @@ func (c *Client) getJSONWithProxyRetry(path string, out any) error {
 	startIndex := c.currentProxyIndex
 	c.proxyMu.Unlock()
 
-	for attempt := 0; attempt < len(c.proxyList); attempt++ {
+		for attempt := 0; attempt < len(c.proxyList); attempt++ {
 		c.proxyMu.Lock()
 		proxyIndex := (startIndex + attempt) % len(c.proxyList)
 		proxyURLStr := c.proxyList[proxyIndex]
@@ -156,9 +160,12 @@ func (c *Client) getJSONWithProxyRetry(path string, out any) error {
 
 		proxyURL, err := url.Parse(proxyURLStr)
 		if err != nil {
-			slog.Debug("Invalid proxy URL", "proxy", maskProxyURL(proxyURLStr), "error", err)
+			slog.Warn("Pinnacle: Invalid proxy URL", "proxy", maskProxyURL(proxyURLStr), "error", err)
 			continue
 		}
+
+		// Log proxy attempt
+		slog.Info("Pinnacle: Trying proxy", "proxy_index", proxyIndex+1, "total_proxies", len(c.proxyList), "proxy", maskProxyURL(proxyURLStr), "path", path)
 
 		// Create transport with this proxy
 		transport := http.DefaultTransport.(*http.Transport).Clone()
@@ -177,7 +184,7 @@ func (c *Client) getJSONWithProxyRetry(path string, out any) error {
 
 		req, err := http.NewRequest(http.MethodGet, requestURL, nil)
 		if err != nil {
-			slog.Debug("Failed to create request, trying next proxy", "error", err)
+			slog.Warn("Pinnacle: Failed to create request, trying next proxy", "proxy", maskProxyURL(proxyURLStr), "error", err)
 			continue
 		}
 
@@ -185,7 +192,7 @@ func (c *Client) getJSONWithProxyRetry(path string, out any) error {
 
 		resp, err := client.Do(req)
 		if err != nil {
-			slog.Debug("Proxy failed, trying next", "proxy", maskProxyURL(proxyURLStr), "error", err)
+			slog.Warn("Pinnacle: Proxy failed, trying next", "proxy", maskProxyURL(proxyURLStr), "error", err)
 			continue
 		}
 
@@ -211,7 +218,7 @@ func (c *Client) getJSONWithProxyRetry(path string, out any) error {
 			c.proxyMu.Lock()
 			c.currentProxyIndex = proxyIndex
 			c.proxyMu.Unlock()
-			slog.Debug("Using working proxy", "proxy", maskProxyURL(proxyURLStr))
+			slog.Info("Pinnacle: Using working proxy", "proxy_index", proxyIndex+1, "proxy", maskProxyURL(proxyURLStr), "path", path)
 
 			err := c.handleResponse(resp, out)
 			resp.Body.Close()
@@ -226,11 +233,11 @@ func (c *Client) getJSONWithProxyRetry(path string, out any) error {
 			preview = preview[:200] + "..."
 		}
 		cfRay := resp.Header.Get("Cf-Ray")
-		slog.Debug("Proxy returned blocked/invalid response, trying next", "proxy", maskProxyURL(proxyURLStr), "status", resp.StatusCode, "content_type", contentType, "cf_ray", cfRay, "body_preview", preview)
+		slog.Warn("Pinnacle: Proxy returned blocked/invalid response, trying next", "proxy", maskProxyURL(proxyURLStr), "status", resp.StatusCode, "content_type", contentType, "cf_ray", cfRay, "body_preview", preview)
 	}
 
 	// All proxies failed, try direct connection as last resort
-	slog.Debug("All proxies failed, trying direct connection")
+	slog.Warn("Pinnacle: All proxies failed, trying direct connection", "path", path, "total_proxies_tried", len(c.proxyList))
 	return c.getJSONDirect(path, out)
 }
 

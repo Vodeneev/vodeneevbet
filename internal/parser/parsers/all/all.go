@@ -10,4 +10,5 @@ import (
 	_ "github.com/Vodeneev/vodeneevbet/internal/parser/parsers/marathonbet"
 	_ "github.com/Vodeneev/vodeneevbet/internal/parser/parsers/pinnacle"
 	_ "github.com/Vodeneev/vodeneevbet/internal/parser/parsers/pinnacle888"
+	_ "github.com/Vodeneev/vodeneevbet/internal/parser/parsers/xbet1"
 )

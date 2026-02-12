@@ -1,0 +1,570 @@
+package xbet1
+
+import (
+	"compress/gzip"
+	"context"
+	"crypto/tls"
+	"encoding/json"
+	"fmt"
+	"io"
+	"log/slog"
+	"net"
+	"net/http"
+	"net/url"
+	"os"
+	"strings"
+	"sync"
+	"time"
+
+	"github.com/chromedp/chromedp"
+)
+
+// chromeMu serializes all Chrome usage so only one instance runs at a time
+var chromeMu sync.Mutex
+
+type Client struct {
+	baseURL        string
+	mirrorURL      string // Mirror URL to resolve actual baseURL
+	httpClient     *http.Client
+	proxyList      []string
+	currentProxyIndex int
+	proxyMu        sync.Mutex
+	resolvedURL    string // Cached resolved URL
+	resolvedMu     sync.RWMutex
+	resolveTimeout time.Duration
+	lastResolveTime time.Time
+	resolveInterval time.Duration
+	resolveMu      sync.Mutex
+	resolveCond    *sync.Cond
+	resolving      bool
+}
+
+// resolveMirror resolves the actual URL from mirror link
+// First tries HTTP redirects, then falls back to JavaScript execution via headless browser
+func resolveMirror(mirrorURL string, timeout time.Duration) (string, error) {
+	// First, try simple HTTP redirect
+	transport := http.DefaultTransport.(*http.Transport).Clone()
+	if transport.TLSClientConfig == nil {
+		transport.TLSClientConfig = &tls.Config{}
+	}
+	if os.Getenv("1XBET_INSECURE_TLS") == "1" {
+		transport.TLSClientConfig.InsecureSkipVerify = true
+	}
+
+	client := &http.Client{
+		Timeout:   timeout,
+		Transport: transport,
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			return nil
+		},
+	}
+
+	// Use HEAD request first
+	req, err := http.NewRequest(http.MethodHead, mirrorURL, nil)
+	if err != nil {
+		return "", fmt.Errorf("create request: %w", err)
+	}
+
+	req.Header.Set("User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36")
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return resolveMirrorWithJS(mirrorURL, timeout)
+	}
+	defer resp.Body.Close()
+
+	finalURL := resp.Request.URL.String()
+	if finalURL != mirrorURL {
+		parsed, err := url.Parse(finalURL)
+		if err == nil {
+			domain := parsed.Host
+			if idx := strings.Index(domain, ":"); idx != -1 {
+				domain = domain[:idx]
+			}
+			if isIPAddress(domain) {
+				slog.Debug("HTTP redirect leads to IP address, using JavaScript resolution", "domain", domain)
+				return resolveMirrorWithJS(mirrorURL, timeout)
+			}
+		}
+		slog.Debug("Resolved mirror", "from", mirrorURL, "to", finalURL, "method", "HTTP redirect")
+		return finalURL, nil
+	}
+
+	// If HEAD didn't redirect, try GET
+	req, err = http.NewRequest(http.MethodGet, mirrorURL, nil)
+	if err != nil {
+		return resolveMirrorWithJS(mirrorURL, timeout)
+	}
+
+	req.Header.Set("User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36")
+
+	resp, err = client.Do(req)
+	if err != nil {
+		return resolveMirrorWithJS(mirrorURL, timeout)
+	}
+	defer resp.Body.Close()
+
+	finalURL = resp.Request.URL.String()
+	if finalURL != mirrorURL {
+		parsed, err := url.Parse(finalURL)
+		if err == nil {
+			domain := parsed.Host
+			if idx := strings.Index(domain, ":"); idx != -1 {
+				domain = domain[:idx]
+			}
+			if isIPAddress(domain) {
+				slog.Debug("HTTP redirect leads to IP address, using JavaScript resolution", "domain", domain)
+				return resolveMirrorWithJS(mirrorURL, timeout)
+			}
+		}
+		slog.Debug("Resolved mirror", "from", mirrorURL, "to", finalURL, "method", "HTTP redirect")
+		return finalURL, nil
+	}
+
+	// Check if we got HTML (might need JavaScript execution)
+	contentType := resp.Header.Get("Content-Type")
+	if strings.Contains(contentType, "text/html") {
+		body, err := io.ReadAll(resp.Body)
+		if err == nil {
+			bodyStr := string(body)
+			if strings.Contains(bodyStr, "<script") || strings.Contains(bodyStr, "window.location") ||
+				strings.Contains(bodyStr, "location.href") || strings.Contains(bodyStr, "document.location") {
+				slog.Debug("Detected JavaScript redirect, using headless browser")
+				return resolveMirrorWithJS(mirrorURL, timeout)
+			}
+		}
+	}
+
+	slog.Debug("1xbet: HTTP redirect didn't work, trying JavaScript resolution...")
+	return resolveMirrorWithJS(mirrorURL, timeout)
+}
+
+// resolveMirrorWithJS uses headless browser to execute JavaScript and get final URL
+func resolveMirrorWithJS(mirrorURL string, timeout time.Duration) (string, error) {
+	chromeMu.Lock()
+	defer chromeMu.Unlock()
+
+	chromeDir, err := os.MkdirTemp("", "xbet1_chrome_")
+	if err != nil {
+		return "", fmt.Errorf("create chrome temp dir: %w", err)
+	}
+	defer os.RemoveAll(chromeDir)
+
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+
+	opts := append(chromedp.DefaultExecAllocatorOptions[:],
+		chromedp.Flag("headless", true),
+		chromedp.Flag("disable-gpu", true),
+		chromedp.Flag("disable-dev-shm-usage", true),
+		chromedp.Flag("no-sandbox", true),
+		chromedp.UserDataDir(chromeDir),
+		chromedp.UserAgent("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36"),
+	)
+
+	allocCtx, cancel := chromedp.NewExecAllocator(ctx, opts...)
+	defer cancel()
+
+	ctx, cancel = chromedp.NewContext(allocCtx, chromedp.WithLogf(func(format string, v ...interface{}) {
+		if os.Getenv("1XBET_DEBUG") == "1" {
+			slog.Debug("chromedp", "message", fmt.Sprintf(format, v...))
+		}
+	}))
+	defer cancel()
+
+	var finalURL string
+
+	err = chromedp.Run(ctx,
+		chromedp.Navigate(mirrorURL),
+		chromedp.Sleep(3*time.Second),
+		chromedp.Location(&finalURL),
+	)
+
+	if err != nil {
+		return "", fmt.Errorf("chromedp navigation: %w", err)
+	}
+
+	if finalURL != "" && finalURL != mirrorURL {
+		var checkURL string
+		err = chromedp.Run(ctx,
+			chromedp.Sleep(2*time.Second),
+			chromedp.Location(&checkURL),
+		)
+		if err == nil && checkURL != "" && checkURL != finalURL {
+			finalURL = checkURL
+		}
+
+		slog.Debug("Resolved mirror", "from", mirrorURL, "to", finalURL, "method", "JavaScript redirect")
+		return finalURL, nil
+	}
+
+	if finalURL == "" || finalURL == mirrorURL {
+		err = chromedp.Run(ctx,
+			chromedp.Sleep(5*time.Second),
+			chromedp.Location(&finalURL),
+		)
+		if err != nil {
+			return "", fmt.Errorf("chromedp wait: %w", err)
+		}
+	}
+
+	if finalURL != "" && finalURL != mirrorURL {
+		slog.Debug("1xbet: Resolved mirror %s -> %s (JavaScript redirect after wait)", mirrorURL, finalURL)
+		return finalURL, nil
+	}
+
+	if finalURL != "" {
+		slog.Debug("1xbet: Mirror URL did not redirect: %s", finalURL)
+		return finalURL, nil
+	}
+
+	return "", fmt.Errorf("failed to resolve mirror URL: %s", mirrorURL)
+}
+
+// isIPAddress checks if a string is an IP address (IPv4 or IPv6)
+func isIPAddress(s string) bool {
+	return net.ParseIP(s) != nil
+}
+
+func NewClient(baseURL, mirrorURL string, timeout time.Duration, proxyList []string) *Client {
+	insecureTLS := os.Getenv("1XBET_INSECURE_TLS") == "1"
+
+	transport := http.DefaultTransport.(*http.Transport).Clone()
+	if transport.TLSClientConfig == nil {
+		transport.TLSClientConfig = &tls.Config{}
+	}
+	if insecureTLS {
+		transport.TLSClientConfig.InsecureSkipVerify = true
+	}
+
+	transport.Proxy = http.ProxyFromEnvironment
+
+	client := &Client{
+		baseURL:           baseURL,
+		mirrorURL:         mirrorURL,
+		httpClient:        &http.Client{Timeout: timeout, Transport: transport},
+		proxyList:         proxyList,
+		currentProxyIndex: 0,
+		resolveTimeout:    timeout,
+		resolveInterval:   2 * time.Hour,
+	}
+	
+	client.resolveCond = sync.NewCond(&client.resolveMu)
+
+	return client
+}
+
+// ensureResolved ensures that mirror URL is resolved and cached
+func (c *Client) ensureResolved() error {
+	if c.mirrorURL == "" {
+		return nil
+	}
+
+	c.resolveMu.Lock()
+	for c.resolving {
+		c.resolveCond.Wait()
+	}
+	c.resolvedMu.RLock()
+	hasResolved := c.resolvedURL != ""
+	lastResolve := c.lastResolveTime
+	resolvedURL := c.resolvedURL
+	c.resolvedMu.RUnlock()
+
+	if hasResolved && time.Since(lastResolve) < c.resolveInterval {
+		c.resolveMu.Unlock()
+		return nil
+	}
+	if hasResolved {
+		c.resolveMu.Unlock()
+		if c.checkURLHealth(resolvedURL) {
+			c.resolvedMu.Lock()
+			c.lastResolveTime = time.Now()
+			c.resolvedMu.Unlock()
+			return nil
+		}
+		c.resolveMu.Lock()
+		slog.Debug("1xbet: Cached URL %s is not responding, re-resolving mirror...", resolvedURL)
+	}
+
+	c.resolving = true
+	c.resolveMu.Unlock()
+
+	resolved, err := resolveMirror(c.mirrorURL, c.resolveTimeout)
+
+	c.resolveMu.Lock()
+	c.resolving = false
+	defer func() {
+		c.resolveCond.Broadcast()
+		c.resolveMu.Unlock()
+	}()
+
+	if err != nil {
+		if hasResolved {
+			slog.Warn("1xbet: mirror re-resolve failed, keeping cached URL", "mirror_url", c.mirrorURL, "error", err, "cached_url", resolvedURL)
+			return nil
+		}
+		slog.Error("1xbet: mirror resolve failed", "mirror_url", c.mirrorURL, "error", err)
+		return fmt.Errorf("failed to resolve mirror: %w", err)
+	}
+
+	c.resolvedMu.Lock()
+	c.resolvedURL = resolved
+	c.lastResolveTime = time.Now()
+	c.baseURL = resolved
+	c.resolvedMu.Unlock()
+
+	slog.Debug("1xbet: Resolved mirror URL: %s", resolved)
+	return nil
+}
+
+// checkURLHealth checks if a URL is accessible
+func (c *Client) checkURLHealth(urlStr string) bool {
+	req, err := http.NewRequest(http.MethodHead, urlStr, nil)
+	if err != nil {
+		return false
+	}
+	req.Header.Set("User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36")
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	req = req.WithContext(ctx)
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return false
+	}
+	defer resp.Body.Close()
+
+	return resp.StatusCode >= 200 && resp.StatusCode < 400
+}
+
+// clearResolvedURL clears the cached resolved URL to force re-resolution
+func (c *Client) clearResolvedURL() {
+	c.resolvedMu.Lock()
+	defer c.resolvedMu.Unlock()
+	if c.resolvedURL != "" {
+		slog.Debug("1xbet: Clearing cached URL %s to force re-resolution", c.resolvedURL)
+		c.resolvedURL = ""
+	}
+}
+
+// getResolvedBaseURL returns the resolved base URL (from mirror or direct)
+func (c *Client) getResolvedBaseURL() string {
+	if err := c.ensureResolved(); err != nil {
+		slog.Debug("1xbet: Warning: failed to ensure resolved URL: %v", err)
+	}
+
+	c.resolvedMu.RLock()
+	defer c.resolvedMu.RUnlock()
+	if c.resolvedURL != "" {
+		return c.resolvedURL
+	}
+	return c.baseURL
+}
+
+// shouldReResolve checks if an error indicates that we should re-resolve the mirror URL
+func (c *Client) shouldReResolve(err error, statusCode int) bool {
+	if err != nil {
+		errStr := err.Error()
+		if strings.Contains(errStr, "connection refused") ||
+			strings.Contains(errStr, "no such host") ||
+			strings.Contains(errStr, "timeout") ||
+			strings.Contains(errStr, "network is unreachable") {
+			return true
+		}
+	}
+	if statusCode == 502 || statusCode == 503 {
+		return true
+	}
+	return false
+}
+
+// GetChamps fetches championships/leagues
+func (c *Client) GetChamps(sportID, countryID int, virtualSports bool) ([]ChampItem, error) {
+	baseURL := c.getResolvedBaseURL()
+	if baseURL == "" {
+		return nil, fmt.Errorf("base URL not resolved")
+	}
+
+	u, err := url.Parse(baseURL)
+	if err != nil {
+		return nil, fmt.Errorf("parse base URL: %w", err)
+	}
+	u.Path = "/service-api/LineFeed/GetChampsZip"
+
+	q := u.Query()
+	q.Set("sport", fmt.Sprintf("%d", sportID))
+	q.Set("country", fmt.Sprintf("%d", countryID))
+	q.Set("virtualSports", fmt.Sprintf("%t", virtualSports))
+	q.Set("groupChamps", "true")
+	u.RawQuery = q.Encode()
+
+	body, err := c.doRequest(u.String())
+	if err != nil {
+		if c.shouldReResolve(err, 0) {
+			c.clearResolvedURL()
+		}
+		return nil, err
+	}
+
+	var resp ChampsResponse
+	if err := json.Unmarshal(body, &resp); err != nil {
+		return nil, fmt.Errorf("unmarshal champs response: %w", err)
+	}
+
+	if !resp.Success {
+		return nil, fmt.Errorf("API error: %s (code: %d)", resp.Error, resp.ErrorCode)
+	}
+
+	// Flatten grouped championships (countries with sub-leagues)
+	var flattened []ChampItem
+	for _, champ := range resp.Value {
+		if len(champ.SC) > 0 {
+			// This is a grouped championship (country), add sub-leagues
+			flattened = append(flattened, champ.SC...)
+		} else {
+			// Regular championship
+			flattened = append(flattened, champ)
+		}
+	}
+
+	return flattened, nil
+}
+
+// GetMatches fetches matches for a specific league
+func (c *Client) GetMatches(sportID int, champID int64, count int, mode int, countryID int, virtualSports bool) ([]Match, error) {
+	baseURL := c.getResolvedBaseURL()
+	if baseURL == "" {
+		return nil, fmt.Errorf("base URL not resolved")
+	}
+
+	u, err := url.Parse(baseURL)
+	if err != nil {
+		return nil, fmt.Errorf("parse base URL: %w", err)
+	}
+	u.Path = "/service-api/LineFeed/Get1x2_VZip"
+
+	q := u.Query()
+	q.Set("sports", fmt.Sprintf("%d", sportID))
+	q.Set("champs", fmt.Sprintf("%d", champID))
+	q.Set("count", fmt.Sprintf("%d", count))
+	q.Set("mode", fmt.Sprintf("%d", mode))
+	q.Set("country", fmt.Sprintf("%d", countryID))
+	q.Set("getEmpty", "true")
+	q.Set("virtualSports", fmt.Sprintf("%t", virtualSports))
+	u.RawQuery = q.Encode()
+
+	body, err := c.doRequest(u.String())
+	if err != nil {
+		if c.shouldReResolve(err, 0) {
+			c.clearResolvedURL()
+		}
+		return nil, err
+	}
+
+	var resp MatchesResponse
+	if err := json.Unmarshal(body, &resp); err != nil {
+		return nil, fmt.Errorf("unmarshal matches response: %w", err)
+	}
+
+	if !resp.Success {
+		return nil, fmt.Errorf("API error: %s (code: %d)", resp.Error, resp.ErrorCode)
+	}
+
+	return resp.Value, nil
+}
+
+// GetGame fetches detailed game information
+func (c *Client) GetGame(gameID int64, isSubGames, groupEvents bool, countEvents, grMode int, topGroups string, countryID, marketType int, isNewBuilder bool) (*GameDetails, error) {
+	baseURL := c.getResolvedBaseURL()
+	if baseURL == "" {
+		return nil, fmt.Errorf("base URL not resolved")
+	}
+
+	u, err := url.Parse(baseURL)
+	if err != nil {
+		return nil, fmt.Errorf("parse base URL: %w", err)
+	}
+	u.Path = "/service-api/LineFeed/GetGameZip"
+
+	q := u.Query()
+	q.Set("id", fmt.Sprintf("%d", gameID))
+	q.Set("isSubGames", fmt.Sprintf("%t", isSubGames))
+	q.Set("GroupEvents", fmt.Sprintf("%t", groupEvents))
+	q.Set("countevents", fmt.Sprintf("%d", countEvents))
+	q.Set("grMode", fmt.Sprintf("%d", grMode))
+	q.Set("topGroups", topGroups)
+	q.Set("country", fmt.Sprintf("%d", countryID))
+	q.Set("marketType", fmt.Sprintf("%d", marketType))
+	q.Set("isNewBuilder", fmt.Sprintf("%t", isNewBuilder))
+	u.RawQuery = q.Encode()
+
+	body, err := c.doRequest(u.String())
+	if err != nil {
+		if c.shouldReResolve(err, 0) {
+			c.clearResolvedURL()
+		}
+		return nil, err
+	}
+
+	var resp GameResponse
+	if err := json.Unmarshal(body, &resp); err != nil {
+		return nil, fmt.Errorf("unmarshal game response: %w", err)
+	}
+
+	if !resp.Success {
+		return nil, fmt.Errorf("API error: %s (code: %d)", resp.Error, resp.ErrorCode)
+	}
+
+	return &resp.Value, nil
+}
+
+// doRequest performs HTTP GET request with proper headers
+func (c *Client) doRequest(urlStr string) ([]byte, error) {
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, urlStr, nil)
+	if err != nil {
+		return nil, fmt.Errorf("create request: %w", err)
+	}
+
+	req.Header.Set("Accept", "application/json, text/plain, */*")
+	req.Header.Set("Accept-Language", "en,en-US;q=0.9")
+	req.Header.Set("Accept-Encoding", "gzip, deflate, br, zstd")
+	req.Header.Set("User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36")
+	req.Header.Set("Referer", c.getResolvedBaseURL()+"/")
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		b, _ := io.ReadAll(resp.Body)
+		if c.shouldReResolve(nil, resp.StatusCode) {
+			c.clearResolvedURL()
+		}
+		return nil, fmt.Errorf("unexpected status %d: %s", resp.StatusCode, string(b))
+	}
+
+	return readBodyMaybeGzip(resp)
+}
+
+func readBodyMaybeGzip(resp *http.Response) ([]byte, error) {
+	if resp.Header.Get("Content-Encoding") == "gzip" {
+		r, err := gzip.NewReader(resp.Body)
+		if err != nil {
+			return nil, fmt.Errorf("gzip reader: %w", err)
+		}
+		defer r.Close()
+		b, err := io.ReadAll(r)
+		if err != nil {
+			return nil, fmt.Errorf("read gzip body: %w", err)
+		}
+		return b, nil
+	}
+	b, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("read body: %w", err)
+	}
+	return b, nil
+}

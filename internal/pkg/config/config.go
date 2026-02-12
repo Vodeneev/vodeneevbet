@@ -37,6 +37,7 @@ type ParserConfig struct {
 	Pinnacle          PinnacleConfig    `yaml:"pinnacle"`
 	Pinnacle888       Pinnacle888Config `yaml:"pinnacle888"`
 	Marathonbet       MarathonbetConfig `yaml:"marathonbet"`
+	Xbet1             Xbet1Config       `yaml:"xbet1"`
 }
 
 // MarathonbetConfig configures Marathonbet HTML parser (all-events → leagues → event pages).
@@ -87,6 +88,16 @@ type Pinnacle888Config struct {
 	XAppData        string `yaml:"x_app_data"`      // x-app-data header
 	XCustID         string `yaml:"x_custid"`         // x-custid header
 	UseAuthHeaders  bool   `yaml:"use_auth_headers"` // Enable authenticated headers for odds requests (default: false)
+}
+
+type Xbet1Config struct {
+	BaseURL         string   `yaml:"base_url"`
+	MirrorURL       string   `yaml:"mirror_url"` // Mirror URL to resolve actual baseURL (e.g., "https://1xbet-skwu.top/link")
+	ProxyList       []string `yaml:"proxy_list"` // List of proxies to try in order
+	IncludePrematch bool     `yaml:"include_prematch"` // Include pre-match matches (default: true)
+	SportID         int      `yaml:"sport_id"`   // Sport ID (1 = Football, default: 1)
+	CountryID      int      `yaml:"country_id"` // Country ID (1 = all countries, default: 1)
+	VirtualSports  bool     `yaml:"virtual_sports"` // Include virtual sports (default: true)
 }
 
 type ValueCalculatorConfig struct {

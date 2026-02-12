@@ -1,7 +1,7 @@
 parser:
   # Production parser management
   # Empty array [] = run all registered parsers (local mode)
-  enabled_parsers: ["fonbet", "pinnacle888"]
+  enabled_parsers: ["fonbet", "pinnacle888", "xbet1"]
 
   # Orchestrator mode: if bookmaker_services is set, parser does NOT run parsers locally,
   # but aggregates /matches from these URLs and triggers /parse on them.
@@ -109,6 +109,19 @@ parser:
     x_app_data: "directusToken=TwEdnphtyxsfMpXoJkCkWaPsL2KJJ3lo;BrowserSessionId=b553b87d-9ce5-4e17-b375-745db116bf37;PCTR=1928506612714;_og=QQ%3D%3D;_ulp=TDV6YVJod0xqREFDUVBXc05McXBSb2k0dDRVbXdvcm04aUxHOFlUcEZ6ZEN5M2xRWUtFeHo2TW5LUHR5MDNPZWVqa041Nk1ySFlyWG1DaXVXRjY5REE9PXxmNjY4NjBmODNiZTJmMzYyMmYzMjEzYzhhNGMxMWQyYg%3D%3D;custid=id%3DVODENEEVM%26login%3D202602101216%26roundTrip%3D202602101216%26hash%3DB3F2F5AF8A4520AD4E3B474AA3567BD9;_userDefaultView=FUTURE;__prefs=W251bGwsMSwxLDAsMCxudWxsLGZhbHNlLDAuMDAwMCxmYWxzZSx0cnVlLCJfMUxJTkUiLDAsbnVsbCx0cnVlLHRydWUsZmFsc2UsZmFsc2UsbnVsbCxudWxsLHRydWUsIlNNQUxMIiwwXQ%3D%3D;pctag=889057e0-5962-4db2-b975-2acc20c61336;lang=en_US;dpLk3=E_MA3"
     x_custid: "id=VODENEEVM&login=202602101216&roundTrip=202602101216&hash=B3F2F5AF8A4520AD4E3B474AA3567BD9"  # User ID - more stable
 
+  # 1xbet API settings
+  xbet1:
+    base_url: ""       # Optional: direct base URL (defaults to https://1xlite-6173396.bar if not set)
+    mirror_url: "https://1xbet-skwu.top/link"  # Mirror URL to resolve actual baseURL
+    include_prematch: true  # Include pre-match matches (default: true)
+    sport_id: 1        # Sport ID (1 = Football, default: 1)
+    country_id: 1      # Country ID (1 = All countries, default: 1)
+    virtual_sports: true  # Include virtual sports (default: true)
+    # Proxy list for bypassing blocking
+    # Client will try proxies in order until one works
+    # Format: http://user:pass@ip:port or http://ip:port
+    proxy_list: []    # Optional: can reuse other proxy lists if needed
+
 health:
   # HTTP server settings
   port: 8080                # HTTP server listen port (default: 8080)
@@ -131,6 +144,7 @@ value_calculator:
     # pinnacle: 1.0      # Reference bookmaker - maximum weight (disabled - need new proxies)
     fonbet: 1.0        # Weight set to 1.0 (will be adjusted later)
     pinnacle888: 1.0   # Weight set to 1.0 (will be adjusted later)
+    xbet1: 1.0         # Weight set to 1.0 (will be adjusted later)
     # marathonbet: 0.9   # High weight - reliable line, Russian market (disabled - need new proxies)
   
   # Minimum value percent to show value bets (default: 5.0)

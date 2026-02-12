@@ -16,6 +16,7 @@ parser:
     # pinnacle: "http://158.160.159.73:8082"  # Disabled - need new proxies
     pinnacle888: "http://158.160.159.73:8083"
     # marathonbet: "http://158.160.159.73:8084"  # Disabled - need new proxies
+    xbet1: "http://158.160.159.73:8085"
 
   user_agent: "ValueBetBot/1.0 (https://github.com/Vodeneev/vodeneevbet)"
   timeout: 120s

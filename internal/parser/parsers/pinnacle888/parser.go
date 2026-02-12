@@ -670,6 +670,29 @@ func (p *Parser) processMatchup(ctx context.Context, matchupID int64) error {
 		return err
 	}
 	logRelatedMapping(matchupID, related)
+	
+	// Log INFO level summary for debugging statistical events
+	statisticalEventsFound := 0
+	for _, r := range related {
+		if r.ID == matchupID {
+			continue
+		}
+		if et, ok := inferStandardEventType(r); ok && et != models.StandardEventMainMatch {
+			statisticalEventsFound++
+		}
+	}
+	// Always log related matchups info for debugging
+	if len(related) > 1 {
+		slog.Info("Pinnacle888: related matchups found", 
+			"matchup_id", matchupID, 
+			"total_related", len(related)-1, 
+			"statistical_events", statisticalEventsFound)
+	} else if len(related) == 1 {
+		slog.Info("Pinnacle888: no related matchups (only main)", "matchup_id", matchupID)
+	} else {
+		slog.Warn("Pinnacle888: no related matchups at all", "matchup_id", matchupID)
+	}
+	
 	markets, err := p.client.GetRelatedStraightMarkets(matchupID)
 	if err != nil {
 		return err
@@ -785,14 +808,13 @@ func buildMatchFromPinnacle(matchupID int64, related []RelatedMatchup, markets [
 		}
 	}
 	
-	// Log statistical events found for this match
-	if statisticalEventsCount > 0 {
-		slog.Info("Pinnacle888: statistical events found for match", 
-			"matchup_id", matchupID, 
-			"statistical_events_count", statisticalEventsCount,
-			"home_team", home,
-			"away_team", away)
-	}
+	// Log statistical events found for this match (always log for debugging)
+	slog.Info("Pinnacle888: statistical events mapping result", 
+		"matchup_id", matchupID, 
+		"statistical_events_count", statisticalEventsCount,
+		"home_team", home,
+		"away_team", away,
+		"total_related_matchups", len(related)-1)
 
 	eventsByType := map[models.StandardEventType]*models.Event{}
 	getOrCreate := func(et models.StandardEventType) *models.Event {
@@ -913,26 +935,23 @@ func buildMatchFromPinnacle(matchupID int64, related []RelatedMatchup, markets [
 		}
 	}
 
-	// Log final event count for debugging
+	// Log final event count for debugging (always log for matches with multiple events or when expecting statistical events)
 	statisticalEventsInMatch := 0
+	eventTypes := make([]string, 0, len(match.Events))
 	for _, ev := range match.Events {
+		eventTypes = append(eventTypes, ev.EventType)
 		if ev.EventType != string(models.StandardEventMainMatch) {
 			statisticalEventsInMatch++
 		}
 	}
-	if statisticalEventsInMatch > 0 {
-		slog.Info("Pinnacle888: match built with statistical events", 
+	if statisticalEventsInMatch > 0 || statisticalEventsCount > 0 {
+		slog.Info("Pinnacle888: match built with events", 
 			"matchup_id", matchupID,
 			"match_id", matchID,
 			"total_events", len(match.Events),
 			"statistical_events", statisticalEventsInMatch,
-			"event_types", func() []string {
-				types := make([]string, 0, len(match.Events))
-				for _, ev := range match.Events {
-					types = append(types, ev.EventType)
-				}
-				return types
-			}())
+			"statistical_events_mapped", statisticalEventsCount,
+			"event_types", eventTypes)
 	}
 
 	return match, nil

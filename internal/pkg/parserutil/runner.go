@@ -223,13 +223,12 @@ func RunIncrementalLoop(ctx context.Context, timeout time.Duration, parserName s
 			cycleCount++
 			slog.Info("Received cycle trigger", "parser", parserName, "cycle_number", cycleCount)
 			
-			// Clear matches from previous cycle only if previous cycle completed successfully
-			// This ensures data from previous cycle remains available until new data is ready
-			if previousCycleCompleted {
-				ClearMatchesBeforeCycle(parserName)
-			}
+			// For incremental parsing, don't clear matches at cycle start
+			// New matches will update existing ones via mergeMatchInto
+			// This ensures data remains available during processing
+			// ClearMatchesBeforeCycle is skipped for incremental mode
 			
-			// Run the cycle
+			// Run the cycle to process new matches
 			cycleFunc(ctx, timeout)
 			
 			// Mark cycle as completed successfully (data is now ready)

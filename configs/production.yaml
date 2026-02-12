@@ -1,7 +1,7 @@
 parser:
   # Production parser management
   # Empty array [] = run all registered parsers (local mode)
-  enabled_parsers: ["fonbet", "pinnacle", "pinnacle888", "marathonbet"]
+  enabled_parsers: ["fonbet", "pinnacle888"]
 
   # Orchestrator mode: if bookmaker_services is set, parser does NOT run parsers locally,
   # but aggregates /matches from these URLs and triggers /parse on them.
@@ -13,9 +13,9 @@ parser:
   #   marathonbet: "http://marathonbet-service:8080"
   bookmaker_services:
     fonbet: "http://158.160.159.73:8081"
-    pinnacle: "http://158.160.159.73:8082"
+    # pinnacle: "http://158.160.159.73:8082"  # Disabled - need new proxies
     pinnacle888: "http://158.160.159.73:8083"
-    marathonbet: "http://158.160.159.73:8084"
+    # marathonbet: "http://158.160.159.73:8084"  # Disabled - need new proxies
 
   user_agent: "ValueBetBot/1.0 (https://github.com/Vodeneev/vodeneevbet)"
   timeout: 120s
@@ -128,10 +128,10 @@ value_calculator:
   # Higher weight = more influence on fair probability calculation
   # Default: 1.0 for all bookmakers if not specified
   bookmaker_weights:
-    pinnacle: 1.0      # Reference bookmaker - maximum weight
-    fonbet: 0.95       # High weight - reliable bookmaker
-    pinnacle888: 0.7   # Lower weight - newer bookmaker
-    marathonbet: 0.9   # High weight - reliable line, Russian market
+    # pinnacle: 1.0      # Reference bookmaker - maximum weight (disabled - need new proxies)
+    fonbet: 1.0        # Weight set to 1.0 (will be adjusted later)
+    pinnacle888: 1.0   # Weight set to 1.0 (will be adjusted later)
+    # marathonbet: 0.9   # High weight - reliable line, Russian market (disabled - need new proxies)
   
   # Minimum value percent to show value bets (default: 5.0)
   min_value_percent: 5.0

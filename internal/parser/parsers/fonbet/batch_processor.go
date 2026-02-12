@@ -338,9 +338,8 @@ func (p *BatchProcessor) processBatch(matches []MatchData) (int, int, int, time.
 			totalEvents += result.EventsCount
 			totalOutcomes += result.OutcomesCount
 			totalYDBWriteTime += result.YDBWriteTime
-		} else {
-			slog.Warn("Failed to process match", "match_id", result.MatchID, "error", result.Error)
 		}
+		// Silently skip failed matches (e.g., live matches that are filtered)
 	}
 
 	return successCount, totalEvents, totalOutcomes, totalYDBWriteTime

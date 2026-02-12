@@ -488,6 +488,28 @@ func (p *Parser) processAll(ctx context.Context) error {
 			default:
 			}
 
+			// Log related matchups info for debugging statistical events
+			statisticalEventsFound := 0
+			for _, r := range related {
+				if r.ID == mainID {
+					continue
+				}
+				if et, ok := inferStandardEventType(r); ok && et != models.StandardEventMainMatch {
+					statisticalEventsFound++
+				}
+			}
+			// Always log related matchups info for debugging
+			if len(related) > 1 {
+				slog.Info("Pinnacle888: related matchups found (incremental)", 
+					"matchup_id", mainID, 
+					"total_related", len(related)-1, 
+					"statistical_events", statisticalEventsFound)
+			} else if len(related) == 1 {
+				slog.Info("Pinnacle888: no related matchups (only main) (incremental)", "matchup_id", mainID)
+			} else {
+				slog.Warn("Pinnacle888: no related matchups at all (incremental)", "matchup_id", mainID)
+			}
+
 			// Collect markets for all related matchups
 			var relMarkets []Market
 			var alternateMarkets []Market // Fallback: alternate markets if no regular markets

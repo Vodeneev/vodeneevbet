@@ -199,9 +199,12 @@ func LogIncrementalLoopStop(parserName string, totalCycles int) {
 // RunIncrementalLoop runs the incremental parsing loop
 // cycleFunc is called for each cycle and should implement the actual parsing logic
 // After each cycle completes, immediately triggers the next cycle (no delay)
+// Data is cleared only after successful cycle completion, before starting next cycle
+// This ensures previous cycle data remains available until new data is ready
 func RunIncrementalLoop(ctx context.Context, timeout time.Duration, parserName string, state *IncrementalParserState, cycleFunc func(context.Context, time.Duration)) {
 	LogIncrementalLoopStart(parserName, timeout)
 	cycleCount := 0
+	previousCycleCompleted := false
 	
 	// Start first cycle immediately
 	go func() {
@@ -219,10 +222,18 @@ func RunIncrementalLoop(ctx context.Context, timeout time.Duration, parserName s
 		case <-state.CycleTrigger:
 			cycleCount++
 			slog.Info("Received cycle trigger", "parser", parserName, "cycle_number", cycleCount)
-			// Clear matches from memory before starting new cycle
-			ClearMatchesBeforeCycle(parserName)
+			
+			// Clear matches from previous cycle only if previous cycle completed successfully
+			// This ensures data from previous cycle remains available until new data is ready
+			if previousCycleCompleted {
+				ClearMatchesBeforeCycle(parserName)
+			}
+			
 			// Run the cycle
 			cycleFunc(ctx, timeout)
+			
+			// Mark cycle as completed successfully (data is now ready)
+			previousCycleCompleted = true
 			slog.Info("Cycle completed, triggering next cycle immediately", "parser", parserName, "cycle_number", cycleCount)
 			
 			// Immediately trigger next cycle (no delay)

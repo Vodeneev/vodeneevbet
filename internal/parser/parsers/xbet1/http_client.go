@@ -526,11 +526,28 @@ func (c *Client) doRequest(urlStr string) ([]byte, error) {
 		return nil, fmt.Errorf("create request: %w", err)
 	}
 
+	baseURL := c.getResolvedBaseURL()
 	req.Header.Set("Accept", "application/json, text/plain, */*")
-	req.Header.Set("Accept-Language", "en,en-US;q=0.9")
+	req.Header.Set("Accept-Language", "ru,en;q=0.9")
 	req.Header.Set("Accept-Encoding", "gzip, deflate, br, zstd")
-	req.Header.Set("User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36")
-	req.Header.Set("Referer", c.getResolvedBaseURL()+"/")
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 YaBrowser/25.12.0.0 Safari/537.36")
+	if baseURL != "" {
+		req.Header.Set("Referer", baseURL+"/")
+		req.Header.Set("Origin", baseURL)
+	}
+	req.Header.Set("Connection", "keep-alive")
+	req.Header.Set("sec-ch-ua", `"Chromium";v="142", "YaBrowser";v="25.12", "Not_A Brand";v="99", "Yowser";v="2.5"`)
+	req.Header.Set("sec-ch-ua-mobile", "?0")
+	req.Header.Set("sec-ch-ua-platform", `"macOS"`)
+	req.Header.Set("sec-fetch-dest", "empty")
+	req.Header.Set("sec-fetch-mode", "cors")
+	req.Header.Set("sec-fetch-site", "same-origin")
+	// 1xbet specific headers
+	req.Header.Set("x-app-n", "__BETTING_APP__")
+	req.Header.Set("x-svc-source", "__BETTING_APP__")
+	req.Header.Set("x-requested-with", "XMLHttpRequest")
+	req.Header.Set("x-mobile-project-id", "0")
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {

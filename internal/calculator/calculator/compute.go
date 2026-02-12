@@ -1,6 +1,8 @@
 package calculator
 
 import (
+	"fmt"
+	"log/slog"
 	"math"
 	"sort"
 	"strings"
@@ -91,6 +93,37 @@ func computeTopDiffs(matches []models.Match, keepTop int) []DiffBet {
 			if len(byBook) < 2 {
 				continue
 			}
+			
+			parts := strings.SplitN(betKey, "|", 3)
+			evType, outType, param := "", "", ""
+			if len(parts) >= 1 {
+				evType = parts[0]
+			}
+			if len(parts) >= 2 {
+				outType = parts[1]
+			}
+			if len(parts) >= 3 {
+				param = parts[2]
+			}
+			
+			// Log when comparing statistical events (not main_match)
+			if evType != "" && evType != "main_match" {
+				bookmakersList := make([]string, 0, len(byBook))
+				oddsList := make([]string, 0, len(byBook))
+				for bk, odd := range byBook {
+					bookmakersList = append(bookmakersList, bk)
+					oddsList = append(oddsList, fmt.Sprintf("%s:%.3f", bk, odd))
+				}
+				slog.Info("Calculator: comparing statistical event",
+					"match", gm.name,
+					"event_type", evType,
+					"outcome_type", outType,
+					"parameter", param,
+					"bookmakers", strings.Join(bookmakersList, ", "),
+					"bookmakers_count", len(byBook),
+					"odds", strings.Join(oddsList, ", "))
+			}
+			
 			minOdd := math.MaxFloat64
 			maxOdd := -math.MaxFloat64
 			minBk, maxBk := "", ""
@@ -110,18 +143,6 @@ func computeTopDiffs(matches []models.Match, keepTop int) []DiffBet {
 
 			diffAbs := maxOdd - minOdd
 			diffPct := (maxOdd/minOdd - 1.0) * 100.0
-
-			parts := strings.SplitN(betKey, "|", 3)
-			evType, outType, param := "", "", ""
-			if len(parts) >= 1 {
-				evType = parts[0]
-			}
-			if len(parts) >= 2 {
-				outType = parts[1]
-			}
-			if len(parts) >= 3 {
-				param = parts[2]
-			}
 
 			diffs = append(diffs, DiffBet{
 				MatchGroupKey: gk,
@@ -257,6 +278,36 @@ func computeValueBets(matches []models.Match, bookmakerWeights map[string]float6
 				continue
 			}
 
+			parts := strings.SplitN(betKey, "|", 3)
+			evType, outType, param := "", "", ""
+			if len(parts) >= 1 {
+				evType = parts[0]
+			}
+			if len(parts) >= 2 {
+				outType = parts[1]
+			}
+			if len(parts) >= 3 {
+				param = parts[2]
+			}
+			
+			// Log when comparing statistical events (not main_match)
+			if evType != "" && evType != "main_match" {
+				bookmakersList := make([]string, 0, len(byBook))
+				oddsList := make([]string, 0, len(byBook))
+				for bk, odd := range byBook {
+					bookmakersList = append(bookmakersList, bk)
+					oddsList = append(oddsList, fmt.Sprintf("%s:%.3f", bk, odd))
+				}
+				slog.Info("Calculator: comparing statistical event for value bets",
+					"match", gm.name,
+					"event_type", evType,
+					"outcome_type", outType,
+					"parameter", param,
+					"bookmakers", strings.Join(bookmakersList, ", "),
+					"bookmakers_count", len(byBook),
+					"odds", strings.Join(oddsList, ", "))
+			}
+
 			// Calculate fair probability using weighted average of ALL bookmakers
 			// Convert odds to probabilities: prob = 1 / odd
 			var totalWeightedProb float64
@@ -300,18 +351,6 @@ func computeValueBets(matches []models.Match, bookmakerWeights map[string]float6
 
 				// Calculate expected value: (bookmaker_odd * fair_probability) - 1
 				expectedValue := (odd * fairProb) - 1.0
-
-				parts := strings.SplitN(betKey, "|", 3)
-				evType, outType, param := "", "", ""
-				if len(parts) >= 1 {
-					evType = parts[0]
-				}
-				if len(parts) >= 2 {
-					outType = parts[1]
-				}
-				if len(parts) >= 3 {
-					param = parts[2]
-				}
 
 				// Create map of all bookmaker odds for this outcome
 				allOddsMap := make(map[string]float64)

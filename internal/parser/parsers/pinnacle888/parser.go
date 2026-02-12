@@ -790,8 +790,8 @@ func buildMatchFromPinnacle(matchupID int64, related []RelatedMatchup, markets [
 		slog.Info("Pinnacle888: statistical events found for match", 
 			"matchup_id", matchupID, 
 			"statistical_events_count", statisticalEventsCount,
-			"home_team", rm.HomeTeam,
-			"away_team", rm.AwayTeam)
+			"home_team", home,
+			"away_team", away)
 	}
 
 	eventsByType := map[models.StandardEventType]*models.Event{}

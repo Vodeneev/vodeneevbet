@@ -288,7 +288,7 @@ func (p *Parser) processSingleChampionship(ctx context.Context, champ ChampItem)
 		return matches
 	}
 	
-	slog.Debug("1xbet: fetched championship matches", "championship", champ.LE, "matches_count", len(matchList))
+	slog.Info("1xbet: fetched championship matches", "championship", champ.LE, "matches_count", len(matchList))
 	
 	// Process each match
 	for idx, matchData := range matchList {
@@ -300,7 +300,7 @@ func (p *Parser) processSingleChampionship(ctx context.Context, champ ChampItem)
 		}
 		
 		// Log match processing start
-		slog.Debug("1xbet: processing match from championship", "championship", champ.LE, "championship_id", champ.LI, "match_index", idx+1, "total_matches", len(matchList), "match_id", matchData.I)
+		slog.Info("1xbet: processing match from championship", "championship", champ.LE, "championship_id", champ.LI, "match_index", idx+1, "total_matches", len(matchList), "match_id", matchData.I)
 		
 		// Get detailed game information
 		gameDetails, err := p.client.GetGame(matchData.I, true, true, 250, 4, "", countryID, 1, true)

@@ -76,6 +76,9 @@ jobs:
       REMOTE_DIR: /opt/vodeneevbet/bookmaker-services
       GHCR_USERNAME: ${{ secrets.GHCR_USERNAME || github.repository_owner }}
       GHCR_TOKEN: ${{ secrets.GHCR_TOKEN }}
+      # Use same commit SHA as build so VM pulls the image that was just built
+      IMAGE_TAG: ${{ github.sha }}
+      IMAGE_OWNER: ${{ github.repository_owner }}
       YC_SERVICE_ACCOUNT_KEY_JSON: ${{ secrets.YC_SERVICE_ACCOUNT_KEY_JSON }}
       YC_FOLDER_ID: ${{ secrets.YC_FOLDER_ID }}
       YC_LOG_GROUP_ID: ${{ secrets.YC_LOG_GROUP_ID }}
@@ -135,7 +138,8 @@ jobs:
             if [ "$(sudo docker ps -q -f name=vodeneevbet-fonbet -f status=running | wc -l)" -ge 1 ] && \
                [ "$(sudo docker ps -q -f name=vodeneevbet-pinnacle -f status=running | wc -l)" -ge 1 ] && \
                [ "$(sudo docker ps -q -f name=vodeneevbet-pinnacle888 -f status=running | wc -l)" -ge 1 ] && \
-               [ "$(sudo docker ps -q -f name=vodeneevbet-marathonbet -f status=running | wc -l)" -ge 1 ]; then
+               [ "$(sudo docker ps -q -f name=vodeneevbet-marathonbet -f status=running | wc -l)" -ge 1 ] && \
+               [ "$(sudo docker ps -q -f name=vodeneevbet-xbet1 -f status=running | wc -l)" -ge 1 ]; then
               echo "All bookmaker containers running"
               exit 0
             fi

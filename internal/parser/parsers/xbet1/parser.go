@@ -167,8 +167,9 @@ func (p *Parser) runIncrementalCycle(ctx context.Context, timeout time.Duration)
 		parserutil.LogCycleFinish("1xbet", cycleID, duration)
 	}()
 	
-	// Resolve mirror once at the start of each cycle
-	if p.cfg.Parser.Xbet1.MirrorURL != "" {
+	// Resolve mirror only when not using fixed base URL (we use fixed when base_url set or default)
+	useMirror := p.cfg.Parser.Xbet1.MirrorURL != "" && p.cfg.Parser.Xbet1.BaseURL == ""
+	if useMirror {
 		slog.Info("1xbet: resolving mirror URL", "cycle_id", cycleID)
 		if err := p.client.ensureResolved(); err != nil {
 			slog.Warn("1xbet: mirror resolve failed at cycle start", "cycle_id", cycleID, "error", err)

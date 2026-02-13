@@ -556,6 +556,11 @@ func (c *Client) doRequest(urlStr string) ([]byte, error) {
 
 	if resp.StatusCode != http.StatusOK {
 		b, _ := io.ReadAll(resp.Body)
+		preview := string(b)
+		if len(preview) > 200 {
+			preview = preview[:200] + "..."
+		}
+		slog.Warn("1xbet: API request failed", "url", urlStr, "status", resp.StatusCode, "body_preview", preview)
 		if c.shouldReResolve(nil, resp.StatusCode) {
 			c.clearResolvedURL()
 		}

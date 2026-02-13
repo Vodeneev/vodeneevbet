@@ -48,6 +48,26 @@ func computeTopDiffs(matches []models.Match, keepTop int) []DiffBet {
 			groups[gk] = betMap{}
 		}
 
+		// Log statistical events grouping for debugging
+		statisticalEventTypes := make(map[string]bool)
+		for _, ev := range m.Events {
+			evType := strings.TrimSpace(ev.EventType)
+			if evType != "" && evType != "main_match" {
+				statisticalEventTypes[evType] = true
+			}
+		}
+		if len(statisticalEventTypes) > 0 {
+			eventTypesList := make([]string, 0, len(statisticalEventTypes))
+			for et := range statisticalEventTypes {
+				eventTypesList = append(eventTypesList, et)
+			}
+			slog.Debug("Calculator: processing match with statistical events",
+				"match", meta[gk].name,
+				"match_group_key", gk,
+				"statistical_event_types", eventTypesList,
+				"total_events", len(m.Events))
+		}
+
 		for _, ev := range m.Events {
 			for _, out := range ev.Outcomes {
 				bk := strings.TrimSpace(out.Bookmaker)

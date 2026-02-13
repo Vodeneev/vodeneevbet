@@ -24,7 +24,61 @@ if [[ -z "${IMAGE_OWNER}" ]]; then
   exit 1
 fi
 
-echo "🚀 Deploying bookmaker services (fonbet, pinnacle, pinnacle888, marathonbet, xbet1) to ${VM_HOST}"
+# Read enabled bookmaker services from config
+CONFIG_FILE="${CONFIG_FILE:-configs/production.yaml}"
+if [[ ! -f "${CONFIG_FILE}" ]]; then
+  echo "Error: Config file not found: ${CONFIG_FILE}" >&2
+  exit 1
+fi
+
+# Extract enabled services from bookmaker_services section
+# Parse YAML: find parser.bookmaker_services section and extract non-commented service names
+ENABLED_SERVICES=()
+in_parser=false
+in_bookmaker_services=false
+while IFS= read -r line; do
+  # Detect start of parser section
+  if [[ "$line" =~ ^[[:space:]]*parser:[[:space:]]*$ ]]; then
+    in_parser=true
+    continue
+  fi
+  # Detect start of bookmaker_services section (must be inside parser)
+  if [[ "$in_parser" == true ]] && [[ "$line" =~ ^[[:space:]]{2}bookmaker_services:[[:space:]]*$ ]]; then
+    in_bookmaker_services=true
+    continue
+  fi
+  # Stop at next top-level key (0 spaces at start, not comment)
+  if [[ "$line" =~ ^[^[:space:]#] ]]; then
+    in_parser=false
+    in_bookmaker_services=false
+    continue
+  fi
+  # Stop bookmaker_services section at next key at same or higher level (2 spaces or less)
+  if [[ "$in_bookmaker_services" == true ]] && [[ "$line" =~ ^[[:space:]]{0,2}[^[:space:]#] ]]; then
+    if [[ ! "$line" =~ ^[[:space:]]{4} ]]; then
+      in_bookmaker_services=false
+      continue
+    fi
+  fi
+  # Extract service names from non-commented lines in bookmaker_services section
+  if [[ "$in_bookmaker_services" == true ]]; then
+    # Skip commented lines
+    [[ "$line" =~ ^[[:space:]]*# ]] && continue
+    # Match lines like "    fonbet: "http://..." (4 spaces + service name + colon)
+    if [[ "$line" =~ ^[[:space:]]{4}([a-zA-Z0-9_]+):[[:space:]]+ ]]; then
+      service_name="${BASH_REMATCH[1]}"
+      ENABLED_SERVICES+=("${service_name}")
+    fi
+  fi
+done < "${CONFIG_FILE}"
+
+if [[ ${#ENABLED_SERVICES[@]} -eq 0 ]]; then
+  echo "Warning: No enabled bookmaker services found in ${CONFIG_FILE}" >&2
+  echo "Please check parser.bookmaker_services section in the config" >&2
+fi
+
+echo "🚀 Deploying bookmaker services to ${VM_HOST}"
+echo "📋 Enabled services from config: ${ENABLED_SERVICES[*]}"
 
 echo "📡 Checking SSH connection..."
 ssh -o ConnectTimeout=5 -o StrictHostKeyChecking=no "${VM_USER}@${VM_HOST}" "echo 'Connection OK'" >/dev/null
@@ -45,6 +99,9 @@ else
   echo "🔐 Skipping keys upload (set COPY_KEYS=1 to sync ./keys)"
 fi
 
+# Build docker-compose services list as space-separated string
+COMPOSE_SERVICES="${ENABLED_SERVICES[*]}"
+
 echo "🐳 Pull & up..."
 ssh "${VM_USER}@${VM_HOST}" "bash -lc 'set -euo pipefail
 cd \"${REMOTE_DIR}\"
@@ -62,35 +119,69 @@ export COMPOSE_PROJECT_NAME=vodeneevbet_bookmaker
 # Clean up old images/containers/build cache to prevent disk from filling up
 sudo docker image prune -af --filter \"until=2h\" || true
 sudo docker builder prune -af || true
+# Stop and remove disabled services
+ALL_SERVICES=\"fonbet pinnacle pinnacle888 marathonbet xbet1\"
+ENABLED_SERVICES_LIST=\"${COMPOSE_SERVICES}\"
+for svc in \$ALL_SERVICES; do
+  if ! echo \"\$ENABLED_SERVICES_LIST\" | grep -qw \"\$svc\"; then
+    echo \"Stopping disabled service: \$svc\"
+    sudo docker stop vodeneevbet-\$svc 2>/dev/null || true
+    sudo docker rm vodeneevbet-\$svc 2>/dev/null || true
+  fi
+done
+# Build docker-compose command with service list
+if [ -z \"\$ENABLED_SERVICES_LIST\" ]; then
+  echo \"Error: No enabled services found\" >&2
+  exit 1
+fi
+COMPOSE_CMD_ARGS=\"\"
+for svc in \$ENABLED_SERVICES_LIST; do
+  COMPOSE_CMD_ARGS=\"\$COMPOSE_CMD_ARGS \$svc\"
+done
 if docker compose version >/dev/null 2>&1; then
   sudo docker compose down --remove-orphans || true
-  sudo docker compose pull
-  sudo docker compose up -d --remove-orphans --force-recreate
+  sudo docker compose pull\$COMPOSE_CMD_ARGS
+  sudo docker compose up -d --remove-orphans --force-recreate\$COMPOSE_CMD_ARGS
 elif command -v docker-compose >/dev/null 2>&1; then
   sudo docker-compose down --remove-orphans || true
-  sudo docker-compose pull
-  sudo docker-compose up -d --remove-orphans --force-recreate
+  sudo docker-compose pull\$COMPOSE_CMD_ARGS
+  sudo docker-compose up -d --remove-orphans --force-recreate\$COMPOSE_CMD_ARGS
 else
   echo \"Docker Compose is not installed\" >&2
   exit 1
 fi
 # Final cleanup: remove dangling images left after recreate
 sudo docker image prune -f || true
-test \"\$(sudo docker ps -q -f name=vodeneevbet-fonbet -f status=running | wc -l)\" -ge 1
-test \"\$(sudo docker ps -q -f name=vodeneevbet-pinnacle -f status=running | wc -l)\" -ge 1
-test \"\$(sudo docker ps -q -f name=vodeneevbet-pinnacle888 -f status=running | wc -l)\" -ge 1
-test \"\$(sudo docker ps -q -f name=vodeneevbet-marathonbet -f status=running | wc -l)\" -ge 1
-test \"\$(sudo docker ps -q -f name=vodeneevbet-xbet1 -f status=running | wc -l)\" -ge 1
+# Verify only enabled services are running
+for svc in \$ENABLED_SERVICES_LIST; do
+  test \"\$(sudo docker ps -q -f name=vodeneevbet-\$svc -f status=running | wc -l)\" -ge 1 || (echo \"Service \$svc failed to start\" >&2 && exit 1)
+done
 '"
 
 echo "✅ Bookmaker services deployed on ${VM_HOST}"
 echo ""
-echo "Ports: fonbet :8081, pinnacle :8082, pinnacle888 :8083, marathonbet :8084, xbet1 :8085"
-echo "Orchestrator config (parser.bookmaker_services):"
-echo "  fonbet: \"http://${VM_HOST}:8081\""
-echo "  pinnacle: \"http://${VM_HOST}:8082\""
-echo "  pinnacle888: \"http://${VM_HOST}:8083\""
-echo "  marathonbet: \"http://${VM_HOST}:8084\""
-echo "  xbet1: \"http://${VM_HOST}:8085\""
+echo "Enabled services: ${ENABLED_SERVICES[*]}"
 echo ""
-echo "Logs: ssh ${VM_USER}@${VM_HOST} 'sudo docker logs -f vodeneevbet-fonbet'"
+echo "Port mapping:"
+declare -A PORT_MAP=(
+  ["fonbet"]="8081"
+  ["pinnacle"]="8082"
+  ["pinnacle888"]="8083"
+  ["marathonbet"]="8084"
+  ["xbet1"]="8085"
+)
+for svc in "${ENABLED_SERVICES[@]}"; do
+  port="${PORT_MAP[$svc]:-unknown}"
+  echo "  ${svc}: http://${VM_HOST}:${port}"
+done
+echo ""
+echo "Orchestrator config (parser.bookmaker_services):"
+for svc in "${ENABLED_SERVICES[@]}"; do
+  port="${PORT_MAP[$svc]:-unknown}"
+  echo "  ${svc}: \"http://${VM_HOST}:${port}\""
+done
+echo ""
+if [[ ${#ENABLED_SERVICES[@]} -gt 0 ]]; then
+  first_svc="${ENABLED_SERVICES[0]}"
+  echo "Logs: ssh ${VM_USER}@${VM_HOST} 'sudo docker logs -f vodeneevbet-${first_svc}'"
+fi

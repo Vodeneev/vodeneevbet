@@ -114,6 +114,7 @@ type ValueCalculatorConfig struct {
 	AlertThreshold20     float64 `yaml:"alert_threshold_20"`     // Alert threshold for 20% diffs (backward compatibility)
 	AlertCooldownMinutes int     `yaml:"alert_cooldown_minutes"` // Minutes to wait before sending duplicate alerts for same diff (default: 60)
 	AlertMinIncrease     float64 `yaml:"alert_min_increase"`     // Minimum diff_percent increase to send alert again (default: 5.0)
+	MaxOdds              float64 `yaml:"max_odds"`               // Max odds for alerts and value bets; 0 = no limit (high odds have more variance)
 	TelegramBotToken     string  `yaml:"telegram_bot_token"`     // Telegram bot token for notifications
 	TelegramChatID       int64   `yaml:"telegram_chat_id"`       // Telegram chat ID to send notifications
 }

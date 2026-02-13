@@ -201,7 +201,18 @@ func (c *ValueCalculator) processMatchesAsync(ctx context.Context) {
 		alertMinIncrease = c.cfg.AlertMinIncrease
 	}
 
+	maxOdds := 0.0
+	if c.cfg != nil && c.cfg.MaxOdds > 0 {
+		maxOdds = c.cfg.MaxOdds
+	}
+
 	for _, diff := range diffs {
+		// Skip high-odds diffs: variance is higher, value is less reliable
+		if maxOdds > 0 && diff.MaxOdd > maxOdds {
+			_, _ = c.diffStorage.StoreDiffBet(ctx, &diff)
+			continue
+		}
+
 		// Check if we should send an alert for this diff
 		shouldSendAlert := false
 		if alertThreshold > 0 && diff.DiffPercent > alertThreshold && c.notifier != nil {

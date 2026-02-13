@@ -295,6 +295,9 @@ value_calculator:
   # Minimum value percent to show value bets (default: 5.0)
   min_value_percent: 5.0
   
+  # Max odds for alerts and value bets (0 = no limit). High odds have more line variance, so value is less reliable.
+  max_odds: 5.0
+  
   # Async processing settings
   async_enabled: true              # Enable asynchronous processing
   async_interval: 30s              # Interval for async processing (every 30 seconds)

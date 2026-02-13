@@ -198,7 +198,8 @@ func computeTopDiffs(matches []models.Match, keepTop int) []DiffBet {
 // computeValueBets calculates value bets using weighted average of ALL bookmakers.
 // For each bet, it calculates fair probability from all bookmakers (weighted average),
 // then finds value bets where bookmaker odds are higher than fair odds.
-func computeValueBets(matches []models.Match, bookmakerWeights map[string]float64, minValuePercent float64, keepTop int) []ValueBet {
+// maxOdds: exclude value bets with bookmaker odd above this (0 = no limit).
+func computeValueBets(matches []models.Match, bookmakerWeights map[string]float64, minValuePercent float64, maxOdds float64, keepTop int) []ValueBet {
 	if keepTop <= 0 {
 		keepTop = 100
 	}
@@ -366,6 +367,11 @@ func computeValueBets(matches []models.Match, bookmakerWeights map[string]float6
 
 				// Only include if value is positive and above threshold
 				if valuePercent < minValuePercent {
+					continue
+				}
+
+				// Skip high odds: variance is higher, value is less reliable
+				if maxOdds > 0 && odd > maxOdds {
 					continue
 				}
 

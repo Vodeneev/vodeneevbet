@@ -46,6 +46,11 @@ func (c *ValueCalculator) handleTopValueBets(w http.ResponseWriter, r *http.Requ
 		minValuePercent = c.cfg.MinValuePercent
 	}
 
+	maxOdds := 0.0
+	if c.cfg != nil && c.cfg.MaxOdds > 0 {
+		maxOdds = c.cfg.MaxOdds
+	}
+
 	// Create context with timeout for the request
 	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
 	defer cancel()
@@ -60,7 +65,7 @@ func (c *ValueCalculator) handleTopValueBets(w http.ResponseWriter, r *http.Requ
 	}
 
 	// Calculate value bets using weighted average
-	valueBets = computeValueBets(matches, bookmakerWeights, minValuePercent, 100)
+	valueBets = computeValueBets(matches, bookmakerWeights, minValuePercent, maxOdds, 100)
 
 	// Filter by status if specified
 	now := time.Now().UTC()

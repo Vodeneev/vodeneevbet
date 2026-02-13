@@ -71,14 +71,14 @@ func resolveMirror(mirrorURL string, timeout time.Duration) (string, error) {
 
 	resp, err := client.Do(req)
 	if err != nil {
-		slog.Debug("HTTP HEAD request failed, trying GET", "error", err)
+		slog.Info("HTTP HEAD request failed, trying GET", "error", err)
 		// Continue to GET request
 	} else {
 		defer resp.Body.Close()
 		finalURL := resp.Request.URL.String()
 		if finalURL != mirrorURL {
 			// Accept HTTP redirect result (even if it's an IP) - simpler and works on VM without Chrome
-			slog.Debug("Resolved mirror", "from", mirrorURL, "to", finalURL, "method", "HTTP redirect")
+			slog.Info("Resolved mirror", "from", mirrorURL, "to", finalURL, "method", "HTTP redirect")
 			return finalURL, nil
 		}
 	}
@@ -92,7 +92,7 @@ func resolveMirror(mirrorURL string, timeout time.Duration) (string, error) {
 
 	resp, err = client.Do(req)
 	if err != nil {
-		slog.Debug("HTTP GET request failed, falling back to JavaScript resolution", "error", err)
+		slog.Info("HTTP GET request failed, falling back to JavaScript resolution", "error", err)
 		return resolveMirrorWithJS(mirrorURL, timeout)
 	}
 	defer resp.Body.Close()
@@ -100,7 +100,7 @@ func resolveMirror(mirrorURL string, timeout time.Duration) (string, error) {
 	finalURL := resp.Request.URL.String()
 	if finalURL != mirrorURL {
 		// Accept HTTP redirect result (even if it's an IP) - simpler and works on VM without Chrome
-		slog.Debug("Resolved mirror", "from", mirrorURL, "to", finalURL, "method", "HTTP redirect")
+		slog.Info("Resolved mirror", "from", mirrorURL, "to", finalURL, "method", "HTTP redirect")
 		return finalURL, nil
 	}
 

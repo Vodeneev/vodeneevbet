@@ -1,6 +1,7 @@
 package xbet1
 
 import (
+	"bytes"
 	"compress/gzip"
 	"context"
 	"crypto/tls"
@@ -541,12 +542,165 @@ func (c *Client) GetSubGame(subGameID int64) (*GameDetails, error) {
 }
 
 // doRequest performs HTTP GET request with proper headers
+// If proxyList is configured, tries proxies in order before falling back to direct connection.
 func (c *Client) doRequest(urlStr string) ([]byte, error) {
+	// If proxyList is configured, try proxies first
+	if len(c.proxyList) > 0 {
+		slog.Info("1xbet: Using proxy list", "proxy_count", len(c.proxyList), "url", urlStr)
+		return c.doRequestWithProxyRetry(urlStr)
+	}
+	
+	// Direct connection (no proxy)
+	slog.Debug("1xbet: Using direct connection (no proxy)", "url", urlStr)
+	return c.doRequestDirect(urlStr)
+}
+
+// doRequestDirect performs a direct HTTP request without proxy
+func (c *Client) doRequestDirect(urlStr string) ([]byte, error) {
 	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, urlStr, nil)
 	if err != nil {
 		return nil, fmt.Errorf("create request: %w", err)
 	}
 
+	c.setHeaders(req)
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		b, _ := io.ReadAll(resp.Body)
+		preview := string(b)
+		if len(preview) > 200 {
+			preview = preview[:200] + "..."
+		}
+		slog.Warn("1xbet: API request failed", "url", urlStr, "status", resp.StatusCode, "body_preview", preview)
+		if c.shouldReResolve(nil, resp.StatusCode) {
+			c.clearResolvedURL()
+		}
+		return nil, fmt.Errorf("unexpected status %d: %s", resp.StatusCode, string(b))
+	}
+
+	return readBodyDecode(resp)
+}
+
+// doRequestWithProxyRetry tries each proxy in the list until one works
+func (c *Client) doRequestWithProxyRetry(urlStr string) ([]byte, error) {
+	// Try each proxy in the list
+	c.proxyMu.Lock()
+	startIndex := c.currentProxyIndex
+	c.proxyMu.Unlock()
+
+	for attempt := 0; attempt < len(c.proxyList); attempt++ {
+		c.proxyMu.Lock()
+		proxyIndex := (startIndex + attempt) % len(c.proxyList)
+		proxyURLStr := c.proxyList[proxyIndex]
+		c.proxyMu.Unlock()
+
+		proxyURL, err := url.Parse(proxyURLStr)
+		if err != nil {
+			slog.Warn("1xbet: Invalid proxy URL", "proxy", maskProxyURL(proxyURLStr), "error", err)
+			continue
+		}
+
+		// Log proxy attempt
+		slog.Info("1xbet: Trying proxy", "proxy_index", proxyIndex+1, "total_proxies", len(c.proxyList), "proxy", maskProxyURL(proxyURLStr), "url", urlStr)
+
+		// Create transport with this proxy
+		transport := http.DefaultTransport.(*http.Transport).Clone()
+		transport.DisableCompression = true // we send Accept-Encoding and decode in readBodyDecode
+		if transport.TLSClientConfig == nil {
+			transport.TLSClientConfig = &tls.Config{}
+		}
+		insecureTLS := os.Getenv("1XBET_INSECURE_TLS") == "1"
+		if insecureTLS {
+			transport.TLSClientConfig.InsecureSkipVerify = true
+		}
+		transport.Proxy = http.ProxyURL(proxyURL)
+
+		client := &http.Client{
+			Timeout:   c.httpClient.Timeout,
+			Transport: transport,
+		}
+
+		req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, urlStr, nil)
+		if err != nil {
+			slog.Warn("1xbet: Failed to create request, trying next proxy", "proxy", maskProxyURL(proxyURLStr), "error", err)
+			continue
+		}
+
+		c.setHeaders(req)
+
+		resp, err := client.Do(req)
+		if err != nil {
+			errStr := err.Error()
+			if strings.Contains(errStr, "timeout") || strings.Contains(errStr, "connection refused") ||
+				strings.Contains(errStr, "no such host") || strings.Contains(errStr, "network is unreachable") {
+				slog.Warn("1xbet: Proxy failed (timeout/connection error), trying next", "proxy", maskProxyURL(proxyURLStr), "error", err)
+				continue
+			}
+			slog.Warn("1xbet: Proxy failed, trying next", "proxy", maskProxyURL(proxyURLStr), "error", err)
+			continue
+		}
+
+		// Check if response is valid JSON (not HTML blocking page)
+		contentType := resp.Header.Get("Content-Type")
+		bodyPeek := make([]byte, 100)
+		n, _ := resp.Body.Read(bodyPeek)
+
+		// Check if it's JSON by looking at first character
+		isJSON := n > 0 && (bodyPeek[0] == '[' || bodyPeek[0] == '{')
+		isHTML := n > 0 && bodyPeek[0] == '<'
+
+		if resp.StatusCode == http.StatusOK && (strings.Contains(contentType, "application/json") || isJSON) && !isHTML {
+			// Success! Create a new reader that includes the peeked bytes
+			bodyReader := io.MultiReader(bytes.NewReader(bodyPeek[:n]), resp.Body)
+
+			// Create a new response with the combined body
+			resp.Body = io.NopCloser(bodyReader)
+
+			// Update current proxy index
+			c.proxyMu.Lock()
+			c.currentProxyIndex = proxyIndex
+			c.proxyMu.Unlock()
+			slog.Info("1xbet: Successfully using proxy", "proxy_index", proxyIndex+1, "total_proxies", len(c.proxyList), "proxy", maskProxyURL(proxyURLStr), "url", urlStr)
+
+			body, err := readBodyDecode(resp)
+			resp.Body.Close()
+			if err != nil {
+				return nil, err
+			}
+			return body, nil
+		}
+
+		// Not valid JSON or error status - read body to check what we got before closing
+		body, _ := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		preview := string(body)
+		if len(preview) > 200 {
+			preview = preview[:200] + "..."
+		}
+		slog.Warn("1xbet: Proxy returned blocked/invalid response, trying next", 
+			"proxy", maskProxyURL(proxyURLStr), 
+			"status", resp.StatusCode, 
+			"content_type", contentType, 
+			"body_preview", preview)
+
+		// If status indicates server error, try next proxy
+		if resp.StatusCode == 502 || resp.StatusCode == 503 {
+			continue
+		}
+	}
+
+	// All proxies failed, try direct connection as last resort
+	slog.Warn("1xbet: All proxies failed, falling back to direct connection", "url", urlStr, "total_proxies_tried", len(c.proxyList))
+	return c.doRequestDirect(urlStr)
+}
+
+// setHeaders sets all required headers for 1xbet API requests
+func (c *Client) setHeaders(req *http.Request) {
 	baseURL := c.getResolvedBaseURL()
 	req.Header.Set("Accept", "application/json, text/plain, */*")
 	req.Header.Set("Accept-Language", "ru,en;q=0.9")
@@ -571,27 +725,20 @@ func (c *Client) doRequest(urlStr string) ([]byte, error) {
 	req.Header.Set("x-svc-source", "__BETTING_APP__")
 	req.Header.Set("x-requested-with", "XMLHttpRequest")
 	req.Header.Set("x-mobile-project-id", "0")
+}
 
-	resp, err := c.httpClient.Do(req)
+// maskProxyURL masks password in proxy URL for logging
+func maskProxyURL(proxyURL string) string {
+	parsed, err := url.Parse(proxyURL)
 	if err != nil {
-		return nil, fmt.Errorf("request failed: %w", err)
+		return "***"
 	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		b, _ := io.ReadAll(resp.Body)
-		preview := string(b)
-		if len(preview) > 200 {
-			preview = preview[:200] + "..."
-		}
-		slog.Warn("1xbet: API request failed", "url", urlStr, "status", resp.StatusCode, "body_preview", preview)
-		if c.shouldReResolve(nil, resp.StatusCode) {
-			c.clearResolvedURL()
-		}
-		return nil, fmt.Errorf("unexpected status %d: %s", resp.StatusCode, string(b))
+	if parsed.User != nil {
+		username := parsed.User.Username()
+		parsed.User = url.User(username)
+		return parsed.String()
 	}
-
-	return readBodyDecode(resp)
+	return proxyURL
 }
 
 // readBodyDecode reads response body and decompresses it based on Content-Encoding (gzip, br, zstd).

@@ -77,17 +77,7 @@ func resolveMirror(mirrorURL string, timeout time.Duration) (string, error) {
 
 	finalURL := resp.Request.URL.String()
 	if finalURL != mirrorURL {
-		parsed, err := url.Parse(finalURL)
-		if err == nil {
-			domain := parsed.Host
-			if idx := strings.Index(domain, ":"); idx != -1 {
-				domain = domain[:idx]
-			}
-			if isIPAddress(domain) {
-				slog.Debug("HTTP redirect leads to IP address, using JavaScript resolution", "domain", domain)
-				return resolveMirrorWithJS(mirrorURL, timeout)
-			}
-		}
+		// Accept HTTP redirect result (even if it's an IP) - simpler and works on VM without Chrome
 		slog.Debug("Resolved mirror", "from", mirrorURL, "to", finalURL, "method", "HTTP redirect")
 		return finalURL, nil
 	}
@@ -108,17 +98,7 @@ func resolveMirror(mirrorURL string, timeout time.Duration) (string, error) {
 
 	finalURL = resp.Request.URL.String()
 	if finalURL != mirrorURL {
-		parsed, err := url.Parse(finalURL)
-		if err == nil {
-			domain := parsed.Host
-			if idx := strings.Index(domain, ":"); idx != -1 {
-				domain = domain[:idx]
-			}
-			if isIPAddress(domain) {
-				slog.Debug("HTTP redirect leads to IP address, using JavaScript resolution", "domain", domain)
-				return resolveMirrorWithJS(mirrorURL, timeout)
-			}
-		}
+		// Accept HTTP redirect result (even if it's an IP) - simpler and works on VM without Chrome
 		slog.Debug("Resolved mirror", "from", mirrorURL, "to", finalURL, "method", "HTTP redirect")
 		return finalURL, nil
 	}
@@ -241,6 +221,16 @@ func normalizeResolvedBaseURL(resolved string) string {
 		host = net.JoinHostPort(u.Hostname(), port)
 	}
 	return u.Scheme + "://" + host
+}
+
+// ResolveMirrorToBaseURL resolves mirror URL to the actual 1xbet base URL (scheme://host).
+// Can be used by scripts/cron to get a fixed base_url for XBET1_BASE_URL env.
+func ResolveMirrorToBaseURL(mirrorURL string, timeout time.Duration) (baseURL string, err error) {
+	resolved, err := resolveMirror(mirrorURL, timeout)
+	if err != nil {
+		return "", err
+	}
+	return normalizeResolvedBaseURL(resolved), nil
 }
 
 func NewClient(baseURL, mirrorURL string, timeout time.Duration, proxyList []string) *Client {

@@ -442,16 +442,8 @@ func (c *Client) GetMatches(sportID int, champID int64, count int, mode int, cou
 		return nil, fmt.Errorf("parse base URL: %w", err)
 	}
 	u.Path = "/service-api/LineFeed/Get1x2_VZip"
-
-	q := u.Query()
-	q.Set("sports", fmt.Sprintf("%d", sportID))
-	q.Set("champs", fmt.Sprintf("%d", champID))
-	q.Set("count", fmt.Sprintf("%d", count))
-	q.Set("mode", fmt.Sprintf("%d", mode))
-	q.Set("country", fmt.Sprintf("%d", countryID))
-	q.Set("getEmpty", "true")
-	q.Set("virtualSports", fmt.Sprintf("%t", virtualSports))
-	u.RawQuery = q.Encode()
+	// Query order matters for 1xbet (sports first to avoid 406)
+	u.RawQuery = fmt.Sprintf("sports=%d&champs=%d&count=%d&mode=%d&country=%d&getEmpty=true&virtualSports=%t", sportID, champID, count, mode, countryID, virtualSports)
 
 	body, err := c.doRequest(u.String())
 	if err != nil {
@@ -485,18 +477,8 @@ func (c *Client) GetGame(gameID int64, isSubGames, groupEvents bool, countEvents
 		return nil, fmt.Errorf("parse base URL: %w", err)
 	}
 	u.Path = "/service-api/LineFeed/GetGameZip"
-
-	q := u.Query()
-	q.Set("id", fmt.Sprintf("%d", gameID))
-	q.Set("isSubGames", fmt.Sprintf("%t", isSubGames))
-	q.Set("GroupEvents", fmt.Sprintf("%t", groupEvents))
-	q.Set("countevents", fmt.Sprintf("%d", countEvents))
-	q.Set("grMode", fmt.Sprintf("%d", grMode))
-	q.Set("topGroups", topGroups)
-	q.Set("country", fmt.Sprintf("%d", countryID))
-	q.Set("marketType", fmt.Sprintf("%d", marketType))
-	q.Set("isNewBuilder", fmt.Sprintf("%t", isNewBuilder))
-	u.RawQuery = q.Encode()
+	// Query order fixed to avoid 406 (id/country first)
+	u.RawQuery = fmt.Sprintf("id=%d&isSubGames=%t&GroupEvents=%t&countevents=%d&grMode=%d&topGroups=%s&country=%d&marketType=%d&isNewBuilder=%t", gameID, isSubGames, groupEvents, countEvents, grMode, url.QueryEscape(topGroups), countryID, marketType, isNewBuilder)
 
 	body, err := c.doRequest(u.String())
 	if err != nil {

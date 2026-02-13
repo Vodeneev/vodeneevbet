@@ -25,14 +25,17 @@ type Parser struct {
 }
 
 func NewParser(cfg *config.Config) *Parser {
+	const default1xbetHost = "https://1xlite-6173396.bar"
 	baseURL := cfg.Parser.Xbet1.BaseURL
 	if baseURL == "" {
-		baseURL = "https://1xlite-6173396.bar"
+		baseURL = default1xbetHost
 	}
 
 	mirrorURL := cfg.Parser.Xbet1.MirrorURL
-	if cfg.Parser.Xbet1.BaseURL != "" {
-		mirrorURL = "" // use fixed base_url, skip mirror resolution (avoids 406 from some mirror hosts)
+	// Skip mirror when using known working host (avoids 406 from other mirror nodes)
+	if baseURL == default1xbetHost || cfg.Parser.Xbet1.BaseURL != "" {
+		mirrorURL = ""
+		slog.Info("1xbet: using fixed base URL, mirror resolution disabled", "base_url", baseURL)
 	} else if mirrorURL == "" {
 		mirrorURL = "https://1xbet-skwu.top/link"
 	}

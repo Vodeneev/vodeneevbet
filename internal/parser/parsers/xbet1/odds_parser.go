@@ -80,6 +80,11 @@ func ParseGameDetailsWithClient(game *GameDetails, leagueName string, client *Cl
 	statisticalEvents := parseStatisticalSubGames(match.ID, game.SG, client)
 	if len(statisticalEvents) > 0 {
 		match.Events = append(match.Events, statisticalEvents...)
+		eventTypes := make([]string, len(statisticalEvents))
+		for i, ev := range statisticalEvents {
+			eventTypes[i] = ev.EventType
+		}
+		slog.Info("1xbet: added statistical events", "match_id", match.ID, "event_types", eventTypes, "events_count", len(statisticalEvents), "total_outcomes", countTotalOutcomes(statisticalEvents))
 	}
 
 	return match
@@ -113,6 +118,10 @@ func parseStatisticalSubGames(matchID string, subGames []SubGame, client *Client
 		subGameMap[sg.CI] = eventType
 	}
 
+	if len(subGameMap) > 0 {
+		slog.Debug("1xbet: found statistical sub-games", "match_id", matchID, "sub_games_count", len(subGameMap), "event_types", getMapValues(subGameMap))
+	}
+
 	// Fetch and parse each statistical sub-game
 	for subGameCI, eventType := range subGameMap {
 		subGameData, err := client.GetSubGame(subGameCI)
@@ -121,15 +130,22 @@ func parseStatisticalSubGames(matchID string, subGames []SubGame, client *Client
 			continue
 		}
 
+		slog.Debug("1xbet: fetched sub-game data", "match_id", matchID, "sub_game_id", subGameCI, "event_type", eventType, "group_events_count", len(subGameData.GE))
+
 		// Parse all markets from sub-game
 		subGameEvents := parseStatisticalSubGameMarkets(matchID, subGameData.GE, eventType, now)
-		for _, ev := range subGameEvents {
-			if existingEv, ok := eventsByType[ev.EventType]; ok {
-				// Merge outcomes if event already exists
-				existingEv.Outcomes = append(existingEv.Outcomes, ev.Outcomes...)
-			} else {
-				eventsByType[ev.EventType] = &ev
+		if len(subGameEvents) > 0 {
+			for _, ev := range subGameEvents {
+				if existingEv, ok := eventsByType[ev.EventType]; ok {
+					// Merge outcomes if event already exists
+					existingEv.Outcomes = append(existingEv.Outcomes, ev.Outcomes...)
+				} else {
+					eventsByType[ev.EventType] = &ev
+				}
 			}
+			slog.Info("1xbet: parsed statistical sub-game markets", "match_id", matchID, "event_type", eventType, "markets_count", len(subGameEvents), "outcomes_count", countTotalOutcomes(subGameEvents))
+		} else {
+			slog.Debug("1xbet: no markets found in sub-game", "match_id", matchID, "event_type", eventType, "sub_game_id", subGameCI)
 		}
 	}
 
@@ -141,6 +157,24 @@ func parseStatisticalSubGames(matchID string, subGames []SubGame, client *Client
 	}
 
 	return events
+}
+
+// countTotalOutcomes counts total outcomes across all events
+func countTotalOutcomes(events []models.Event) int {
+	total := 0
+	for _, ev := range events {
+		total += len(ev.Outcomes)
+	}
+	return total
+}
+
+// getMapValues returns all values from a map as a slice
+func getMapValues(m map[int64]string) []string {
+	values := make([]string, 0, len(m))
+	for _, v := range m {
+		values = append(values, v)
+	}
+	return values
 }
 
 // parseStatisticalSubGameMarkets parses all markets from a statistical sub-game

@@ -291,7 +291,7 @@ func (p *Parser) processSingleChampionship(ctx context.Context, champ ChampItem)
 	slog.Debug("1xbet: fetched championship matches", "championship", champ.LE, "matches_count", len(matchList))
 	
 	// Process each match
-	for _, matchData := range matchList {
+	for idx, matchData := range matchList {
 		select {
 		case <-ctx.Done():
 			slog.Warn("1xbet: championship processing interrupted", "championship", champ.LE)
@@ -299,10 +299,13 @@ func (p *Parser) processSingleChampionship(ctx context.Context, champ ChampItem)
 		default:
 		}
 		
+		// Log match processing start
+		slog.Debug("1xbet: processing match from championship", "championship", champ.LE, "championship_id", champ.LI, "match_index", idx+1, "total_matches", len(matchList), "match_id", matchData.I)
+		
 		// Get detailed game information
 		gameDetails, err := p.client.GetGame(matchData.I, true, true, 250, 4, "", countryID, 1, true)
 		if err != nil {
-			slog.Debug("1xbet: failed to get game details", "match_id", matchData.I, "error", err)
+			slog.Debug("1xbet: failed to get game details", "championship", champ.LE, "match_id", matchData.I, "error", err)
 			continue
 		}
 		

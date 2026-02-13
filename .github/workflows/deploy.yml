@@ -164,8 +164,8 @@ jobs:
           sudo docker compose down --remove-orphans || true
           sudo docker image prune -af --filter "until=2h" || true
           sudo docker builder prune -af || true
-          sudo docker compose pull
-          sudo docker compose up -d --remove-orphans --force-recreate
+          sudo COMPOSE_PROFILES="${COMPOSE_PROFILES}" docker compose pull
+          sudo COMPOSE_PROFILES="${COMPOSE_PROFILES}" docker compose up -d --remove-orphans --force-recreate
           sudo docker image prune -f || true
           for i in 1 2 3 4 5 6 7 8 9 10; do
             all_ok=1

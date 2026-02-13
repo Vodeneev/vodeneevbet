@@ -57,8 +57,8 @@ func ParseGameDetails(game *GameDetails, leagueName string) *models.Match {
 		UpdatedAt:  now,
 	}
 
-	// Parse events from grouped events
-	events := parseGroupedEvents(matchID, game.GE)
+	// Parse events from grouped events (use SG metadata to identify statistical groups)
+	events := parseGroupedEvents(matchID, game.GE, game.SG)
 	match.Events = events
 
 	if len(match.Events) == 0 {
@@ -70,12 +70,32 @@ func ParseGameDetails(game *GameDetails, leagueName string) *models.Match {
 }
 
 // parseGroupedEvents parses grouped events into standard event models
-func parseGroupedEvents(matchID string, groupEvents []GroupEvent) []models.Event {
+func parseGroupedEvents(matchID string, groupEvents []GroupEvent, subGames []SubGame) []models.Event {
 	var events []models.Event
 	now := time.Now()
 
 	// Map to track events by type
 	eventsByType := make(map[string]*models.Event)
+
+	// Build mapping from SG.N to statistical event type
+	// SG contains metadata about groups, including TG (title) which identifies statistical events
+	sgStatsMap := make(map[int64]string) // Maps SG.N -> event type
+	for _, sg := range subGames {
+		if sg.TG == "" {
+			continue
+		}
+		// Map Russian titles to standard event types
+		switch sg.TG {
+		case "Угловые":
+			sgStatsMap[sg.N] = string(models.StandardEventCorners)
+		case "Фолы":
+			sgStatsMap[sg.N] = string(models.StandardEventFouls)
+		case "Желтые карточки":
+			sgStatsMap[sg.N] = string(models.StandardEventYellowCards)
+		case "Офсайды":
+			sgStatsMap[sg.N] = string(models.StandardEventOffsides)
+		}
+	}
 
 	for _, ge := range groupEvents {
 		// Group ID mapping:
@@ -130,8 +150,50 @@ func parseGroupedEvents(matchID string, groupEvents []GroupEvent) []models.Event
 			// Offsides
 			parseStatisticalGroup(eventsByType, matchID, ge, now, string(models.StandardEventOffsides))
 		default:
-			// Skip unknown groups (log at Info level to see what groups are available)
-			slog.Info("1xbet: skipping unknown group", "group_id", ge.G, "group_sub_id", ge.GS)
+			// Check if this group is a statistical event via SG metadata
+			// Since direct mapping doesn't work, if we have statistical SG items,
+			// try to parse unknown groups as statistical if they have the right structure
+			// Groups 11212, 11412, 8427, 8429 often appear and might be statistical
+			// Try parsing them as statistical events if they have over/under or handicap patterns
+			if len(sgStatsMap) > 0 {
+				// Check if this group has statistical event structure (over/under or handicap patterns)
+				hasStatsStructure := false
+				for _, row := range ge.E {
+					for _, e := range row {
+						// Check for over/under patterns (T=9/10, 794/795) or handicap (T=7/8)
+						if e.T == 9 || e.T == 10 || e.T == 794 || e.T == 795 || e.T == 7 || e.T == 8 {
+							hasStatsStructure = true
+							break
+						}
+					}
+					if hasStatsStructure {
+						break
+					}
+				}
+				// If it has statistical structure but we don't know the type, try to infer from SG
+				// For now, if we have corners SG, try corners first, then others
+				if hasStatsStructure {
+					// Try corners first (most common)
+					if _, hasCorners := sgStatsMap[183028]; hasCorners {
+						parseStatisticalGroup(eventsByType, matchID, ge, now, string(models.StandardEventCorners))
+					} else if _, hasFouls := sgStatsMap[250185]; hasFouls {
+						parseStatisticalGroup(eventsByType, matchID, ge, now, string(models.StandardEventFouls))
+					} else if _, hasYellowCards := sgStatsMap[198701]; hasYellowCards {
+						parseStatisticalGroup(eventsByType, matchID, ge, now, string(models.StandardEventYellowCards))
+					} else if _, hasOffsides := sgStatsMap[250162]; hasOffsides {
+						parseStatisticalGroup(eventsByType, matchID, ge, now, string(models.StandardEventOffsides))
+					} else {
+						// Skip unknown groups (log at Info level to see what groups are available)
+						slog.Info("1xbet: skipping unknown group", "group_id", ge.G, "group_sub_id", ge.GS)
+					}
+				} else {
+					// Skip unknown groups (log at Info level to see what groups are available)
+					slog.Info("1xbet: skipping unknown group", "group_id", ge.G, "group_sub_id", ge.GS)
+				}
+			} else {
+				// Skip unknown groups (log at Info level to see what groups are available)
+				slog.Info("1xbet: skipping unknown group", "group_id", ge.G, "group_sub_id", ge.GS)
+			}
 		}
 	}
 
@@ -339,6 +401,24 @@ func parseStatisticalGroup(eventsByType map[string]*models.Event, matchID string
 		}
 		ev.Outcomes = append(ev.Outcomes, newOutcome(eventID, "total_over", line, mainEvents[0].C))
 		ev.Outcomes = append(ev.Outcomes, newOutcome(eventID, "total_under", line, mainEvents[1].C))
+	}
+	// Handle non-standard T values: if we have two events with same P but different T, treat as over/under
+	if len(ev.Outcomes) == 0 && len(mainEvents) >= 2 {
+		// Check if first two events have same P (or both P=0/None) but different T
+		p0 := mainEvents[0].P
+		p1 := mainEvents[1].P
+		t0 := mainEvents[0].T
+		t1 := mainEvents[1].T
+		if (p0 == p1 || (p0 == 0 && p1 == 0)) && t0 != t1 {
+			// Treat as over/under pair
+			line := formatLine(p0)
+			if line == "0" && len(mainEvents) > 2 && mainEvents[2].P != 0 {
+				line = formatLine(mainEvents[2].P)
+			}
+			// Use first event as over, second as under (arbitrary but consistent)
+			ev.Outcomes = append(ev.Outcomes, newOutcome(eventID, "total_over", line, mainEvents[0].C))
+			ev.Outcomes = append(ev.Outcomes, newOutcome(eventID, "total_under", line, mainEvents[1].C))
+		}
 	}
 	// If multiple rows with different P (several totals), merge: each row can be over/under
 	if len(ev.Outcomes) == 0 && len(ge.E) > 1 {

@@ -89,6 +89,23 @@ type GameResponse struct {
 	Value     GameDetails `json:"Value"`
 }
 
+// SubGame represents a sub-game/group metadata
+type SubGame struct {
+	CI  int64  `json:"CI"`  // Group ID?
+	EC  int    `json:"EC"`  // Event count
+	I   int64  `json:"I"`   // Group ID?
+	MG  int64  `json:"MG"`  // Main game ID?
+	N   int64  `json:"N"`   // Group number/ID
+	TG  string `json:"TG"`  // Group title (e.g., "Угловые", "Фолы", "Желтые карточки", "Офсайды")
+	PN  string `json:"PN"`  // Period name
+	SI  int    `json:"SI"`  // Sport ID
+	SS  int    `json:"SS"`  // Sport status
+	T   int    `json:"T"`   // Type
+	TI  int    `json:"TI"`  // Type ID?
+	V   string `json:"V"`   // Value?
+	GVE int    `json:"GVE"` // Group value enabled?
+}
+
 // GameDetails represents detailed game information
 type GameDetails struct {
 	I    int64       `json:"I"`    // Match ID
@@ -109,6 +126,7 @@ type GameDetails struct {
 	CE   string      `json:"CE"`   // Country name (English)
 	COI  int         `json:"COI"`  // Country ID
 	GE   []GroupEvent `json:"GE"`  // Grouped events
+	SG   []SubGame   `json:"SG"`   // Sub-games (group metadata)
 	EC   int         `json:"EC"`   // Event count
 	EGC  int         `json:"EGC"`  // Event group count
 	MS   []int       `json:"MS"`   // Match status

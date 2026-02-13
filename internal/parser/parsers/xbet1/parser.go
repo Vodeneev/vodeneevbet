@@ -25,23 +25,24 @@ type Parser struct {
 }
 
 func NewParser(cfg *config.Config) *Parser {
-	const default1xbetHost = "https://1xlite-6173396.bar"
+	const defaultMirror = "https://1xbet-skwu.top/link"
 	baseURL := cfg.Parser.Xbet1.BaseURL
-	if baseURL == "" {
-		baseURL = default1xbetHost
-	}
-
 	mirrorURL := cfg.Parser.Xbet1.MirrorURL
-	// Skip mirror when using known working host (avoids 406 from other mirror nodes)
-	if baseURL == default1xbetHost || cfg.Parser.Xbet1.BaseURL != "" {
+
+	// Like pinnacle888: explicit base_url => use it, no mirror. Empty base_url => use mirror (resolve at runtime).
+	if baseURL != "" {
 		mirrorURL = ""
-		slog.Info("1xbet: using fixed base URL, mirror resolution disabled", "base_url", baseURL)
-	} else if mirrorURL == "" {
-		mirrorURL = "https://1xbet-skwu.top/link"
+		slog.Info("1xbet: using fixed base URL, mirror disabled", "base_url", baseURL)
+	} else {
+		baseURL = "" // will use getResolvedBaseURL() after ensureResolved()
+		if mirrorURL == "" {
+			mirrorURL = defaultMirror
+		}
+		slog.Info("1xbet: using mirror (resolve at runtime)", "mirror_url", mirrorURL)
 	}
 
 	client := NewClient(baseURL, mirrorURL, cfg.Parser.Timeout, cfg.Parser.Xbet1.ProxyList)
-	slog.Info("1xbet: parser init (Accept-Encoding br/zstd, 406 fix)", "base_url", baseURL)
+	slog.Info("1xbet: parser init (Accept-Encoding br/zstd, 406 fix)", "base_url", baseURL, "mirror_url", mirrorURL)
 
 	return &Parser{
 		cfg:     cfg,

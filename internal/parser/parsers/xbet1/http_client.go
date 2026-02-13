@@ -229,6 +229,21 @@ func isIPAddress(s string) bool {
 	return net.ParseIP(s) != nil
 }
 
+// normalizeResolvedBaseURL returns scheme://host from a full redirect URL (no path/query, no default port).
+// e.g. https://1xlite-6173396.bar:443/ru/registration?tag=... -> https://1xlite-6173396.bar
+func normalizeResolvedBaseURL(resolved string) string {
+	u, err := url.Parse(resolved)
+	if err != nil {
+		return resolved
+	}
+	host := u.Hostname()
+	port := u.Port()
+	if port != "" && port != "80" && port != "443" {
+		host = net.JoinHostPort(u.Hostname(), port)
+	}
+	return u.Scheme + "://" + host
+}
+
 func NewClient(baseURL, mirrorURL string, timeout time.Duration, proxyList []string) *Client {
 	insecureTLS := os.Getenv("1XBET_INSECURE_TLS") == "1"
 
@@ -311,13 +326,14 @@ func (c *Client) ensureResolved() error {
 		return fmt.Errorf("failed to resolve mirror: %w", err)
 	}
 
+	base := normalizeResolvedBaseURL(resolved)
 	c.resolvedMu.Lock()
-	c.resolvedURL = resolved
+	c.resolvedURL = base
 	c.lastResolveTime = time.Now()
-	c.baseURL = resolved
+	c.baseURL = base
 	c.resolvedMu.Unlock()
 
-	slog.Debug("1xbet: Resolved mirror URL: %s", resolved)
+	slog.Info("1xbet: mirror resolved", "mirror_url", c.mirrorURL, "resolved_base", base)
 	return nil
 }
 

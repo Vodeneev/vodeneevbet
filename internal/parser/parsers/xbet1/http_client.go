@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -394,13 +395,8 @@ func (c *Client) GetChamps(sportID, countryID int, virtualSports bool) ([]ChampI
 		return nil, fmt.Errorf("parse base URL: %w", err)
 	}
 	u.Path = "/service-api/LineFeed/GetChampsZip"
-
-	q := u.Query()
-	q.Set("sport", fmt.Sprintf("%d", sportID))
-	q.Set("country", fmt.Sprintf("%d", countryID))
-	q.Set("virtualSports", fmt.Sprintf("%t", virtualSports))
-	q.Set("groupChamps", "true")
-	u.RawQuery = q.Encode()
+	// Query order matters for 1xbet (sport first = 200, other order can yield 406)
+	u.RawQuery = fmt.Sprintf("sport=%d&country=%d&virtualSports=%t&groupChamps=true", sportID, countryID, virtualSports)
 
 	body, err := c.doRequest(u.String())
 	if err != nil {
@@ -539,6 +535,9 @@ func (c *Client) doRequest(urlStr string) ([]byte, error) {
 		req.Header.Set("Origin", baseURL)
 	}
 	req.Header.Set("Connection", "keep-alive")
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("is-srv", "false")
+	req.Header.Set("priority", "u=1, i")
 	req.Header.Set("sec-ch-ua", `"Chromium";v="142", "YaBrowser";v="25.12", "Not_A Brand";v="99", "Yowser";v="2.5"`)
 	req.Header.Set("sec-ch-ua-mobile", "?0")
 	req.Header.Set("sec-ch-ua-platform", `"macOS"`)
@@ -562,6 +561,21 @@ func (c *Client) doRequest(urlStr string) ([]byte, error) {
 		preview := string(b)
 		if len(preview) > 200 {
 			preview = preview[:200] + "..."
+		}
+		// On 406 log full request so we can reproduce with curl and compare (TLS fingerprint vs headers).
+		if resp.StatusCode == 406 {
+			var headerLines []string
+			for k := range req.Header {
+				headerLines = append(headerLines, k+": "+strings.Join(req.Header.Values(k), ", "))
+			}
+			// Sort for stable output
+			sort.Strings(headerLines)
+			slog.Warn("1xbet: API 406 — full request dump",
+				"method", req.Method,
+				"url", urlStr,
+				"headers_count", len(req.Header),
+				"headers", strings.Join(headerLines, " | "),
+			)
 		}
 		slog.Warn("1xbet: API request failed", "url", urlStr, "status", resp.StatusCode, "body_preview", preview)
 		if c.shouldReResolve(nil, resp.StatusCode) {

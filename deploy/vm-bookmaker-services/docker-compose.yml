@@ -3,6 +3,7 @@ services:
     image: ghcr.io/${IMAGE_OWNER:-vodeneev}/vodeneevbet-bookmaker-service:${IMAGE_TAG:-main}
     container_name: vodeneevbet-fonbet
     restart: unless-stopped
+    profiles: ["fonbet"]
     command: ["-parser", "fonbet", "-config", "/app/configs/production.yaml"]
     logging:
       driver: json-file
@@ -28,6 +29,7 @@ services:
     image: ghcr.io/${IMAGE_OWNER:-vodeneev}/vodeneevbet-bookmaker-service:${IMAGE_TAG:-main}
     container_name: vodeneevbet-pinnacle
     restart: unless-stopped
+    profiles: ["pinnacle"]
     command: ["-parser", "pinnacle", "-config", "/app/configs/production.yaml"]
     logging:
       driver: json-file
@@ -55,6 +57,7 @@ services:
     image: ghcr.io/${IMAGE_OWNER:-vodeneev}/vodeneevbet-bookmaker-service:${IMAGE_TAG:-main}
     container_name: vodeneevbet-pinnacle888
     restart: unless-stopped
+    profiles: ["pinnacle888"]
     command: ["-parser", "pinnacle888", "-config", "/app/configs/production.yaml"]
     logging:
       driver: json-file
@@ -82,6 +85,7 @@ services:
     image: ghcr.io/${IMAGE_OWNER:-vodeneev}/vodeneevbet-bookmaker-service:${IMAGE_TAG:-main}
     container_name: vodeneevbet-marathonbet
     restart: unless-stopped
+    profiles: ["marathonbet"]
     command: ["-parser", "marathonbet", "-config", "/app/configs/production.yaml"]
     logging:
       driver: json-file
@@ -107,6 +111,7 @@ services:
     image: ghcr.io/${IMAGE_OWNER:-vodeneev}/vodeneevbet-bookmaker-service:${IMAGE_TAG:-main}
     container_name: vodeneevbet-xbet1
     restart: unless-stopped
+    profiles: ["xbet1"]
     command: ["-parser", "xbet1", "-config", "/app/configs/production.yaml"]
     logging:
       driver: json-file

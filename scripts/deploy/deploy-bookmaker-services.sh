@@ -129,20 +129,32 @@ for svc in \$ALL_SERVICES; do
     sudo docker rm vodeneevbet-\$svc 2>/dev/null || true
   fi
 done
-# Build docker-compose command with service list
+# Build docker-compose command with profiles
 if [ -z \"\$ENABLED_SERVICES_LIST\" ]; then
   echo \"Error: No enabled services found\" >&2
   exit 1
 fi
-COMPOSE_CMD_ARGS=\"\"
+# Build profile list for docker-compose (comma-separated)
+COMPOSE_PROFILES=\"\"
 for svc in \$ENABLED_SERVICES_LIST; do
-  COMPOSE_CMD_ARGS=\"\$COMPOSE_CMD_ARGS \$svc\"
+  if [ -z \"\$COMPOSE_PROFILES\" ]; then
+    COMPOSE_PROFILES=\"\$svc\"
+  else
+    COMPOSE_PROFILES=\"\$COMPOSE_PROFILES,\$svc\"
+  fi
 done
+export COMPOSE_PROFILES=\"\$COMPOSE_PROFILES\"
 if docker compose version >/dev/null 2>&1; then
+  # docker compose v2 supports profiles via COMPOSE_PROFILES env var
   sudo docker compose down --remove-orphans || true
-  sudo docker compose pull\$COMPOSE_CMD_ARGS
-  sudo docker compose up -d --remove-orphans --force-recreate\$COMPOSE_CMD_ARGS
+  sudo docker compose pull
+  sudo docker compose up -d --remove-orphans --force-recreate
 elif command -v docker-compose >/dev/null 2>&1; then
+  # docker-compose v1 doesn't support profiles, use service names instead
+  COMPOSE_CMD_ARGS=\"\"
+  for svc in \$ENABLED_SERVICES_LIST; do
+    COMPOSE_CMD_ARGS=\"\$COMPOSE_CMD_ARGS \$svc\"
+  done
   sudo docker-compose down --remove-orphans || true
   sudo docker-compose pull\$COMPOSE_CMD_ARGS
   sudo docker-compose up -d --remove-orphans --force-recreate\$COMPOSE_CMD_ARGS

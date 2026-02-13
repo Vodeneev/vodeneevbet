@@ -48,11 +48,26 @@ func matchGroupKey(m models.Match) string {
 	return sport + "|" + teams[0] + "|" + teams[1] + "|" + t.Format(time.RFC3339)
 }
 
-// normalizeTeam normalizes team name for comparison.
+// teamNamePrefixes are stripped for grouping so "RC Hades" and "Hades" match the same match.
+var teamNamePrefixes = []string{
+	"r.c. ", "rc ", "k.s.k. ", "k.s. k. ", "ksk ", "f.c. ", "fc ", "f.k. ", "fk ",
+	"c.f. ", "cf ", "s.c. ", "sc ", "s.s.c. ", "ssc ", "a.c. ", "ac ", "a.s. ", "as ",
+	"u.d. ", "ud ", "c.d. ", "cd ", "n.k. ", "nk ", "b.c. ", "bc ", "bk ",
+}
+
+// normalizeTeam normalizes team name for comparison and grouping.
+// Strips common club prefixes (RC, K.S.K., FC, etc.) so "RC Hades" and "Hades" get the same key.
 func normalizeTeam(s string) string {
 	s = strings.ToLower(strings.TrimSpace(s))
 	if s == "" {
 		return ""
+	}
+	// Strip known prefixes (order: try longer first)
+	for _, p := range teamNamePrefixes {
+		if strings.HasPrefix(s, p) {
+			s = strings.TrimSpace(s[len(p):])
+			break
+		}
 	}
 	// collapse whitespace
 	s = strings.Join(strings.Fields(s), " ")

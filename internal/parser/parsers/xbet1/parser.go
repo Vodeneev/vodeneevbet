@@ -306,8 +306,8 @@ func (p *Parser) processSingleChampionship(ctx context.Context, champ ChampItem)
 			continue
 		}
 		
-		// Parse match from game details
-		match := ParseGameDetails(gameDetails, champ.LE)
+		// Parse match from game details (including statistical sub-games)
+		match := ParseGameDetailsWithClient(gameDetails, champ.LE, p.client)
 		if match != nil {
 			matches = append(matches, match)
 		}

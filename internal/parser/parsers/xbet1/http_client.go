@@ -535,6 +535,11 @@ func (c *Client) GetGame(gameID int64, isSubGames, groupEvents bool, countEvents
 	return &resp.Value, nil
 }
 
+// GetSubGame fetches sub-game data (for statistical events like corners, fouls, etc.)
+func (c *Client) GetSubGame(subGameID int64) (*GameDetails, error) {
+	return c.GetGame(subGameID, true, true, 250, 4, "", 1, 1, true)
+}
+
 // doRequest performs HTTP GET request with proper headers
 func (c *Client) doRequest(urlStr string) ([]byte, error) {
 	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, urlStr, nil)

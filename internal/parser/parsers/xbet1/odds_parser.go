@@ -69,6 +69,344 @@ func ParseGameDetails(game *GameDetails, leagueName string) *models.Match {
 	return match
 }
 
+// ParseGameDetailsWithClient parses game details and fetches statistical sub-games
+func ParseGameDetailsWithClient(game *GameDetails, leagueName string, client *Client) *models.Match {
+	match := ParseGameDetails(game, leagueName)
+	if match == nil {
+		return nil
+	}
+
+	// Find and parse statistical sub-games (corners, fouls, yellow cards, offsides)
+	statisticalEvents := parseStatisticalSubGames(match.ID, game.SG, client)
+	if len(statisticalEvents) > 0 {
+		match.Events = append(match.Events, statisticalEvents...)
+	}
+
+	return match
+}
+
+// parseStatisticalSubGames parses statistical sub-games (corners, fouls, yellow cards, offsides)
+func parseStatisticalSubGames(matchID string, subGames []SubGame, client *Client) []models.Event {
+	var events []models.Event
+	now := time.Now()
+	eventsByType := make(map[string]*models.Event)
+
+	// Map sub-game titles to event types
+	subGameMap := make(map[int64]string) // Maps CI -> event type
+	for _, sg := range subGames {
+		if sg.TG == "" || sg.PN != "" {
+			continue // Skip empty titles or period-specific sub-games
+		}
+		var eventType string
+		switch sg.TG {
+		case "Угловые":
+			eventType = string(models.StandardEventCorners)
+		case "Фолы":
+			eventType = string(models.StandardEventFouls)
+		case "Желтые карточки":
+			eventType = string(models.StandardEventYellowCards)
+		case "Офсайды":
+			eventType = string(models.StandardEventOffsides)
+		default:
+			continue
+		}
+		subGameMap[sg.CI] = eventType
+	}
+
+	// Fetch and parse each statistical sub-game
+	for subGameCI, eventType := range subGameMap {
+		subGameData, err := client.GetSubGame(subGameCI)
+		if err != nil {
+			slog.Debug("1xbet: failed to fetch sub-game", "sub_game_id", subGameCI, "event_type", eventType, "error", err)
+			continue
+		}
+
+		// Parse all markets from sub-game
+		subGameEvents := parseStatisticalSubGameMarkets(matchID, subGameData.GE, eventType, now)
+		for _, ev := range subGameEvents {
+			if existingEv, ok := eventsByType[ev.EventType]; ok {
+				// Merge outcomes if event already exists
+				existingEv.Outcomes = append(existingEv.Outcomes, ev.Outcomes...)
+			} else {
+				eventsByType[ev.EventType] = &ev
+			}
+		}
+	}
+
+	// Convert map to slice
+	for _, ev := range eventsByType {
+		if len(ev.Outcomes) > 0 {
+			events = append(events, *ev)
+		}
+	}
+
+	return events
+}
+
+// parseStatisticalSubGameMarkets parses all markets from a statistical sub-game
+func parseStatisticalSubGameMarkets(matchID string, groupEvents []GroupEvent, eventType string, now time.Time) []models.Event {
+	var events []models.Event
+	eventsByType := make(map[string]*models.Event)
+
+	for _, ge := range groupEvents {
+		// Find main line (CE=1 or first non-empty)
+		var mainEvents []Event
+		for _, eventArray := range ge.E {
+			for _, e := range eventArray {
+				if e.CE == 1 || len(mainEvents) == 0 {
+					mainEvents = eventArray
+					break
+				}
+			}
+			if len(mainEvents) > 0 {
+				break
+			}
+		}
+		if len(mainEvents) == 0 && len(ge.E) > 0 && len(ge.E[0]) > 0 {
+			mainEvents = ge.E[0]
+		}
+		if len(mainEvents) == 0 {
+			continue
+		}
+
+		eventID := fmt.Sprintf("%s_1xbet_%s", matchID, eventType)
+		ev := getOrCreateEvent(eventsByType, eventID, matchID, eventType, now)
+
+		// Parse based on group type
+		switch ge.G {
+		case 1:
+			// 1X2 (Moneyline) - collect all events from all arrays
+			for _, eventArray := range ge.E {
+				for _, e := range eventArray {
+					switch e.T {
+					case 1:
+						ev.Outcomes = append(ev.Outcomes, newOutcome(eventID, "home_win", "", e.C))
+					case 2:
+						ev.Outcomes = append(ev.Outcomes, newOutcome(eventID, "draw", "", e.C))
+					case 3:
+						ev.Outcomes = append(ev.Outcomes, newOutcome(eventID, "away_win", "", e.C))
+					}
+				}
+			}
+		case 2:
+			// Handicap (Фора)
+			parseStatisticalHandicap(ev, eventID, ge.E)
+		case 8, 2854:
+			// Double chance
+			parseStatisticalDoubleChance(ev, eventID, ge.E)
+		case 17:
+			// Total (Over/Under)
+			parseStatisticalTotals(ev, eventID, ge.E)
+		default:
+			// Try to detect totals by T values (9=over, 10=under)
+			if hasTotalStructure(mainEvents) {
+				parseStatisticalTotals(ev, eventID, ge.E)
+			}
+		}
+	}
+
+	// Convert map to slice
+	for _, ev := range eventsByType {
+		if len(ev.Outcomes) > 0 {
+			events = append(events, *ev)
+		}
+	}
+
+	return events
+}
+
+// parseStatisticalHandicap parses handicap markets for statistical events
+func parseStatisticalHandicap(ev *models.Event, eventID string, eventArrays [][]Event) {
+	if len(eventArrays) < 2 {
+		return
+	}
+
+	homeArray := eventArrays[0]
+	awayArray := eventArrays[1]
+
+	homeMap := make(map[float64]float64)
+	awayMap := make(map[float64]float64)
+	homeSignMap := make(map[float64]float64)
+
+	for _, e := range homeArray {
+		if e.T == 7 {
+			absP := e.P
+			if e.P < 0 {
+				absP = -e.P
+			}
+			homeMap[absP] = e.C
+			homeSignMap[absP] = e.P
+		}
+	}
+
+	for _, e := range awayArray {
+		if e.T == 8 {
+			absP := e.P
+			if e.P < 0 {
+				absP = -e.P
+			}
+			awayMap[absP] = e.C
+		}
+	}
+
+	seenLines := make(map[float64]bool)
+	allAbsP := make(map[float64]bool)
+	for absP := range homeMap {
+		allAbsP[absP] = true
+	}
+	for absP := range awayMap {
+		allAbsP[absP] = true
+	}
+
+	for absP := range allAbsP {
+		if seenLines[absP] {
+			continue
+		}
+
+		homeOdds := homeMap[absP]
+		awayOdds := awayMap[absP]
+
+		line := absP
+		if homeSign, ok := homeSignMap[absP]; ok {
+			line = homeSign
+		} else {
+			line = -absP
+		}
+
+		if homeOdds > 0 {
+			ev.Outcomes = append(ev.Outcomes, newOutcome(eventID, "handicap_home", formatSignedLine(line), homeOdds))
+		}
+		if awayOdds > 0 {
+			ev.Outcomes = append(ev.Outcomes, newOutcome(eventID, "handicap_away", formatSignedLine(-line), awayOdds))
+		}
+		seenLines[absP] = true
+	}
+}
+
+// parseStatisticalDoubleChance parses double chance markets for statistical events
+func parseStatisticalDoubleChance(ev *models.Event, eventID string, eventArrays [][]Event) {
+	for _, eventArray := range eventArrays {
+		for _, e := range eventArray {
+			switch e.T {
+			case 4:
+				ev.Outcomes = append(ev.Outcomes, newOutcome(eventID, "double_chance_1x", "", e.C))
+			case 5:
+				ev.Outcomes = append(ev.Outcomes, newOutcome(eventID, "double_chance_12", "", e.C))
+			case 6:
+				ev.Outcomes = append(ev.Outcomes, newOutcome(eventID, "double_chance_2x", "", e.C))
+			}
+		}
+	}
+	// Fallback: if not found by T values, try by position
+	if len(ev.Outcomes) == 0 {
+		for _, eventArray := range eventArrays {
+			if len(eventArray) >= 3 {
+				ev.Outcomes = append(ev.Outcomes, newOutcome(eventID, "double_chance_1x", "", eventArray[0].C))
+				ev.Outcomes = append(ev.Outcomes, newOutcome(eventID, "double_chance_12", "", eventArray[1].C))
+				ev.Outcomes = append(ev.Outcomes, newOutcome(eventID, "double_chance_2x", "", eventArray[2].C))
+				break
+			}
+		}
+	}
+}
+
+// parseStatisticalTotals parses total (over/under) markets for statistical events
+func parseStatisticalTotals(ev *models.Event, eventID string, eventArrays [][]Event) {
+	if len(eventArrays) < 2 {
+		return
+	}
+
+	overArray := eventArrays[0]
+	underArray := eventArrays[1]
+
+	overMap := make(map[float64]float64)
+	underMap := make(map[float64]float64)
+
+	for _, e := range overArray {
+		if e.T == 9 || e.T == 794 {
+			overMap[e.P] = e.C
+		}
+	}
+
+	for _, e := range underArray {
+		if e.T == 10 || e.T == 795 {
+			underMap[e.P] = e.C
+		}
+	}
+
+	seenLines := make(map[float64]bool)
+	for p, overOdds := range overMap {
+		if underOdds, ok := underMap[p]; ok && !seenLines[p] {
+			line := formatLine(p)
+			ev.Outcomes = append(ev.Outcomes, newOutcome(eventID, "total_over", line, overOdds))
+			ev.Outcomes = append(ev.Outcomes, newOutcome(eventID, "total_under", line, underOdds))
+			seenLines[p] = true
+		}
+	}
+
+	// Fallback: if arrays don't match by structure, try pairing events
+	if len(seenLines) == 0 {
+		seenLines = make(map[float64]bool)
+		for i, eventArray := range eventArrays {
+			for _, e := range eventArray {
+				if e.P == 0 {
+					continue
+				}
+				if seenLines[e.P] {
+					continue
+				}
+
+				var overOdds, underOdds float64
+				for _, e2 := range eventArray {
+					if e2.P == e.P {
+						if e2.T == 9 || e2.T == 794 {
+							overOdds = e2.C
+						}
+						if e2.T == 10 || e2.T == 795 {
+							underOdds = e2.C
+						}
+					}
+				}
+
+				if overOdds == 0 || underOdds == 0 {
+					for j, otherArray := range eventArrays {
+						if i == j {
+							continue
+						}
+						for _, e2 := range otherArray {
+							if e2.P == e.P {
+								if e2.T == 9 || e2.T == 794 {
+									overOdds = e2.C
+								}
+								if e2.T == 10 || e2.T == 795 {
+									underOdds = e2.C
+								}
+							}
+						}
+					}
+				}
+
+				if overOdds > 0 && underOdds > 0 && !seenLines[e.P] {
+					line := formatLine(e.P)
+					ev.Outcomes = append(ev.Outcomes, newOutcome(eventID, "total_over", line, overOdds))
+					ev.Outcomes = append(ev.Outcomes, newOutcome(eventID, "total_under", line, underOdds))
+					seenLines[e.P] = true
+				}
+			}
+		}
+	}
+}
+
+// hasTotalStructure checks if events have total structure (T=9/10)
+func hasTotalStructure(events []Event) bool {
+	for _, e := range events {
+		if e.T == 9 || e.T == 10 || e.T == 794 || e.T == 795 {
+			return true
+		}
+	}
+	return false
+}
+
 // parseGroupedEvents parses grouped events into standard event models
 func parseGroupedEvents(matchID string, groupEvents []GroupEvent, subGames []SubGame) []models.Event {
 	var events []models.Event
@@ -512,8 +850,9 @@ func newOutcome(eventID, outcomeType, param string, odds float64) models.Outcome
 }
 
 // formatLine formats a line value as string
+// Uses 1 decimal place for better readability (e.g., 6.5 instead of 6.500000)
 func formatLine(p float64) string {
-	return strconv.FormatFloat(p, 'f', -1, 64)
+	return strconv.FormatFloat(p, 'f', 1, 64)
 }
 
 // formatSignedLine formats a signed line value
@@ -522,7 +861,7 @@ func formatSignedLine(p float64) string {
 		return "0"
 	}
 	if p > 0 {
-		return "+" + strconv.FormatFloat(p, 'f', -1, 64)
+		return "+" + strconv.FormatFloat(p, 'f', 1, 64)
 	}
-	return strconv.FormatFloat(p, 'f', -1, 64)
+	return strconv.FormatFloat(p, 'f', 1, 64)
 }

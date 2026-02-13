@@ -52,9 +52,20 @@ func resolveMirror(mirrorURL string, timeout time.Duration) (string, error) {
 	if os.Getenv("1XBET_INSECURE_TLS") == "1" {
 		transport.TLSClientConfig.InsecureSkipVerify = true
 	}
+	// Increase dial timeout for VM network issues (default is 30s, use 60s)
+	transport.DialContext = (&net.Dialer{
+		Timeout: 60 * time.Second,
+	}).DialContext
+	transport.TLSHandshakeTimeout = 30 * time.Second
+
+	// Use longer timeout for mirror resolution (intermediate redirects may be slow)
+	resolveTimeout := timeout
+	if resolveTimeout < 180*time.Second {
+		resolveTimeout = 180 * time.Second
+	}
 
 	client := &http.Client{
-		Timeout:   timeout,
+		Timeout:   resolveTimeout,
 		Transport: transport,
 		CheckRedirect: func(req *http.Request, via []*http.Request) error {
 			return nil

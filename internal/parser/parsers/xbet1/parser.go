@@ -31,7 +31,9 @@ func NewParser(cfg *config.Config) *Parser {
 	}
 
 	mirrorURL := cfg.Parser.Xbet1.MirrorURL
-	if mirrorURL == "" {
+	if cfg.Parser.Xbet1.BaseURL != "" {
+		mirrorURL = "" // use fixed base_url, skip mirror resolution (avoids 406 from some mirror hosts)
+	} else if mirrorURL == "" {
 		mirrorURL = "https://1xbet-skwu.top/link"
 	}
 

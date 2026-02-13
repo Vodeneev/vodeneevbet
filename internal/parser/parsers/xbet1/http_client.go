@@ -529,8 +529,7 @@ func (c *Client) doRequest(urlStr string) ([]byte, error) {
 	baseURL := c.getResolvedBaseURL()
 	req.Header.Set("Accept", "application/json, text/plain, */*")
 	req.Header.Set("Accept-Language", "ru,en;q=0.9")
-	req.Header.Set("Accept-Encoding", "gzip, deflate, br, zstd")
-	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept-Encoding", "gzip")
 	req.Header.Set("User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 YaBrowser/25.12.0.0 Safari/537.36")
 	if baseURL != "" {
 		req.Header.Set("Referer", baseURL+"/")

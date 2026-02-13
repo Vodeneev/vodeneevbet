@@ -112,8 +112,8 @@ parser:
 
   # 1xbet API settings
   xbet1:
-    base_url: ""       # Optional: direct base URL (defaults to https://1xlite-6173396.bar if not set)
-    mirror_url: "https://1xbet-skwu.top/link"  # Mirror URL to resolve actual baseURL
+    base_url: "https://1xlite-6173396.bar"  # Fixed host (skip mirror to avoid 406 from some nodes)
+    mirror_url: "https://1xbet-skwu.top/link"  # Fallback when base_url empty
     include_prematch: true  # Include pre-match matches (default: true)
     sport_id: 1        # Sport ID (1 = Football, default: 1)
     country_id: 1      # Country ID (1 = All countries, default: 1)

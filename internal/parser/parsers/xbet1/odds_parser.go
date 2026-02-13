@@ -116,6 +116,19 @@ func parseGroupedEvents(matchID string, groupEvents []GroupEvent) []models.Event
 		case 8:
 			// Draw no bet
 			parseDrawNoBet(eventsByType, matchID, ge, now)
+		// Statistical markets (full events come only from GetGame per match, not from league list)
+		case 100, 101:
+			// Corners (G=100 or 101)
+			parseStatisticalGroup(eventsByType, matchID, ge, now, string(models.StandardEventCorners))
+		case 102:
+			// Yellow cards
+			parseStatisticalGroup(eventsByType, matchID, ge, now, string(models.StandardEventYellowCards))
+		case 103:
+			// Fouls
+			parseStatisticalGroup(eventsByType, matchID, ge, now, string(models.StandardEventFouls))
+		case 105:
+			// Offsides
+			parseStatisticalGroup(eventsByType, matchID, ge, now, string(models.StandardEventOffsides))
 		default:
 			// Skip unknown groups
 			slog.Debug("1xbet: skipping unknown group", "group_id", ge.G, "group_sub_id", ge.GS)
@@ -272,6 +285,85 @@ func parseDoubleChance(eventsByType map[string]*models.Event, matchID string, ge
 func parseDrawNoBet(eventsByType map[string]*models.Event, matchID string, ge GroupEvent, now time.Time) {
 	// Draw no bet - skip for now
 	// Can be implemented later if needed
+}
+
+// parseStatisticalGroup parses a statistical market group (corners, fouls, yellow cards, offsides).
+// Full event list for these markets comes only from GetGame(matchID), not from the league matches list.
+// Supports standard total (T=9 over, T=10 under) and handicap (T=7, T=8), plus alternative encodings (e.g. T=794/795).
+func parseStatisticalGroup(eventsByType map[string]*models.Event, matchID string, ge GroupEvent, now time.Time, standardEventType string) {
+	eventID := fmt.Sprintf("%s_1xbet_%s", matchID, standardEventType)
+	ev := getOrCreateEvent(eventsByType, eventID, matchID, standardEventType, now)
+
+	// Find main line (CE=1 or first non-empty)
+	var mainEvents []Event
+	for _, eventArray := range ge.E {
+		for _, e := range eventArray {
+			if e.CE == 1 || len(mainEvents) == 0 {
+				mainEvents = eventArray
+				break
+			}
+		}
+		if len(mainEvents) > 0 {
+			break
+		}
+	}
+	if len(mainEvents) == 0 && len(ge.E) > 0 && len(ge.E[0]) > 0 {
+		mainEvents = ge.E[0]
+	}
+	if len(mainEvents) == 0 {
+		return
+	}
+
+	// Collect all lines (same P can appear in over/under pair); prefer standard T=9/10 and T=7/8
+	seenLine := make(map[string]bool)
+	for _, e := range mainEvents {
+		line := formatLine(e.P)
+		switch e.T {
+		case 9:
+			ev.Outcomes = append(ev.Outcomes, newOutcome(eventID, "total_over", line, e.C))
+			seenLine[line] = true
+		case 10:
+			ev.Outcomes = append(ev.Outcomes, newOutcome(eventID, "total_under", line, e.C))
+			seenLine[line] = true
+		case 7:
+			ev.Outcomes = append(ev.Outcomes, newOutcome(eventID, "handicap_home", formatSignedLine(e.P), e.C))
+		case 8:
+			ev.Outcomes = append(ev.Outcomes, newOutcome(eventID, "handicap_away", formatSignedLine(-e.P), e.C))
+		}
+	}
+	// Alternative encoding: two outcomes (e.g. T=794/795) as over/under for one line
+	if len(ev.Outcomes) == 0 && len(mainEvents) >= 2 {
+		line := formatLine(mainEvents[0].P)
+		if line == "0" && mainEvents[1].P != 0 {
+			line = formatLine(mainEvents[1].P)
+		}
+		ev.Outcomes = append(ev.Outcomes, newOutcome(eventID, "total_over", line, mainEvents[0].C))
+		ev.Outcomes = append(ev.Outcomes, newOutcome(eventID, "total_under", line, mainEvents[1].C))
+	}
+	// If multiple rows with different P (several totals), merge: each row can be over/under
+	if len(ev.Outcomes) == 0 && len(ge.E) > 1 {
+		for _, eventArray := range ge.E {
+			if len(eventArray) < 2 {
+				continue
+			}
+			line := formatLine(eventArray[0].P)
+			if eventArray[0].P == 0 && eventArray[1].P != 0 {
+				line = formatLine(eventArray[1].P)
+			}
+			for _, e := range eventArray {
+				if e.T == 9 || e.T == 794 {
+					ev.Outcomes = append(ev.Outcomes, newOutcome(eventID, "total_over", line, e.C))
+					break
+				}
+			}
+			for _, e := range eventArray {
+				if e.T == 10 || e.T == 795 {
+					ev.Outcomes = append(ev.Outcomes, newOutcome(eventID, "total_under", line, e.C))
+					break
+				}
+			}
+		}
+	}
 }
 
 // getOrCreateEvent gets or creates an event by type

@@ -211,12 +211,12 @@ func resolveMirrorWithJS(mirrorURL string, timeout time.Duration) (string, error
 	}
 
 	if finalURL != "" && finalURL != mirrorURL {
-		slog.Debug("1xbet: Resolved mirror %s -> %s (JavaScript redirect after wait)", mirrorURL, finalURL)
+		slog.Debug("1xbet: Resolved mirror (JavaScript redirect after wait)", "from", mirrorURL, "to", finalURL)
 		return finalURL, nil
 	}
 
 	if finalURL != "" {
-		slog.Debug("1xbet: Mirror URL did not redirect: %s", finalURL)
+		slog.Debug("1xbet: Mirror URL did not redirect", "url", finalURL)
 		return finalURL, nil
 	}
 
@@ -301,7 +301,7 @@ func (c *Client) ensureResolved() error {
 			return nil
 		}
 		c.resolveMu.Lock()
-		slog.Debug("1xbet: Cached URL %s is not responding, re-resolving mirror...", resolvedURL)
+		slog.Debug("1xbet: Cached URL is not responding, re-resolving mirror", "cached_url", resolvedURL)
 	}
 
 	c.resolving = true
@@ -362,7 +362,7 @@ func (c *Client) clearResolvedURL() {
 	c.resolvedMu.Lock()
 	defer c.resolvedMu.Unlock()
 	if c.resolvedURL != "" {
-		slog.Debug("1xbet: Clearing cached URL %s to force re-resolution", c.resolvedURL)
+		slog.Debug("1xbet: Clearing cached URL to force re-resolution", "url", c.resolvedURL)
 		c.resolvedURL = ""
 	}
 }
@@ -370,7 +370,7 @@ func (c *Client) clearResolvedURL() {
 // getResolvedBaseURL returns the resolved base URL (from mirror or direct)
 func (c *Client) getResolvedBaseURL() string {
 	if err := c.ensureResolved(); err != nil {
-		slog.Debug("1xbet: Warning: failed to ensure resolved URL: %v", err)
+		slog.Debug("1xbet: Warning: failed to ensure resolved URL", "error", err)
 	}
 
 	c.resolvedMu.RLock()

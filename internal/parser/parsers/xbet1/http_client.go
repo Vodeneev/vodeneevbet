@@ -16,7 +16,9 @@ import (
 	"sync"
 	"time"
 
+	"github.com/andybalholm/brotli"
 	"github.com/chromedp/chromedp"
+	"github.com/klauspost/compress/zstd"
 )
 
 // chromeMu serializes all Chrome usage so only one instance runs at a time
@@ -529,10 +531,10 @@ func (c *Client) doRequest(urlStr string) ([]byte, error) {
 	baseURL := c.getResolvedBaseURL()
 	req.Header.Set("Accept", "application/json, text/plain, */*")
 	req.Header.Set("Accept-Language", "ru,en;q=0.9")
-	req.Header.Set("Accept-Encoding", "gzip")
+	req.Header.Set("Accept-Encoding", "gzip, deflate, br, zstd")
 	req.Header.Set("User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 YaBrowser/25.12.0.0 Safari/537.36")
 	if baseURL != "" {
-		req.Header.Set("Referer", baseURL+"/")
+		req.Header.Set("Referer", baseURL+"/ru/line")
 		req.Header.Set("Origin", baseURL)
 	}
 	req.Header.Set("Connection", "keep-alive")
@@ -567,11 +569,24 @@ func (c *Client) doRequest(urlStr string) ([]byte, error) {
 		return nil, fmt.Errorf("unexpected status %d: %s", resp.StatusCode, string(b))
 	}
 
-	return readBodyMaybeGzip(resp)
+	return readBodyDecode(resp)
 }
 
-func readBodyMaybeGzip(resp *http.Response) ([]byte, error) {
-	if resp.Header.Get("Content-Encoding") == "gzip" {
+// readBodyDecode reads response body and decompresses it based on Content-Encoding (gzip, br, zstd).
+func readBodyDecode(resp *http.Response) ([]byte, error) {
+	enc := strings.ToLower(strings.TrimSpace(resp.Header.Get("Content-Encoding")))
+	switch {
+	case enc == "br" || strings.Contains(enc, "br"):
+		r := brotli.NewReader(resp.Body)
+		return io.ReadAll(r)
+	case enc == "zstd" || strings.Contains(enc, "zstd"):
+		r, err := zstd.NewReader(resp.Body)
+		if err != nil {
+			return nil, fmt.Errorf("zstd reader: %w", err)
+		}
+		defer r.Close()
+		return io.ReadAll(r)
+	case enc == "gzip" || strings.Contains(enc, "gzip"):
 		r, err := gzip.NewReader(resp.Body)
 		if err != nil {
 			return nil, fmt.Errorf("gzip reader: %w", err)
@@ -582,10 +597,7 @@ func readBodyMaybeGzip(resp *http.Response) ([]byte, error) {
 			return nil, fmt.Errorf("read gzip body: %w", err)
 		}
 		return b, nil
+	default:
+		return io.ReadAll(resp.Body)
 	}
-	b, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, fmt.Errorf("read body: %w", err)
-	}
-	return b, nil
 }

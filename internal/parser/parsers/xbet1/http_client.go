@@ -24,6 +24,9 @@ import (
 // chromeMu serializes all Chrome usage so only one instance runs at a time
 var chromeMu sync.Mutex
 
+// fallbackBaseURL is used when mirror resolution fails
+const fallbackBaseURL = "https://1xlite-6173396.bar"
+
 type Client struct {
 	baseURL        string
 	mirrorURL      string // Mirror URL to resolve actual baseURL
@@ -212,7 +215,9 @@ func resolveMirrorWithJS(mirrorURL string, timeout time.Duration) (string, error
 		return finalURL, nil
 	}
 
-	return "", fmt.Errorf("failed to resolve mirror URL: %s", mirrorURL)
+	// Fallback to known working base URL if resolution fails
+	slog.Warn("1xbet: mirror resolution failed, using fallback base URL", "mirror_url", mirrorURL, "fallback", fallbackBaseURL)
+	return fallbackBaseURL, nil
 }
 
 // isIPAddress checks if a string is an IP address (IPv4 or IPv6)
@@ -323,8 +328,16 @@ func (c *Client) ensureResolved() error {
 			slog.Warn("1xbet: mirror re-resolve failed, keeping cached URL", "mirror_url", c.mirrorURL, "error", err, "cached_url", resolvedURL)
 			return nil
 		}
-		slog.Error("1xbet: mirror resolve failed", "mirror_url", c.mirrorURL, "error", err)
-		return fmt.Errorf("failed to resolve mirror: %w", err)
+		// Use fallback base URL if resolution fails and we don't have cached URL
+		slog.Warn("1xbet: mirror resolve failed, using fallback base URL", "mirror_url", c.mirrorURL, "error", err, "fallback", fallbackBaseURL)
+		base := fallbackBaseURL
+		c.resolvedMu.Lock()
+		c.resolvedURL = base
+		c.lastResolveTime = time.Now()
+		c.baseURL = base
+		c.resolvedMu.Unlock()
+		slog.Info("1xbet: using fallback base URL", "fallback_base", base)
+		return nil
 	}
 
 	base := normalizeResolvedBaseURL(resolved)
@@ -380,7 +393,12 @@ func (c *Client) getResolvedBaseURL() string {
 	if c.resolvedURL != "" {
 		return c.resolvedURL
 	}
-	return c.baseURL
+	if c.baseURL != "" {
+		return c.baseURL
+	}
+	// Last resort: return fallback base URL
+	slog.Warn("1xbet: no resolved or base URL available, using fallback", "fallback", fallbackBaseURL)
+	return fallbackBaseURL
 }
 
 // shouldReResolve checks if an error indicates that we should re-resolve the mirror URL

@@ -156,35 +156,65 @@ func parseGroupedEvents(matchID string, groupEvents []GroupEvent, subGames []Sub
 			// Groups 11212, 11412, 8427, 8429 often appear and might be statistical
 			// Try parsing them as statistical events if they have over/under or handicap patterns
 			if len(sgStatsMap) > 0 {
-				// Check if this group has statistical event structure (over/under or handicap patterns)
+				// Check if this group has statistical event structure
+				// Look for over/under pattern: same P value but different T values (or P=0/None)
 				hasStatsStructure := false
 				for _, row := range ge.E {
-					for _, e := range row {
-						// Check for over/under patterns (T=9/10, 794/795) or handicap (T=7/8)
-						if e.T == 9 || e.T == 10 || e.T == 794 || e.T == 795 || e.T == 7 || e.T == 8 {
+					if len(row) >= 2 {
+						// Check if first two events have same P (or both P=0/None) but different T
+						p0 := row[0].P
+						p1 := row[1].P
+						t0 := row[0].T
+						t1 := row[1].T
+						if (p0 == p1 || (p0 == 0 && p1 == 0)) && t0 != t1 {
 							hasStatsStructure = true
 							break
 						}
-					}
-					if hasStatsStructure {
-						break
+						// Also check for standard over/under patterns
+						for _, e := range row {
+							if e.T == 9 || e.T == 10 || e.T == 794 || e.T == 795 || e.T == 7 || e.T == 8 {
+								hasStatsStructure = true
+								break
+							}
+						}
+						if hasStatsStructure {
+							break
+						}
 					}
 				}
-				// If it has statistical structure but we don't know the type, try to infer from SG
-				// For now, if we have corners SG, try corners first, then others
+				// If it has statistical structure and we have SG metadata, parse as statistical
 				if hasStatsStructure {
-					// Try corners first (most common)
-					if _, hasCorners := sgStatsMap[183028]; hasCorners {
-						parseStatisticalGroup(eventsByType, matchID, ge, now, string(models.StandardEventCorners))
-					} else if _, hasFouls := sgStatsMap[250185]; hasFouls {
-						parseStatisticalGroup(eventsByType, matchID, ge, now, string(models.StandardEventFouls))
-					} else if _, hasYellowCards := sgStatsMap[198701]; hasYellowCards {
-						parseStatisticalGroup(eventsByType, matchID, ge, now, string(models.StandardEventYellowCards))
-					} else if _, hasOffsides := sgStatsMap[250162]; hasOffsides {
-						parseStatisticalGroup(eventsByType, matchID, ge, now, string(models.StandardEventOffsides))
+					// Try to match by checking if any SG.N matches GE.GS or GE.G
+					// If not, use first available statistical type from SG
+					eventType := ""
+					if sgStatsMap[int64(ge.GS)] != "" {
+						eventType = sgStatsMap[int64(ge.GS)]
+					} else if sgStatsMap[int64(ge.G)] != "" {
+						eventType = sgStatsMap[int64(ge.G)]
 					} else {
-						// Skip unknown groups (log at Info level to see what groups are available)
-						slog.Info("1xbet: skipping unknown group", "group_id", ge.G, "group_sub_id", ge.GS)
+						// Use first available statistical type (prefer corners)
+						for _, et := range []string{
+							string(models.StandardEventCorners),
+							string(models.StandardEventFouls),
+							string(models.StandardEventYellowCards),
+							string(models.StandardEventOffsides),
+						} {
+							for _, sgN := range sgStatsMap {
+								if sgN == et {
+									eventType = et
+									break
+								}
+							}
+							if eventType != "" {
+								break
+							}
+						}
+					}
+					if eventType != "" {
+						slog.Debug("1xbet: parsing unknown group as statistical", "group_id", ge.G, "group_sub_id", ge.GS, "event_type", eventType)
+						parseStatisticalGroup(eventsByType, matchID, ge, now, eventType)
+					} else {
+						slog.Info("1xbet: skipping unknown group (has stats structure but no SG mapping)", "group_id", ge.G, "group_sub_id", ge.GS)
 					}
 				} else {
 					// Skip unknown groups (log at Info level to see what groups are available)

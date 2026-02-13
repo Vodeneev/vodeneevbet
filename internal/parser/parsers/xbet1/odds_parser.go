@@ -130,8 +130,8 @@ func parseGroupedEvents(matchID string, groupEvents []GroupEvent) []models.Event
 			// Offsides
 			parseStatisticalGroup(eventsByType, matchID, ge, now, string(models.StandardEventOffsides))
 		default:
-			// Skip unknown groups
-			slog.Debug("1xbet: skipping unknown group", "group_id", ge.G, "group_sub_id", ge.GS)
+			// Skip unknown groups (log at Info level to see what groups are available)
+			slog.Info("1xbet: skipping unknown group", "group_id", ge.G, "group_sub_id", ge.GS)
 		}
 	}
 

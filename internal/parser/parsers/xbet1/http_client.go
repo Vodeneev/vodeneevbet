@@ -232,6 +232,7 @@ func NewClient(baseURL, mirrorURL string, timeout time.Duration, proxyList []str
 	insecureTLS := os.Getenv("1XBET_INSECURE_TLS") == "1"
 
 	transport := http.DefaultTransport.(*http.Transport).Clone()
+	transport.DisableCompression = true // we send Accept-Encoding and decode in readBodyDecode
 	if transport.TLSClientConfig == nil {
 		transport.TLSClientConfig = &tls.Config{}
 	}

@@ -12,7 +12,6 @@ import (
 	"net/http"
 	"net/url"
 	"os"
-	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -559,21 +558,6 @@ func (c *Client) doRequest(urlStr string) ([]byte, error) {
 		preview := string(b)
 		if len(preview) > 200 {
 			preview = preview[:200] + "..."
-		}
-		// On 406 log full request so we can reproduce with curl and compare (TLS fingerprint vs headers).
-		if resp.StatusCode == 406 {
-			var headerLines []string
-			for k := range req.Header {
-				headerLines = append(headerLines, k+": "+strings.Join(req.Header.Values(k), ", "))
-			}
-			// Sort for stable output
-			sort.Strings(headerLines)
-			slog.Warn("1xbet: API 406 — full request dump",
-				"method", req.Method,
-				"url", urlStr,
-				"headers_count", len(req.Header),
-				"headers", strings.Join(headerLines, " | "),
-			)
 		}
 		slog.Warn("1xbet: API request failed", "url", urlStr, "status", resp.StatusCode, "body_preview", preview)
 		if c.shouldReResolve(nil, resp.StatusCode) {

@@ -42,7 +42,7 @@ func NewParser(cfg *config.Config) *Parser {
 	}
 
 	client := NewClient(baseURL, mirrorURL, cfg.Parser.Timeout, cfg.Parser.Xbet1.ProxyList)
-	slog.Info("1xbet: parser init (Accept-Encoding br/zstd, 406 fix)", "base_url", baseURL, "mirror_url", mirrorURL)
+	slog.Info("1xbet: parser init", "base_url", baseURL, "mirror_url", mirrorURL)
 
 	return &Parser{
 		cfg:     cfg,

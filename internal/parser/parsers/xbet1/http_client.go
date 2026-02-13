@@ -97,7 +97,7 @@ func resolveMirror(mirrorURL string, timeout time.Duration) (string, error) {
 	}
 	defer resp.Body.Close()
 
-	finalURL = resp.Request.URL.String()
+	finalURL := resp.Request.URL.String()
 	if finalURL != mirrorURL {
 		// Accept HTTP redirect result (even if it's an IP) - simpler and works on VM without Chrome
 		slog.Debug("Resolved mirror", "from", mirrorURL, "to", finalURL, "method", "HTTP redirect")

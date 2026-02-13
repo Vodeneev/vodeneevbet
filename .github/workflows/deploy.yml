@@ -106,14 +106,40 @@ jobs:
           scp "deploy/vm-bookmaker-services/docker-compose.yml" "${VM_USER}@${VM_HOST}:${REMOTE_DIR}/docker-compose.yml"
           rsync -az --delete "configs/" "${VM_USER}@${VM_HOST}:${REMOTE_DIR}/configs/"
 
+      - name: Get enabled bookmaker services from config
+        id: profiles
+        run: |
+          CONFIG_FILE="configs/production.yaml"
+          ENABLED=()
+          in_parser=false
+          in_bookmaker_services=false
+          while IFS= read -r line; do
+            if [[ "$line" =~ ^[[:space:]]*parser:[[:space:]]*$ ]]; then in_parser=true; continue; fi
+            if [[ "$in_parser" == true ]] && [[ "$line" =~ ^[[:space:]]{2}bookmaker_services:[[:space:]]*$ ]]; then in_bookmaker_services=true; continue; fi
+            if [[ "$line" =~ ^[^[:space:]#] ]]; then in_parser=false; in_bookmaker_services=false; continue; fi
+            if [[ "$in_bookmaker_services" == true ]] && [[ "$line" =~ ^[[:space:]]{0,2}[^[:space:]#] ]] && [[ ! "$line" =~ ^[[:space:]]{4} ]]; then in_bookmaker_services=false; continue; fi
+            if [[ "$in_bookmaker_services" == true ]]; then
+              [[ "$line" =~ ^[[:space:]]*# ]] && continue
+              if [[ "$line" =~ ^[[:space:]]{4}([a-zA-Z0-9_]+):[[:space:]]+ ]]; then ENABLED+=("${BASH_REMATCH[1]}"); fi
+            fi
+          done < "${CONFIG_FILE}"
+          if [ ${#ENABLED[@]} -eq 0 ]; then
+            echo "No enabled bookmaker services in parser.bookmaker_services" >&2
+            exit 1
+          fi
+          COMPOSE_PROFILES=$(IFS=,; echo "${ENABLED[*]}")
+          echo "COMPOSE_PROFILES=${COMPOSE_PROFILES}" >> "$GITHUB_OUTPUT"
+          echo "Enabled: ${COMPOSE_PROFILES}"
+
       - name: Pull & up
         run: |
           if [ -z "${GHCR_TOKEN}" ]; then
             echo "GHCR_TOKEN is not set" >&2
             exit 1
           fi
+          COMPOSE_PROFILES="${{ steps.profiles.outputs.COMPOSE_PROFILES }}"
           printf %s "${GHCR_TOKEN}" | ssh "${VM_USER}@${VM_HOST}" "sudo docker login ghcr.io -u \"${GHCR_USERNAME}\" --password-stdin"
-          ssh "${VM_USER}@${VM_HOST}" "REMOTE_DIR='${REMOTE_DIR}' IMAGE_OWNER='${IMAGE_OWNER}' IMAGE_TAG='${IMAGE_TAG}' YC_SERVICE_ACCOUNT_KEY_JSON='${YC_SERVICE_ACCOUNT_KEY_JSON:-}' YC_FOLDER_ID='${YC_FOLDER_ID:-}' YC_LOG_GROUP_ID='${YC_LOG_GROUP_ID:-}' YC_LOG_GROUP_NAME='${YC_LOG_GROUP_NAME:-default}' bash -s" <<'EOF'
+          ssh "${VM_USER}@${VM_HOST}" "REMOTE_DIR='${REMOTE_DIR}' IMAGE_OWNER='${IMAGE_OWNER}' IMAGE_TAG='${IMAGE_TAG}' COMPOSE_PROFILES='${COMPOSE_PROFILES}' YC_SERVICE_ACCOUNT_KEY_JSON='${YC_SERVICE_ACCOUNT_KEY_JSON:-}' YC_FOLDER_ID='${YC_FOLDER_ID:-}' YC_LOG_GROUP_ID='${YC_LOG_GROUP_ID:-}' YC_LOG_GROUP_NAME='${YC_LOG_GROUP_NAME:-default}' bash -s" <<'EOF'
           set -euo pipefail
           cd "${REMOTE_DIR}"
           if [ -n "${YC_SERVICE_ACCOUNT_KEY_JSON:-}" ]; then
@@ -126,21 +152,31 @@ jobs:
               "${IMAGE_OWNER}" "${IMAGE_TAG}" "${YC_FOLDER_ID:-}" "${YC_LOG_GROUP_ID:-}" "${YC_LOG_GROUP_NAME:-default}" > .env
           fi
           export COMPOSE_PROJECT_NAME=vodeneevbet_bookmaker
+          export COMPOSE_PROFILES="${COMPOSE_PROFILES}"
+          ALL_SERVICES="fonbet pinnacle pinnacle888 marathonbet xbet1"
+          for svc in ${ALL_SERVICES}; do
+            if ! echo "${COMPOSE_PROFILES}" | grep -qw "${svc}"; then
+              echo "Stopping disabled service: ${svc}"
+              sudo docker stop vodeneevbet-${svc} 2>/dev/null || true
+              sudo docker rm vodeneevbet-${svc} 2>/dev/null || true
+            fi
+          done
           sudo docker compose down --remove-orphans || true
-          # Clean up old images/containers/build cache to prevent disk from filling up
           sudo docker image prune -af --filter "until=2h" || true
           sudo docker builder prune -af || true
           sudo docker compose pull
           sudo docker compose up -d --remove-orphans --force-recreate
-          # Final cleanup: remove dangling images left after recreate
           sudo docker image prune -f || true
           for i in 1 2 3 4 5 6 7 8 9 10; do
-            if [ "$(sudo docker ps -q -f name=vodeneevbet-fonbet -f status=running | wc -l)" -ge 1 ] && \
-               [ "$(sudo docker ps -q -f name=vodeneevbet-pinnacle -f status=running | wc -l)" -ge 1 ] && \
-               [ "$(sudo docker ps -q -f name=vodeneevbet-pinnacle888 -f status=running | wc -l)" -ge 1 ] && \
-               [ "$(sudo docker ps -q -f name=vodeneevbet-marathonbet -f status=running | wc -l)" -ge 1 ] && \
-               [ "$(sudo docker ps -q -f name=vodeneevbet-xbet1 -f status=running | wc -l)" -ge 1 ]; then
-              echo "All bookmaker containers running"
+            all_ok=1
+            for svc in $(echo "${COMPOSE_PROFILES}" | tr ',' ' '); do
+              if [ "$(sudo docker ps -q -f name=vodeneevbet-${svc} -f status=running | wc -l)" -lt 1 ]; then
+                all_ok=0
+                break
+              fi
+            done
+            if [ "${all_ok}" -eq 1 ]; then
+              echo "All enabled bookmaker containers running"
               exit 0
             fi
             sleep 3

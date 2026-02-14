@@ -54,11 +54,29 @@ var totalParamRegex = regexp.MustCompile(`\((\d+\.?\d*)\)`)
 // mutableIdRegex matches data-mutable-id for market identification
 var mutableIdRegex = regexp.MustCompile(`data-mutable-id="([^"]+)"`)
 
+// openTdRegex matches opening <td> tag to find cell boundary (space or > after "td")
+var openTdRegex = regexp.MustCompile(`<td[\s>]`)
+
 // preferenceIdRegex matches data-preference-id for market identification
 var preferenceIdRegex = regexp.MustCompile(`data-preference-id="([^"]+)"`)
 
 // selectionKeyRegex extracts selection key for parameter extraction (e.g., "Total_Corners6.Under_5.5")
 var selectionKeyRegex = regexp.MustCompile(`data-selection-key="[^"]*\.(Under|Over)_([0-9.]+)"`)
+
+// totalGoalsSelectionKeyRegex matches Total_Goals in data-selection-key (e.g. Total_Goals2.Under_2.5, Total_Goals.Over_1.5)
+var totalGoalsSelectionKeyRegex = regexp.MustCompile(`data-selection-key="[^"]*Total_Goals[^"]*\.(Under|Over)_(\d+\.?\d*)"`)
+
+// matchHandicapSelectionKeyRegex matches To_Win_Match_With_Handicap*.HB_H or HB_A (home/away handicap)
+var matchHandicapSelectionKeyRegex = regexp.MustCompile(`data-selection-key="[^"]*To_Win_Match_With_Handicap[^"]*\.(HB_H|HB_A)"`)
+
+// totalCornersSelectionKeyRegex matches Total_Corners in data-selection-key (e.g. Total_Corners6.Under_6.5, Over_6.5)
+var totalCornersSelectionKeyRegex = regexp.MustCompile(`data-selection-key="[^"]*Total_Corners[^"]*\.(Under|Over)_(\d+\.?\d*)"`)
+
+// mostCornersSelectionKeyRegex matches Most_Corners.home / .draw / .away (кто подаст больше угловых — 1X2)
+var mostCornersSelectionKeyRegex = regexp.MustCompile(`data-selection-key="[^"]*Most_Corners\.(home|draw|away)"`)
+
+// mostCornersHandicapSelectionKeyRegex matches Most_Corners_With_Handicap*.HB_H or HB_A (угловые с учётом форы)
+var mostCornersHandicapSelectionKeyRegex = regexp.MustCompile(`data-selection-key="[^"]*Most_Corners_With_Handicap[^"]*\.(HB_H|HB_A)"`)
 
 // parseAdditionalMarkets parses corners, fouls, and other markets from remaining odds
 func parseAdditionalMarkets(match *models.Match, matchID, bookmakerKey string, oddsWithContexts []oddWithContext, now time.Time) {
@@ -604,6 +622,406 @@ func max(a, b int) int {
 	return b
 }
 
+// totalGoalsBySelectionKey returns map: param -> {Under, Over} odds from data-selection-key (block "Популярные" etc).
+// These are the correct totals for 2.5, 3, 3.5 when the main table only has 1.5.
+func parseTotalsFromSelectionKey(htmlBody string) map[string]struct{ Under, Over float64 } {
+	out := make(map[string]struct{ Under, Over float64 })
+	type pair struct{ outcome string; odds float64 }
+	byParam := make(map[string][]pair)
+
+	for _, sub := range totalGoalsSelectionKeyRegex.FindAllStringSubmatchIndex(htmlBody, -1) {
+		outcome := htmlBody[sub[2]:sub[3]]   // Under or Over
+		param := htmlBody[sub[4]:sub[5]]     // e.g. 2.5, 3
+		keyPos := sub[0]
+
+		cellStart := 0
+		if before := htmlBody[:keyPos]; len(before) > 0 {
+			tdMatches := openTdRegex.FindAllStringIndex(before, -1)
+			if len(tdMatches) > 0 {
+				cellStart = tdMatches[len(tdMatches)-1][0]
+			}
+		}
+		cellEnd := min(len(htmlBody), keyPos+50)
+		searchArea := htmlBody[cellStart:cellEnd]
+		relKeyPos := keyPos - cellStart
+
+		selMatches := dataSelRegex.FindAllStringSubmatchIndex(searchArea, -1)
+		if len(selMatches) == 0 {
+			continue
+		}
+		var selMatch []int
+		for i := len(selMatches) - 1; i >= 0; i-- {
+			if selMatches[i][1] <= relKeyPos {
+				selMatch = selMatches[i]
+				break
+			}
+		}
+		if selMatch == nil {
+			selMatch = selMatches[0]
+		}
+		raw := ""
+		if selMatch[2] != -1 {
+			raw = searchArea[selMatch[2]:selMatch[3]]
+		} else if selMatch[4] != -1 {
+			raw = searchArea[selMatch[4]:selMatch[5]]
+		}
+		if raw == "" {
+			continue
+		}
+		raw = html.UnescapeString(raw)
+		var s selJSON
+		if err := json.Unmarshal([]byte(raw), &s); err != nil || s.Epr <= 0 {
+			continue
+		}
+		byParam[param] = append(byParam[param], pair{outcome: outcome, odds: s.Epr})
+	}
+
+	for param, pairs := range byParam {
+		var under, over float64
+		// Use first Under/Over seen per param so we take the main totals block, not "3 исхода" or other sections
+		for _, p := range pairs {
+			if strings.EqualFold(p.outcome, "Under") && under == 0 {
+				under = p.odds
+			} else if strings.EqualFold(p.outcome, "Over") && over == 0 {
+				over = p.odds
+			}
+		}
+		if under > 0 && over > 0 {
+			out[param] = struct{ Under, Over float64 }{Under: under, Over: over}
+		}
+	}
+	return out
+}
+
+// handicapLine from selection-key: lineKey -> homeParam, awayParam, homeOdds, awayOdds
+type handicapLine struct {
+	LineKey   string
+	HomeParam string
+	AwayParam string
+	HomeOdds  float64
+	AwayOdds  float64
+}
+
+// parseHandicapsFromSelectionKey returns handicap lines from To_Win_Match_With_Handicap*.HB_H / HB_A (block "Популярные").
+func parseHandicapsFromSelectionKey(htmlBody string) []handicapLine {
+	type keyOdds struct {
+		side string // HB_H or HB_A
+		param string
+		odds float64
+	}
+	byPrefix := make(map[string][]keyOdds) // "To_Win_Match_With_Handicap" or "To_Win_Match_With_Handicap0" etc.
+
+	for _, sub := range matchHandicapSelectionKeyRegex.FindAllStringSubmatchIndex(htmlBody, -1) {
+		side := htmlBody[sub[2]:sub[3]]
+		keyPos := sub[0]
+		cellStart := 0
+		if before := htmlBody[:keyPos]; len(before) > 0 {
+			tdMatches := openTdRegex.FindAllStringIndex(before, -1)
+			if len(tdMatches) > 0 {
+				cellStart = tdMatches[len(tdMatches)-1][0]
+			}
+		}
+		cellEnd := min(len(htmlBody), keyPos+50)
+		searchArea := htmlBody[cellStart:cellEnd]
+		relKeyPos := keyPos - cellStart
+		selMatches := dataSelRegex.FindAllStringSubmatchIndex(searchArea, -1)
+		if len(selMatches) == 0 {
+			continue
+		}
+		var selMatch []int
+		for i := len(selMatches) - 1; i >= 0; i-- {
+			if selMatches[i][1] <= relKeyPos {
+				selMatch = selMatches[i]
+				break
+			}
+		}
+		if selMatch == nil {
+			selMatch = selMatches[0]
+		}
+		raw := ""
+		if selMatch[2] != -1 {
+			raw = searchArea[selMatch[2]:selMatch[3]]
+		} else if selMatch[4] != -1 {
+			raw = searchArea[selMatch[4]:selMatch[5]]
+		}
+		if raw == "" {
+			continue
+		}
+		raw = html.UnescapeString(raw)
+		var s selJSON
+		if err := json.Unmarshal([]byte(raw), &s); err != nil || s.Epr <= 0 {
+			continue
+		}
+		// Extract key prefix (To_Win_Match_With_Handicap or To_Win_Match_With_Handicap0, ...)
+		keyStart := strings.Index(htmlBody[sub[0]:sub[1]], "To_Win_Match_With_Handicap")
+		if keyStart < 0 {
+			continue
+		}
+		keyStr := htmlBody[sub[0]+keyStart:sub[1]]
+		dot := strings.Index(keyStr, ".")
+		if dot > 0 {
+			keyStr = keyStr[:dot]
+		}
+		// Param from context: (-1.5), (0), (+1.5) etc.
+		ctxStart := max(0, cellStart-80)
+		ctx := htmlBody[ctxStart:cellEnd]
+		param := ""
+		if matches := handicapParamRegex.FindStringSubmatch(ctx); len(matches) > 1 {
+			param = matches[1]
+		}
+		byPrefix[keyStr] = append(byPrefix[keyStr], keyOdds{side: side, param: param, odds: s.Epr})
+	}
+
+	var lines []handicapLine
+	for _, pairs := range byPrefix {
+		var homeParam, awayParam string
+		var homeOdds, awayOdds float64
+		for _, p := range pairs {
+			if p.side == "HB_H" {
+				homeParam = p.param
+				if homeOdds == 0 {
+					homeOdds = p.odds
+				}
+			} else {
+				awayParam = p.param
+				if awayOdds == 0 {
+					awayOdds = p.odds
+				}
+			}
+		}
+		if homeOdds > 0 && awayOdds > 0 && homeParam != "" && awayParam != "" {
+			lineKey := strings.TrimPrefix(strings.TrimPrefix(homeParam, "+"), "-")
+			lines = append(lines, handicapLine{
+				LineKey:   lineKey,
+				HomeParam: homeParam,
+				AwayParam: awayParam,
+				HomeOdds:  homeOdds,
+				AwayOdds:  awayOdds,
+			})
+		}
+	}
+	return lines
+}
+
+// parseCornersTotalsFromSelectionKey returns Total_Corners Under/Over by param (6.5, 7.5, ... 14.5); first occurrence per param.
+func parseCornersTotalsFromSelectionKey(htmlBody string) map[string]struct{ Under, Over float64 } {
+	out := make(map[string]struct{ Under, Over float64 })
+	type pair struct {
+		outcome string
+		odds    float64
+	}
+	byParam := make(map[string][]pair)
+	for _, sub := range totalCornersSelectionKeyRegex.FindAllStringSubmatchIndex(htmlBody, -1) {
+		outcome := htmlBody[sub[2]:sub[3]]
+		param := htmlBody[sub[4]:sub[5]]
+		keyPos := sub[0]
+		cellStart := 0
+		if before := htmlBody[:keyPos]; len(before) > 0 {
+			tdMatches := openTdRegex.FindAllStringIndex(before, -1)
+			if len(tdMatches) > 0 {
+				cellStart = tdMatches[len(tdMatches)-1][0]
+			}
+		}
+		cellEnd := min(len(htmlBody), keyPos+50)
+		searchArea := htmlBody[cellStart:cellEnd]
+		relKeyPos := keyPos - cellStart
+		selMatches := dataSelRegex.FindAllStringSubmatchIndex(searchArea, -1)
+		if len(selMatches) == 0 {
+			continue
+		}
+		var selMatch []int
+		for i := len(selMatches) - 1; i >= 0; i-- {
+			if selMatches[i][1] <= relKeyPos {
+				selMatch = selMatches[i]
+				break
+			}
+		}
+		if selMatch == nil {
+			selMatch = selMatches[0]
+		}
+		raw := ""
+		if selMatch[2] != -1 {
+			raw = searchArea[selMatch[2]:selMatch[3]]
+		} else if selMatch[4] != -1 {
+			raw = searchArea[selMatch[4]:selMatch[5]]
+		}
+		if raw == "" {
+			continue
+		}
+		raw = html.UnescapeString(raw)
+		var s selJSON
+		if err := json.Unmarshal([]byte(raw), &s); err != nil || s.Epr <= 0 {
+			continue
+		}
+		byParam[param] = append(byParam[param], pair{outcome: outcome, odds: s.Epr})
+	}
+	for param, pairs := range byParam {
+		var under, over float64
+		for _, p := range pairs {
+			if strings.EqualFold(p.outcome, "Under") && under == 0 {
+				under = p.odds
+			} else if strings.EqualFold(p.outcome, "Over") && over == 0 {
+				over = p.odds
+			}
+		}
+		if under > 0 && over > 0 {
+			out[param] = struct{ Under, Over float64 }{Under: under, Over: over}
+		}
+	}
+	return out
+}
+
+// parseMostCorners1X2FromSelectionKey returns home/draw/away odds for "Кто подаст больше угловых" (Most_Corners.home/.draw/.away).
+func parseMostCorners1X2FromSelectionKey(htmlBody string) (home, draw, away float64) {
+	byOutcome := make(map[string]float64)
+	for _, sub := range mostCornersSelectionKeyRegex.FindAllStringSubmatchIndex(htmlBody, -1) {
+		outcome := htmlBody[sub[2]:sub[3]]
+		keyPos := sub[0]
+		cellStart := 0
+		if before := htmlBody[:keyPos]; len(before) > 0 {
+			tdMatches := openTdRegex.FindAllStringIndex(before, -1)
+			if len(tdMatches) > 0 {
+				cellStart = tdMatches[len(tdMatches)-1][0]
+			}
+		}
+		cellEnd := min(len(htmlBody), keyPos+50)
+		searchArea := htmlBody[cellStart:cellEnd]
+		relKeyPos := keyPos - cellStart
+		selMatches := dataSelRegex.FindAllStringSubmatchIndex(searchArea, -1)
+		if len(selMatches) == 0 {
+			continue
+		}
+		var selMatch []int
+		for i := len(selMatches) - 1; i >= 0; i-- {
+			if selMatches[i][1] <= relKeyPos {
+				selMatch = selMatches[i]
+				break
+			}
+		}
+		if selMatch == nil {
+			selMatch = selMatches[0]
+		}
+		raw := ""
+		if selMatch[2] != -1 {
+			raw = searchArea[selMatch[2]:selMatch[3]]
+		} else if selMatch[4] != -1 {
+			raw = searchArea[selMatch[4]:selMatch[5]]
+		}
+		if raw == "" {
+			continue
+		}
+		raw = html.UnescapeString(raw)
+		var s selJSON
+		if err := json.Unmarshal([]byte(raw), &s); err != nil || s.Epr <= 0 {
+			continue
+		}
+		if byOutcome[outcome] == 0 {
+			byOutcome[outcome] = s.Epr
+		}
+	}
+	return byOutcome["home"], byOutcome["draw"], byOutcome["away"]
+}
+
+// parseCornersHandicapsFromSelectionKey returns handicap lines for "Угловые с учётом форы" (Most_Corners_With_Handicap*.HB_H/HB_A), excluding 1st/2nd half.
+func parseCornersHandicapsFromSelectionKey(htmlBody string) []handicapLine {
+	type keyOdds struct {
+		side  string
+		param string
+		odds  float64
+	}
+	byPrefix := make(map[string][]keyOdds)
+	for _, sub := range mostCornersHandicapSelectionKeyRegex.FindAllStringSubmatchIndex(htmlBody, -1) {
+		fullKey := htmlBody[sub[0]:sub[1]]
+		if strings.Contains(fullKey, "1st_Half") || strings.Contains(fullKey, "2nd_Half") {
+			continue
+		}
+		side := htmlBody[sub[2]:sub[3]]
+		keyPos := sub[0]
+		cellStart := 0
+		if before := htmlBody[:keyPos]; len(before) > 0 {
+			tdMatches := openTdRegex.FindAllStringIndex(before, -1)
+			if len(tdMatches) > 0 {
+				cellStart = tdMatches[len(tdMatches)-1][0]
+			}
+		}
+		cellEnd := min(len(htmlBody), keyPos+50)
+		searchArea := htmlBody[cellStart:cellEnd]
+		relKeyPos := keyPos - cellStart
+		selMatches := dataSelRegex.FindAllStringSubmatchIndex(searchArea, -1)
+		if len(selMatches) == 0 {
+			continue
+		}
+		var selMatch []int
+		for i := len(selMatches) - 1; i >= 0; i-- {
+			if selMatches[i][1] <= relKeyPos {
+				selMatch = selMatches[i]
+				break
+			}
+		}
+		if selMatch == nil {
+			selMatch = selMatches[0]
+		}
+		raw := ""
+		if selMatch[2] != -1 {
+			raw = searchArea[selMatch[2]:selMatch[3]]
+		} else if selMatch[4] != -1 {
+			raw = searchArea[selMatch[4]:selMatch[5]]
+		}
+		if raw == "" {
+			continue
+		}
+		raw = html.UnescapeString(raw)
+		var s selJSON
+		if err := json.Unmarshal([]byte(raw), &s); err != nil || s.Epr <= 0 {
+			continue
+		}
+		keyStart := strings.Index(fullKey, "Most_Corners_With_Handicap")
+		if keyStart < 0 {
+			continue
+		}
+		keyStr := fullKey[keyStart:]
+		if dot := strings.Index(keyStr, "."); dot > 0 {
+			keyStr = keyStr[:dot]
+		}
+		ctxStart := max(0, cellStart-80)
+		ctx := htmlBody[ctxStart:cellEnd]
+		param := ""
+		if matches := handicapParamRegex.FindStringSubmatch(ctx); len(matches) > 1 {
+			param = matches[1]
+		}
+		byPrefix[keyStr] = append(byPrefix[keyStr], keyOdds{side: side, param: param, odds: s.Epr})
+	}
+	var lines []handicapLine
+	for _, pairs := range byPrefix {
+		var homeParam, awayParam string
+		var homeOdds, awayOdds float64
+		for _, p := range pairs {
+			if p.side == "HB_H" {
+				homeParam = p.param
+				if homeOdds == 0 {
+					homeOdds = p.odds
+				}
+			} else {
+				awayParam = p.param
+				if awayOdds == 0 {
+					awayOdds = p.odds
+				}
+			}
+		}
+		if homeOdds > 0 && awayOdds > 0 && homeParam != "" && awayParam != "" {
+			lineKey := strings.TrimPrefix(strings.TrimPrefix(homeParam, "+"), "-")
+			lines = append(lines, handicapLine{
+				LineKey:   lineKey,
+				HomeParam: homeParam,
+				AwayParam: awayParam,
+				HomeOdds:  homeOdds,
+				AwayOdds:  awayOdds,
+			})
+		}
+	}
+	return lines
+}
+
 // parseMarketsByType extracts all markets from HTML using data-market-type attribute
 func parseMarketsByType(htmlBody string) []marketOdd {
 	var markets []marketOdd
@@ -623,18 +1041,36 @@ func parseMarketsByType(htmlBody string) []marketOdd {
 			mutableID = htmlBody[max(0, startPos-100)+mutableIDMatch[2]:max(0, startPos-100)+mutableIDMatch[3]]
 		}
 		
-		// Find data-sel in the same element or nearby (within 500 chars)
-		searchStart := startPos
-		searchEnd := min(len(htmlBody), startPos+500)
-		searchArea := htmlBody[searchStart:searchEnd]
+		// Find data-sel in the same cell. On Marathonbet, data-sel is in the same <td> as data-market-type (often before it).
+		// Use element boundary: find the opening <td> that contains this data-market-type, then look for data-sel only inside that cell.
+		cellStart := 0
+		if before := htmlBody[:startPos]; len(before) > 0 {
+			tdMatches := openTdRegex.FindAllStringIndex(before, -1)
+			if len(tdMatches) > 0 {
+				cellStart = tdMatches[len(tdMatches)-1][0] // last <td before startPos = start of this cell
+			}
+		}
+		// Search only within this cell: from cellStart to a bit after startPos (in case data-sel is after data-market-type)
+		cellEnd := min(len(htmlBody), startPos+150)
+		searchArea := htmlBody[cellStart:cellEnd]
+		relStartPos := startPos - cellStart
 		
 		selMatches := dataSelRegex.FindAllStringSubmatchIndex(searchArea, -1)
 		if len(selMatches) == 0 {
 			continue
 		}
 		
-		// Take first data-sel found
-		selMatch := selMatches[0]
+		// Prefer data-sel that ends before or at relStartPos (same cell); otherwise take first after relStartPos
+		var selMatch []int
+		for i := len(selMatches) - 1; i >= 0; i-- {
+			if selMatches[i][1] <= relStartPos {
+				selMatch = selMatches[i]
+				break
+			}
+		}
+		if selMatch == nil {
+			selMatch = selMatches[0]
+		}
 		raw := ""
 		if selMatch[2] != -1 {
 			raw = searchArea[selMatch[2]:selMatch[3]]
@@ -963,89 +1399,128 @@ func parseEventPage(htmlBody []byte, eventPath string) (*models.Match, error) {
 		match.Events = append(match.Events, dcEvent)
 	}
 
-	// Parse HANDICAP markets
+	// Parse HANDICAP markets: each line is home (-X) vs away (+X), group by line key (abs value)
 	handicapMarkets := []marketOdd{}
 	for _, m := range markets {
 		if m.marketType == "HANDICAP" {
 			handicapMarkets = append(handicapMarkets, m)
 		}
 	}
+	addedHandicapLines := make(map[string]bool)
 	if len(handicapMarkets) >= 2 {
 		sort.Slice(handicapMarkets, func(i, j int) bool {
 			return handicapMarkets[i].mutableID < handicapMarkets[j].mutableID
 		})
-		// Group by parameter
-		handicapsByParam := make(map[string][]marketOdd)
-		for _, m := range handicapMarkets {
-			handicapsByParam[m.param] = append(handicapsByParam[m.param], m)
+		lineKey := func(param string) string {
+			s := strings.TrimPrefix(strings.TrimSpace(param), "+")
+			s = strings.TrimPrefix(s, "-")
+			return s
 		}
-		for param, hMarkets := range handicapsByParam {
-			if len(hMarkets) >= 2 {
-				// S_2_1 = home handicap, S_2_3 = away handicap
-				sort.Slice(hMarkets, func(i, j int) bool {
-					return hMarkets[i].mutableID < hMarkets[j].mutableID
-				})
-				handicapEventID := matchID + "_" + bookmakerKey + "_handicap_" + strings.ReplaceAll(param, "-", "neg")
-				handicapEvent := models.Event{
-					ID:         handicapEventID,
-					MatchID:    matchID,
-					EventType:  "handicap",
-					MarketName: "Handicap " + param,
-					Bookmaker:  bookmakerName,
-					Outcomes: []models.Outcome{
-						{ID: handicapEventID + "_home", EventID: handicapEventID, OutcomeType: "handicap_home", Parameter: param, Odds: hMarkets[0].odds, Bookmaker: bookmakerName, CreatedAt: now, UpdatedAt: now},
-						{ID: handicapEventID + "_away", EventID: handicapEventID, OutcomeType: "handicap_away", Parameter: param, Odds: hMarkets[1].odds, Bookmaker: bookmakerName, CreatedAt: now, UpdatedAt: now},
-					},
-					CreatedAt: now,
-					UpdatedAt: now,
-				}
-				match.Events = append(match.Events, handicapEvent)
+		handicapsByLine := make(map[string][]marketOdd)
+		for _, m := range handicapMarkets {
+			key := lineKey(m.param)
+			handicapsByLine[key] = append(handicapsByLine[key], m)
+		}
+		for line, hMarkets := range handicapsByLine {
+			if len(hMarkets) < 2 {
+				continue
 			}
+			sort.Slice(hMarkets, func(i, j int) bool { return hMarkets[i].mutableID < hMarkets[j].mutableID })
+			homeParam := hMarkets[0].param
+			awayParam := hMarkets[1].param
+			paramLabel := homeParam + " / " + awayParam
+			handicapEventID := matchID + "_" + bookmakerKey + "_handicap_" + strings.ReplaceAll(line, ".", "_")
+			handicapEvent := models.Event{
+				ID:         handicapEventID,
+				MatchID:    matchID,
+				EventType:  "handicap",
+				MarketName: "Handicap " + paramLabel,
+				Bookmaker:  bookmakerName,
+				Outcomes: []models.Outcome{
+					{ID: handicapEventID + "_home", EventID: handicapEventID, OutcomeType: "handicap_home", Parameter: homeParam, Odds: hMarkets[0].odds, Bookmaker: bookmakerName, CreatedAt: now, UpdatedAt: now},
+					{ID: handicapEventID + "_away", EventID: handicapEventID, OutcomeType: "handicap_away", Parameter: awayParam, Odds: hMarkets[1].odds, Bookmaker: bookmakerName, CreatedAt: now, UpdatedAt: now},
+				},
+				CreatedAt: now,
+				UpdatedAt: now,
+			}
+			match.Events = append(match.Events, handicapEvent)
+			addedHandicapLines[line] = true
 		}
 	}
+	for _, h := range parseHandicapsFromSelectionKey(bodyStr) {
+		if addedHandicapLines[h.LineKey] {
+			continue
+		}
+		addedHandicapLines[h.LineKey] = true
+		paramLabel := h.HomeParam + " / " + h.AwayParam
+		handicapEventID := matchID + "_" + bookmakerKey + "_handicap_sk_" + strings.ReplaceAll(h.LineKey, ".", "_")
+		handicapEvent := models.Event{
+			ID:         handicapEventID,
+			MatchID:    matchID,
+			EventType:  "handicap",
+			MarketName: "Handicap " + paramLabel,
+			Bookmaker:  bookmakerName,
+			Outcomes: []models.Outcome{
+				{ID: handicapEventID + "_home", EventID: handicapEventID, OutcomeType: "handicap_home", Parameter: h.HomeParam, Odds: h.HomeOdds, Bookmaker: bookmakerName, CreatedAt: now, UpdatedAt: now},
+				{ID: handicapEventID + "_away", EventID: handicapEventID, OutcomeType: "handicap_away", Parameter: h.AwayParam, Odds: h.AwayOdds, Bookmaker: bookmakerName, CreatedAt: now, UpdatedAt: now},
+			},
+			CreatedAt: now,
+			UpdatedAt: now,
+		}
+		match.Events = append(match.Events, handicapEvent)
+	}
 
-	// Parse TOTAL markets
+	// Parse TOTAL markets: prefer totals from data-selection-key (block "Популярные") — correct 2.5, 3, 3.5; merge with main table
+	selectionKeyTotals := parseTotalsFromSelectionKey(bodyStr)
+	totalsByParam := make(map[string][]marketOdd)
+	for param, odds := range selectionKeyTotals {
+		totalsByParam[param] = []marketOdd{
+			{param: param, odds: odds.Under},
+			{param: param, odds: odds.Over},
+		}
+	}
 	totalMarkets := []marketOdd{}
 	for _, m := range markets {
 		if m.marketType == "TOTAL" {
 			totalMarkets = append(totalMarkets, m)
 		}
 	}
-	if len(totalMarkets) >= 2 {
-		sort.Slice(totalMarkets, func(i, j int) bool {
-			return totalMarkets[i].mutableID < totalMarkets[j].mutableID
-		})
-		// Group by parameter
-		totalsByParam := make(map[string][]marketOdd)
-		for _, m := range totalMarkets {
-			param := m.param
-			if param == "" {
-				param = "2.5" // default
-			}
+	for _, m := range totalMarkets {
+		param := m.param
+		if param == "" {
+			param = "2.5"
+		}
+		if _, has := totalsByParam[param]; !has {
 			totalsByParam[param] = append(totalsByParam[param], m)
 		}
+	}
+	if len(totalsByParam) > 0 {
 		for param, tMarkets := range totalsByParam {
-			if len(tMarkets) >= 2 {
-				// S_3_1 = Under, S_3_3 = Over
-				sort.Slice(tMarkets, func(i, j int) bool {
-					return tMarkets[i].mutableID < tMarkets[j].mutableID
-				})
-				totalEventID := matchID + "_" + bookmakerKey + "_total_" + strings.ReplaceAll(param, ".", "_")
-				totalEvent := models.Event{
-					ID:         totalEventID,
-					MatchID:    matchID,
-					EventType:  string(models.StandardEventMainMatch),
-					MarketName: "Total " + param,
-					Bookmaker:  bookmakerName,
-					Outcomes: []models.Outcome{
-						{ID: totalEventID + "_under", EventID: totalEventID, OutcomeType: string(models.OutcomeTypeTotalUnder), Parameter: param, Odds: tMarkets[0].odds, Bookmaker: bookmakerName, CreatedAt: now, UpdatedAt: now},
-						{ID: totalEventID + "_over", EventID: totalEventID, OutcomeType: string(models.OutcomeTypeTotalOver), Parameter: param, Odds: tMarkets[1].odds, Bookmaker: bookmakerName, CreatedAt: now, UpdatedAt: now},
-					},
-					CreatedAt: now,
-					UpdatedAt: now,
-				}
-				match.Events = append(match.Events, totalEvent)
+			if len(tMarkets) < 2 {
+				continue
 			}
+			// For main-table (mutableID set), sort by mutableID to get Under then Over; don't swap selection-key order
+			underOdds := tMarkets[0].odds
+			overOdds := tMarkets[1].odds
+			if len(tMarkets) > 2 || (len(tMarkets) == 2 && tMarkets[0].mutableID != "") {
+				sort.Slice(tMarkets, func(i, j int) bool { return tMarkets[i].mutableID < tMarkets[j].mutableID })
+				underOdds, overOdds = tMarkets[0].odds, tMarkets[1].odds
+			}
+			totalEventID := matchID + "_" + bookmakerKey + "_total_" + strings.ReplaceAll(param, ".", "_")
+			totalEvent := models.Event{
+				ID:         totalEventID,
+				MatchID:    matchID,
+				EventType:  string(models.StandardEventMainMatch),
+				MarketName: "Total " + param,
+				Bookmaker:  bookmakerName,
+				Outcomes: []models.Outcome{
+					{ID: totalEventID + "_under", EventID: totalEventID, OutcomeType: string(models.OutcomeTypeTotalUnder), Parameter: param, Odds: underOdds, Bookmaker: bookmakerName, CreatedAt: now, UpdatedAt: now},
+					{ID: totalEventID + "_over", EventID: totalEventID, OutcomeType: string(models.OutcomeTypeTotalOver), Parameter: param, Odds: overOdds, Bookmaker: bookmakerName, CreatedAt: now, UpdatedAt: now},
+				},
+				CreatedAt: now,
+				UpdatedAt: now,
+			}
+			match.Events = append(match.Events, totalEvent)
 		}
 	}
 
@@ -1129,6 +1604,63 @@ func parseEventPage(htmlBody []byte, eventPath string) (*models.Match, error) {
 			}
 			match.Events = append(match.Events, event)
 		}
+	}
+
+	// Corners totals from selection-key (Тотал угловых 6.5, 7.5, ... 14.5)
+	for param, odds := range parseCornersTotalsFromSelectionKey(bodyStr) {
+		eventID := matchID + "_" + bookmakerKey + "_corners_total_" + strings.ReplaceAll(param, ".", "_")
+		cornersEvent := models.Event{
+			ID:         eventID,
+			MatchID:    matchID,
+			EventType:  string(models.StandardEventCorners),
+			MarketName: "Corners Total " + param,
+			Bookmaker:  bookmakerName,
+			Outcomes: []models.Outcome{
+				{ID: eventID + "_under", EventID: eventID, OutcomeType: string(models.OutcomeTypeTotalUnder), Parameter: param, Odds: odds.Under, Bookmaker: bookmakerName, CreatedAt: now, UpdatedAt: now},
+				{ID: eventID + "_over", EventID: eventID, OutcomeType: string(models.OutcomeTypeTotalOver), Parameter: param, Odds: odds.Over, Bookmaker: bookmakerName, CreatedAt: now, UpdatedAt: now},
+			},
+			CreatedAt: now,
+			UpdatedAt: now,
+		}
+		match.Events = append(match.Events, cornersEvent)
+	}
+
+	// Most Corners (Кто подаст больше угловых) — 1X2 по угловым
+	if h, d, a := parseMostCorners1X2FromSelectionKey(bodyStr); h > 0 && d > 0 && a > 0 {
+		eventID := matchID + "_" + bookmakerKey + "_most_corners"
+		match.Events = append(match.Events, models.Event{
+			ID:         eventID,
+			MatchID:    matchID,
+			EventType:  string(models.StandardEventCorners),
+			MarketName: "Most Corners",
+			Bookmaker:  bookmakerName,
+			Outcomes: []models.Outcome{
+				{ID: eventID + "_1", EventID: eventID, OutcomeType: string(models.OutcomeTypeHomeWin), Odds: h, Bookmaker: bookmakerName, CreatedAt: now, UpdatedAt: now},
+				{ID: eventID + "_X", EventID: eventID, OutcomeType: string(models.OutcomeTypeDraw), Odds: d, Bookmaker: bookmakerName, CreatedAt: now, UpdatedAt: now},
+				{ID: eventID + "_2", EventID: eventID, OutcomeType: string(models.OutcomeTypeAwayWin), Odds: a, Bookmaker: bookmakerName, CreatedAt: now, UpdatedAt: now},
+			},
+			CreatedAt: now,
+			UpdatedAt: now,
+		})
+	}
+
+	// Corners handicap (Угловые с учётом форы)
+	for _, h := range parseCornersHandicapsFromSelectionKey(bodyStr) {
+		paramLabel := h.HomeParam + " / " + h.AwayParam
+		eventID := matchID + "_" + bookmakerKey + "_corners_handicap_" + strings.ReplaceAll(h.LineKey, ".", "_")
+		match.Events = append(match.Events, models.Event{
+			ID:         eventID,
+			MatchID:    matchID,
+			EventType:  string(models.StandardEventCorners),
+			MarketName: "Corners Handicap " + paramLabel,
+			Bookmaker:  bookmakerName,
+			Outcomes: []models.Outcome{
+				{ID: eventID + "_home", EventID: eventID, OutcomeType: "handicap_home", Parameter: h.HomeParam, Odds: h.HomeOdds, Bookmaker: bookmakerName, CreatedAt: now, UpdatedAt: now},
+				{ID: eventID + "_away", EventID: eventID, OutcomeType: "handicap_away", Parameter: h.AwayParam, Odds: h.AwayOdds, Bookmaker: bookmakerName, CreatedAt: now, UpdatedAt: now},
+			},
+			CreatedAt: now,
+			UpdatedAt: now,
+		})
 	}
 	
 	// Parse remaining markets using old method as fallback (for markets without preference-id)

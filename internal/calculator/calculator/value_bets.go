@@ -63,6 +63,7 @@ func (c *ValueCalculator) handleTopValueBets(w http.ResponseWriter, r *http.Requ
 		_ = json.NewEncoder(w).Encode(map[string]string{"error": "failed to fetch matches from parser", "details": err.Error()})
 		return
 	}
+	logStatisticalEventsSummary(matches)
 
 	// Calculate value bets using weighted average
 	valueBets = computeValueBets(matches, bookmakerWeights, minValuePercent, maxOdds, 100)

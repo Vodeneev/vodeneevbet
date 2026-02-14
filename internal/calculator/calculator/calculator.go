@@ -185,6 +185,8 @@ func (c *ValueCalculator) processMatchesAsync(ctx context.Context) {
 	// Calculate all diffs
 	diffs := computeTopDiffs(matches, 1000) // Get more diffs for async processing
 
+	logStatisticalEventsSummary(matches)
+
 	slog.Debug("Calculated diffs, storing and checking for alerts", "diff_count", len(diffs))
 
 	// Store diffs and check for new high-value ones

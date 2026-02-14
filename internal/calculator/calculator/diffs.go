@@ -49,6 +49,7 @@ func (c *ValueCalculator) handleTopDiffs(w http.ResponseWriter, r *http.Request)
 
 	// Calculate diffs from fresh data
 	diffs = computeTopDiffs(matches, 100)
+	logStatisticalEventsSummary(matches)
 
 	// Filter by status if specified
 	// Use UTC for comparison to handle timezones correctly (StartTime is stored in UTC)

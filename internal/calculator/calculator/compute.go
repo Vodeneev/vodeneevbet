@@ -1,7 +1,6 @@
 package calculator
 
 import (
-	"fmt"
 	"log/slog"
 	"math"
 	"sort"
@@ -125,25 +124,7 @@ func computeTopDiffs(matches []models.Match, keepTop int) []DiffBet {
 			if len(parts) >= 3 {
 				param = parts[2]
 			}
-			
-			// Log when comparing statistical events (not main_match)
-			if evType != "" && evType != "main_match" {
-				bookmakersList := make([]string, 0, len(byBook))
-				oddsList := make([]string, 0, len(byBook))
-				for bk, odd := range byBook {
-					bookmakersList = append(bookmakersList, bk)
-					oddsList = append(oddsList, fmt.Sprintf("%s:%.3f", bk, odd))
-				}
-				slog.Info("Calculator: comparing statistical event",
-					"match", gm.name,
-					"event_type", evType,
-					"outcome_type", outType,
-					"parameter", param,
-					"bookmakers", strings.Join(bookmakersList, ", "),
-					"bookmakers_count", len(byBook),
-					"odds", strings.Join(oddsList, ", "))
-			}
-			
+
 			minOdd := math.MaxFloat64
 			maxOdd := -math.MaxFloat64
 			minBk, maxBk := "", ""
@@ -310,24 +291,6 @@ func computeValueBets(matches []models.Match, bookmakerWeights map[string]float6
 			if len(parts) >= 3 {
 				param = parts[2]
 			}
-			
-			// Log when comparing statistical events (not main_match)
-			if evType != "" && evType != "main_match" {
-				bookmakersList := make([]string, 0, len(byBook))
-				oddsList := make([]string, 0, len(byBook))
-				for bk, odd := range byBook {
-					bookmakersList = append(bookmakersList, bk)
-					oddsList = append(oddsList, fmt.Sprintf("%s:%.3f", bk, odd))
-				}
-				slog.Info("Calculator: comparing statistical event for value bets",
-					"match", gm.name,
-					"event_type", evType,
-					"outcome_type", outType,
-					"parameter", param,
-					"bookmakers", strings.Join(bookmakersList, ", "),
-					"bookmakers_count", len(byBook),
-					"odds", strings.Join(oddsList, ", "))
-			}
 
 			// Calculate fair probability using weighted average of ALL bookmakers
 			// Convert odds to probabilities: prob = 1 / odd
@@ -416,4 +379,82 @@ func computeValueBets(matches []models.Match, bookmakerWeights map[string]float6
 	}
 
 	return valueBets
+}
+
+// logStatisticalEventsSummary logs how many matches have statistical events:
+// total, how many where all bookmakers have stat events, and per-bookmaker counts.
+func logStatisticalEventsSummary(matches []models.Match) {
+	// gk -> all bookmakers in match; gk -> bookmakers that have at least one stat event
+	allBkPerGroup := map[string]map[string]struct{}{}
+	statBkPerGroup := map[string]map[string]struct{}{}
+
+	for i := range matches {
+		m := matches[i]
+		gk := matchGroupKey(m)
+		if gk == "" {
+			continue
+		}
+		if _, ok := allBkPerGroup[gk]; !ok {
+			allBkPerGroup[gk] = map[string]struct{}{}
+		}
+		if _, ok := statBkPerGroup[gk]; !ok {
+			statBkPerGroup[gk] = map[string]struct{}{}
+		}
+
+		for _, ev := range m.Events {
+			eventType := strings.TrimSpace(ev.EventType)
+			isStat := eventType != "" && eventType != "main_match"
+
+			for _, out := range ev.Outcomes {
+				bk := strings.TrimSpace(out.Bookmaker)
+				if bk == "" {
+					bk = strings.TrimSpace(ev.Bookmaker)
+				}
+				if bk == "" {
+					bk = strings.TrimSpace(m.Bookmaker)
+				}
+				if bk == "" {
+					continue
+				}
+				if !isFinitePositiveOdd(out.Odds) {
+					continue
+				}
+				allBkPerGroup[gk][bk] = struct{}{}
+				if isStat {
+					statBkPerGroup[gk][bk] = struct{}{}
+				}
+			}
+		}
+	}
+
+	var totalWithStat, whereAllBookmakers int
+	perBookmaker := map[string]int{}
+
+	for gk, statBk := range statBkPerGroup {
+		if len(statBk) == 0 {
+			continue
+		}
+		totalWithStat++
+		allBk := allBkPerGroup[gk]
+		if len(allBk) > 0 && len(statBk) >= len(allBk) {
+			allHaveStat := true
+			for b := range allBk {
+				if _, ok := statBk[b]; !ok {
+					allHaveStat = false
+					break
+				}
+			}
+			if allHaveStat {
+				whereAllBookmakers++
+			}
+		}
+		for b := range statBk {
+			perBookmaker[b]++
+		}
+	}
+
+	slog.Info("Calculator: statistical events summary",
+		"matches_with_stat_events", totalWithStat,
+		"matches_where_all_bookmakers", whereAllBookmakers,
+		"per_bookmaker", perBookmaker)
 }

@@ -620,16 +620,8 @@ func parseGroupedEvents(matchID string, groupEvents []GroupEvent, subGames []Sub
 					if eventType != "" {
 						slog.Debug("1xbet: parsing unknown group as statistical", "group_id", ge.G, "group_sub_id", ge.GS, "event_type", eventType)
 						parseStatisticalGroup(eventsByType, matchID, ge, now, eventType)
-					} else {
-						slog.Info("1xbet: skipping unknown group (has stats structure but no SG mapping)", "group_id", ge.G, "group_sub_id", ge.GS)
 					}
-				} else {
-					// Skip unknown groups (log at Info level to see what groups are available)
-					slog.Info("1xbet: skipping unknown group", "group_id", ge.G, "group_sub_id", ge.GS)
 				}
-			} else {
-				// Skip unknown groups (log at Info level to see what groups are available)
-				slog.Info("1xbet: skipping unknown group", "group_id", ge.G, "group_sub_id", ge.GS)
 			}
 		}
 	}

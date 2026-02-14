@@ -373,11 +373,6 @@ func addStatisticalEvent(match *models.Match, statEvent *Event, eventType models
 		// Merge outcomes from statistical event
 		if len(statEvents) > 0 {
 			statEventModel.Outcomes = append(statEventModel.Outcomes, statEvents[0].Outcomes...)
-			slog.Info("Pinnacle888: added statistical event", 
-				"match", match.HomeTeam+" vs "+match.AwayTeam,
-				"eventType", string(eventType),
-				"resultingUnit", statEvent.ResultingUnit,
-				"outcomes", len(statEventModel.Outcomes))
 		}
 	}
 }

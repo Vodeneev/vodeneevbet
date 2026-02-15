@@ -311,7 +311,7 @@ parser:
   zenit:
     base_url: "https://zenitnow549.top"
     # imprint_hash: обязателен; взять из DevTools: Network → запрос к zenitnow549.top → Headers → imprinthash (или cookie imprint)
-    imprint_hash: ""
+    imprint_hash: "e4b2f6c205217345517a3863664bd3ce"
     front_version: "3.80.0"
     sport_id: 1
     # timeout: 30s   # по умолчанию parser.timeout

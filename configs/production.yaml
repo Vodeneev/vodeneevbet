@@ -1,7 +1,7 @@
 parser:
   # Production parser management
   # Empty array [] = run all registered parsers (local mode)
-  enabled_parsers: ["fonbet", "pinnacle888", "xbet1", "marathonbet"]
+  enabled_parsers: ["fonbet", "pinnacle888", "xbet1"]
 
   # Orchestrator mode: if bookmaker_services is set, parser does NOT run parsers locally,
   # but aggregates /matches from these URLs and triggers /parse on them.
@@ -15,7 +15,7 @@ parser:
     fonbet: "http://158.160.159.73:8081"
     # pinnacle: "http://158.160.159.73:8082"  # Disabled - need new proxies
     pinnacle888: "http://158.160.159.73:8083"
-    marathonbet: "http://158.160.159.73:8084"
+    # marathonbet: "http://158.160.159.73:8084"  # Disabled - 403 from site
     xbet1: "http://158.160.159.73:8085"
 
   user_agent: "ValueBetBot/1.0 (https://github.com/Vodeneev/vodeneevbet)"

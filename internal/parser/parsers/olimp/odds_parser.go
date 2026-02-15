@@ -130,11 +130,24 @@ func ParseEvent(ev *OlimpEvent, leagueName string) *models.Match {
 				param = "0"
 			}
 			lowerName := strings.ToLower(o.UnprocessedName)
+			var outType string
 			if strings.Contains(o.ShortName, "Б") || strings.Contains(lowerName, "бол") {
-				out.OutcomeType = string(models.OutcomeTypeTotalOver)
-				totalsByParam[param] = append(totalsByParam[param], out)
+				outType = string(models.OutcomeTypeTotalOver)
 			} else if strings.Contains(o.ShortName, "М") || strings.Contains(lowerName, "мен") {
-				out.OutcomeType = string(models.OutcomeTypeTotalUnder)
+				outType = string(models.OutcomeTypeTotalUnder)
+			} else {
+				continue
+			}
+			out.OutcomeType = outType
+			// Only one pair per line: first over and first under for this param
+			hasType := false
+			for _, existing := range totalsByParam[param] {
+				if existing.OutcomeType == outType {
+					hasType = true
+					break
+				}
+			}
+			if !hasType {
 				totalsByParam[param] = append(totalsByParam[param], out)
 			}
 		case "HANDICAP":

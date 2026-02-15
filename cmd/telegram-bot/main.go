@@ -519,7 +519,7 @@ func fetchAndSendLineMovements(bot *tgbotapi.BotAPI, chatID int64, config BotCon
 
 	url := fmt.Sprintf("%s/line-movements/top?limit=%d", config.CalculatorURL, limit)
 	slog.Debug("Fetching line movements", "url", url)
-	client := &http.Client{Timeout: 30 * time.Second}
+	client := &http.Client{Timeout: 60 * time.Second}
 	resp, err := client.Get(url)
 	if err != nil {
 		slog.Error("Failed to fetch line movements from calculator", "error", err)

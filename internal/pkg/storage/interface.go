@@ -79,6 +79,21 @@ type OddsHistoryPoint struct {
 	RecordedAt time.Time
 }
 
+// OddsSnapshotKey identifies one snapshot row (match_group_key, bet_key, bookmaker).
+type OddsSnapshotKey struct {
+	MatchGroupKey string
+	BetKey        string
+	Bookmaker     string
+}
+
+// OddsSnapshotRow is one row from odds_snapshots (for batch read).
+type OddsSnapshotRow struct {
+	Odd       float64
+	MaxOdd    float64
+	MinOdd    float64
+	RecordedAt time.Time
+}
+
 // OddsSnapshotStorage stores odds snapshots for line movement detection.
 // Keeps max_odd and min_odd per (match, bet, bookmaker) so gradual moves (e.g. 4.15→4.0→3.45) are detected.
 type OddsSnapshotStorage interface {
@@ -90,6 +105,8 @@ type OddsSnapshotStorage interface {
 	GetOddsHistory(ctx context.Context, matchGroupKey, betKey, bookmaker string, limit int) ([]OddsHistoryPoint, error)
 	// GetLastOddsSnapshot returns last odd, max and min seen, and recordedAt (0,0,0,zero time,nil if no row)
 	GetLastOddsSnapshot(ctx context.Context, matchGroupKey, betKey, bookmaker string) (odd, maxOdd, minOdd float64, recordedAt time.Time, err error)
+	// GetLastOddsSnapshotsBatch returns snapshots for many keys in one query (for /line-movements/top performance).
+	GetLastOddsSnapshotsBatch(ctx context.Context, keys []OddsSnapshotKey) (map[OddsSnapshotKey]OddsSnapshotRow, error)
 	// ResetExtremesAfterAlert sets max_odd=odd and min_odd=odd for the row so we don't re-alert on same range
 	ResetExtremesAfterAlert(ctx context.Context, matchGroupKey, betKey, bookmaker string) error
 	// CleanSnapshotsForStartedMatches deletes snapshots and history for matches that have already started (start_time < now)

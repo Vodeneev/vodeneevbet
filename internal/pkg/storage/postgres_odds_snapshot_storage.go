@@ -5,11 +5,14 @@ import (
 	"database/sql"
 	"fmt"
 	"log/slog"
+	"strings"
 	"time"
 
 	"github.com/Vodeneev/vodeneevbet/internal/pkg/config"
 	_ "github.com/lib/pq"
 )
+
+const batchSnapshotChunkSize = 2000 // max keys per query to avoid param limit
 
 // Ensure PostgresOddsSnapshotStorage implements OddsSnapshotStorage
 var _ OddsSnapshotStorage = (*PostgresOddsSnapshotStorage)(nil)
@@ -143,6 +146,53 @@ func (s *PostgresOddsSnapshotStorage) GetLastOddsSnapshot(ctx context.Context, m
 		return 0, 0, 0, time.Time{}, fmt.Errorf("failed to get last odds snapshot: %w", err)
 	}
 	return odd, maxOdd, minOdd, recordedAt, nil
+}
+
+// GetLastOddsSnapshotsBatch returns snapshots for many keys in one or few queries.
+func (s *PostgresOddsSnapshotStorage) GetLastOddsSnapshotsBatch(ctx context.Context, keys []OddsSnapshotKey) (map[OddsSnapshotKey]OddsSnapshotRow, error) {
+	out := make(map[OddsSnapshotKey]OddsSnapshotRow, len(keys))
+	if len(keys) == 0 {
+		return out, nil
+	}
+	for start := 0; start < len(keys); start += batchSnapshotChunkSize {
+		end := start + batchSnapshotChunkSize
+		if end > len(keys) {
+			end = len(keys)
+		}
+		chunk := keys[start:end]
+		// Build VALUES ($1,$2,$3), ($4,$5,$6), ...
+		var placeholders []string
+		args := make([]interface{}, 0, len(chunk)*3)
+		for i, k := range chunk {
+			placeholders = append(placeholders, fmt.Sprintf("($%d,$%d,$%d)", i*3+1, i*3+2, i*3+3))
+			args = append(args, k.MatchGroupKey, k.BetKey, k.Bookmaker)
+		}
+		query := `
+		SELECT o.match_group_key, o.bet_key, o.bookmaker, o.odd, COALESCE(o.max_odd, o.odd), COALESCE(o.min_odd, o.odd), o.recorded_at
+		FROM odds_snapshots o
+		INNER JOIN (VALUES ` + strings.Join(placeholders, ",") + `) AS v(match_group_key, bet_key, bookmaker)
+		  ON o.match_group_key = v.match_group_key AND o.bet_key = v.bet_key AND o.bookmaker = v.bookmaker
+		`
+		rows, err := s.db.QueryContext(ctx, query, args...)
+		if err != nil {
+			return nil, fmt.Errorf("GetLastOddsSnapshotsBatch: %w", err)
+		}
+		for rows.Next() {
+			var gk, betKey, bk string
+			var row OddsSnapshotRow
+			if err := rows.Scan(&gk, &betKey, &bk, &row.Odd, &row.MaxOdd, &row.MinOdd, &row.RecordedAt); err != nil {
+				rows.Close()
+				return nil, err
+			}
+			out[OddsSnapshotKey{MatchGroupKey: gk, BetKey: betKey, Bookmaker: bk}] = row
+		}
+		if err := rows.Err(); err != nil {
+			rows.Close()
+			return nil, err
+		}
+		rows.Close()
+	}
+	return out, nil
 }
 
 // AppendOddsHistory appends one (odd, recordedAt) point for timeline.

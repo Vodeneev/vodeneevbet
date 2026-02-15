@@ -232,6 +232,20 @@ func getLineMovementsForTop(ctx context.Context, matches []models.Match, snapsho
 		}
 	}
 
+	// Collect all keys for batch read (one query instead of N)
+	keys := make([]storage.OddsSnapshotKey, 0, len(groups)*10)
+	for gk, bets := range groups {
+		for betKey, byBook := range bets {
+			for bookmaker := range byBook {
+				keys = append(keys, storage.OddsSnapshotKey{MatchGroupKey: gk, BetKey: betKey, Bookmaker: bookmaker})
+			}
+		}
+	}
+	snapshots, err := snapshotStorage.GetLastOddsSnapshotsBatch(ctx, keys)
+	if err != nil {
+		return nil, err
+	}
+
 	var movements []LineMovement
 	for gk, bets := range groups {
 		gm := meta[gk]
@@ -249,11 +263,13 @@ func getLineMovementsForTop(ctx context.Context, matches []models.Match, snapsho
 			}
 
 			for bookmaker, currentOdd := range byBook {
-				_, maxOdd, minOdd, _, err := snapshotStorage.GetLastOddsSnapshot(ctx, gk, betKey, bookmaker)
-				if err != nil {
-					slog.Debug("GetLastOddsSnapshot failed", "match", gk, "bet", betKey, "bookmaker", bookmaker, "error", err)
+				key := storage.OddsSnapshotKey{MatchGroupKey: gk, BetKey: betKey, Bookmaker: bookmaker}
+				row, ok := snapshots[key]
+				if !ok {
 					continue
 				}
+				maxOdd := row.MaxOdd
+				minOdd := row.MinOdd
 
 				if maxOdd > 0 && currentOdd < maxOdd {
 					changeAbs := currentOdd - maxOdd

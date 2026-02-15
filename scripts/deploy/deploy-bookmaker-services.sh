@@ -120,7 +120,7 @@ export COMPOSE_PROJECT_NAME=vodeneevbet_bookmaker
 sudo docker image prune -af --filter \"until=2h\" || true
 sudo docker builder prune -af || true
 # Stop and remove disabled services
-ALL_SERVICES=\"fonbet pinnacle pinnacle888 marathonbet xbet1\"
+ALL_SERVICES=\"fonbet pinnacle pinnacle888 marathonbet xbet1 zenit olimp\"
 ENABLED_SERVICES_LIST=\"${COMPOSE_SERVICES}\"
 for svc in \$ALL_SERVICES; do
   if ! echo \"\$ENABLED_SERVICES_LIST\" | grep -qw \"\$svc\"; then
@@ -181,6 +181,8 @@ declare -A PORT_MAP=(
   ["pinnacle888"]="8083"
   ["marathonbet"]="8084"
   ["xbet1"]="8085"
+  ["zenit"]="8086"
+  ["olimp"]="8087"
 )
 for svc in "${ENABLED_SERVICES[@]}"; do
   port="${PORT_MAP[$svc]:-unknown}"

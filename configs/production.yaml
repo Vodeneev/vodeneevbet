@@ -18,6 +18,7 @@ parser:
     # marathonbet: "http://158.160.159.73:8084"  # Disabled - 403 from site
     xbet1: "http://158.160.159.73:8085"
     zenit: "http://158.160.159.73:8086"
+    olimp: "http://158.160.159.73:8087"
 
   user_agent: "ValueBetBot/1.0 (https://github.com/Vodeneev/vodeneevbet)"
   timeout: 120s

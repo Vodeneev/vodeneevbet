@@ -546,7 +546,6 @@ func (c *Client) GetSubGame(subGameID int64) (*GameDetails, error) {
 func (c *Client) doRequest(urlStr string) ([]byte, error) {
 	// If proxyList is configured, try proxies first
 	if len(c.proxyList) > 0 {
-		slog.Info("1xbet: Using proxy list", "proxy_count", len(c.proxyList), "url", urlStr)
 		return c.doRequestWithProxyRetry(urlStr)
 	}
 	
@@ -605,9 +604,6 @@ func (c *Client) doRequestWithProxyRetry(urlStr string) ([]byte, error) {
 			continue
 		}
 
-		// Log proxy attempt
-		slog.Info("1xbet: Trying proxy", "proxy_index", proxyIndex+1, "total_proxies", len(c.proxyList), "proxy", maskProxyURL(proxyURLStr), "url", urlStr)
-
 		// Create transport with this proxy
 		transport := http.DefaultTransport.(*http.Transport).Clone()
 		transport.DisableCompression = true // we send Accept-Encoding and decode in readBodyDecode
@@ -665,7 +661,6 @@ func (c *Client) doRequestWithProxyRetry(urlStr string) ([]byte, error) {
 			c.proxyMu.Lock()
 			c.currentProxyIndex = proxyIndex
 			c.proxyMu.Unlock()
-			slog.Info("1xbet: Successfully using proxy", "proxy_index", proxyIndex+1, "total_proxies", len(c.proxyList), "proxy", maskProxyURL(proxyURLStr), "url", urlStr)
 
 			body, err := readBodyDecode(resp)
 			resp.Body.Close()
@@ -695,7 +690,7 @@ func (c *Client) doRequestWithProxyRetry(urlStr string) ([]byte, error) {
 	}
 
 	// All proxies failed, try direct connection as last resort
-	slog.Warn("1xbet: All proxies failed, falling back to direct connection", "url", urlStr, "total_proxies_tried", len(c.proxyList))
+	slog.Error("1xbet: no proxy available (all proxies failed)", "url", urlStr, "total_proxies_tried", len(c.proxyList))
 	return c.doRequestDirect(urlStr)
 }
 

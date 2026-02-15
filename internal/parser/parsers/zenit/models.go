@@ -136,7 +136,7 @@ type TBTidMeta struct {
 type TBChNode struct {
 	Header int        `json:"header"`
 	Ch     []TBChNode `json:"ch"`
-	W      int        `json:"w"`
+	W      float64    `json:"w"` // column width, API may send int or float (e.g. 18.33333)
 	H      interface{} `json:"h"` // string label or float64 odds
 	ID     string     `json:"id"`
 	OddKey string     `json:"oddKey"`
@@ -144,5 +144,5 @@ type TBChNode struct {
 	T      string     `json:"t"`
 	St     int        `json:"st"`
 	Align  string     `json:"align"`
-	Cls    int        `json:"cls"`
+	Cls    interface{} `json:"cls"` // API may send int or other type
 }

@@ -67,12 +67,13 @@ func (n *TelegramNotifier) SendDiffAlert(ctx context.Context, diff *DiffBet, thr
 
 // SendLineMovementAlert sends an alert for a significant odds change in the same bookmaker.
 // history is used to show timeline (e.g. "6.70 (12 min ago) → 7.10 (now)").
-func (n *TelegramNotifier) SendLineMovementAlert(ctx context.Context, lm *LineMovement, thresholdAbs float64, now time.Time, history []storage.OddsHistoryPoint) error {
+// thresholdPercent is the min change in % that triggered the alert (e.g. 5.0 for 5%).
+func (n *TelegramNotifier) SendLineMovementAlert(ctx context.Context, lm *LineMovement, thresholdPercent float64, now time.Time, history []storage.OddsHistoryPoint) error {
 	if n == nil || n.bot == nil {
 		return fmt.Errorf("telegram notifier not initialized")
 	}
 
-	message := n.formatLineMovementAlert(lm, thresholdAbs, now, history)
+	message := n.formatLineMovementAlert(lm, thresholdPercent, now, history)
 	msg := tgbotapi.NewMessage(n.chatID, message)
 	msg.ParseMode = tgbotapi.ModeMarkdown
 
@@ -85,17 +86,21 @@ func (n *TelegramNotifier) SendLineMovementAlert(ctx context.Context, lm *LineMo
 	}
 }
 
-func (n *TelegramNotifier) formatLineMovementAlert(lm *LineMovement, thresholdAbs float64, now time.Time, history []storage.OddsHistoryPoint) string {
+func (n *TelegramNotifier) formatLineMovementAlert(lm *LineMovement, thresholdPercent float64, now time.Time, history []storage.OddsHistoryPoint) string {
 	var builder strings.Builder
-	builder.WriteString(fmt.Sprintf("📊 *Line movement (≥%.2f)*\n\n", thresholdAbs))
+	builder.WriteString(fmt.Sprintf("📊 *Line movement (≥%.1f%%)*\n\n", thresholdPercent))
 	builder.WriteString(fmt.Sprintf("*%s*\n", escapeMarkdown(lm.MatchName)))
 	builder.WriteString(fmt.Sprintf("📌 %s | %s", formatEventType(lm.EventType), formatOutcomeType(lm.OutcomeType)))
 	if lm.Parameter != "" {
 		builder.WriteString(fmt.Sprintf(" (%s)", lm.Parameter))
 	}
 	builder.WriteString("\n\n")
-	builder.WriteString(fmt.Sprintf("🏠 *%s*\n", escapeMarkdown(lm.Bookmaker)))
-	changeStr := fmt.Sprintf("%+.2f", lm.ChangeAbs)
+	bookmakerLabel := strings.TrimSpace(lm.Bookmaker)
+	if bookmakerLabel == "" {
+		bookmakerLabel = "—"
+	}
+	builder.WriteString(fmt.Sprintf("🏠 *%s*\n", escapeMarkdown(bookmakerLabel)))
+	changeStr := fmt.Sprintf("%+.1f%%", lm.ChangePercent)
 	builder.WriteString(fmt.Sprintf("Was: *%.2f* → now: *%.2f* (%s)\n", lm.PreviousOdd, lm.CurrentOdd, changeStr))
 	// Timeline: collapse consecutive same odds, e.g. "6.70 (12 min ago) → 6.85 (5 min ago) → 7.10 (now)"
 	if len(history) > 0 {

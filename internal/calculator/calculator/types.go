@@ -64,9 +64,10 @@ type LineMovement struct {
 	Parameter   string    `json:"parameter"`
 	BetKey      string    `json:"bet_key"`
 	Bookmaker   string    `json:"bookmaker"`
-	PreviousOdd float64   `json:"previous_odd"`
-	CurrentOdd  float64   `json:"current_odd"`
-	ChangeAbs   float64   `json:"change_abs"` // current - previous (positive = рост, negative = падение)
-	RecordedAt  time.Time `json:"recorded_at"`
+	PreviousOdd   float64   `json:"previous_odd"`
+	CurrentOdd    float64   `json:"current_odd"`
+	ChangeAbs     float64   `json:"change_abs"`     // current - previous (signed)
+	ChangePercent float64   `json:"change_percent"` // (current - previous) / previous * 100
+	RecordedAt    time.Time `json:"recorded_at"`
 }
 

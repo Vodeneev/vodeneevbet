@@ -329,7 +329,16 @@ func (c *ValueCalculator) processLineMovementsAsync(ctx context.Context) {
 
 	now := time.Now()
 	alertCount := 0
+	// Delay between alerts to avoid Telegram "Too Many Requests" and spread messages
+	const delayBetweenAlerts = 1100 * time.Millisecond
 	for i := range movements {
+		if i > 0 {
+			select {
+			case <-ctx.Done():
+				break
+			case <-time.After(delayBetweenAlerts):
+			}
+		}
 		lm := &movements[i]
 		if c.notifier != nil {
 			history, _ := c.oddsSnapshotStorage.GetOddsHistory(ctx, lm.MatchGroupKey, lm.BetKey, lm.Bookmaker, 30)
@@ -337,7 +346,7 @@ func (c *ValueCalculator) processLineMovementsAsync(ctx context.Context) {
 				slog.Error("Failed to send line movement alert", "error", err, "match", lm.MatchName)
 			} else {
 				alertCount++
-				slog.Info("Sent line movement alert", "match", lm.MatchName, "bookmaker", lm.Bookmaker, "change_abs", lm.ChangeAbs)
+				slog.Info("Sent line movement alert", "match", lm.MatchName, "bookmaker", lm.Bookmaker, "change_percent", lm.ChangePercent)
 				_ = c.oddsSnapshotStorage.ResetExtremesAfterAlert(ctx, lm.MatchGroupKey, lm.BetKey, lm.Bookmaker)
 			}
 		}

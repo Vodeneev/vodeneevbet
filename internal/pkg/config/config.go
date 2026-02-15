@@ -120,7 +120,7 @@ type ValueCalculatorConfig struct {
 
 	// Line movement: track any odds change within same bookmaker
 	LineMovementEnabled        bool    `yaml:"line_movement_enabled"`        // Enable tracking of odds changes in same bookmaker
-	LineMovementAlertThreshold float64 `yaml:"line_movement_alert_threshold"` // Min absolute change to alert, e.g. 0.3 for 2.1->2.4
+	LineMovementAlertThreshold float64 `yaml:"line_movement_alert_threshold"` // Min change in % to alert, e.g. 5.0 for 5%
 }
 
 type HealthConfig struct {

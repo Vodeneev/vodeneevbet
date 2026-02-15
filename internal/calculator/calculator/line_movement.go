@@ -12,10 +12,10 @@ import (
 
 // computeAndStoreLineMovements builds current odds per (match, bet, bookmaker), compares current
 // with stored max_odd and min_odd (so gradual moves like 4.15→4.0→3.45 are caught as 4.15→3.45),
-// stores current snapshot (updating max/min), and returns line movements. Caller should call
-// ResetExtremesAfterAlert for each alerted movement to avoid re-alerting on the same range.
-func computeAndStoreLineMovements(ctx context.Context, matches []models.Match, snapshotStorage storage.OddsSnapshotStorage, thresholdAbs float64) ([]LineMovement, error) {
-	if snapshotStorage == nil || thresholdAbs <= 0 {
+// stores current snapshot (updating max/min), and returns line movements. Threshold is in percent
+// (e.g. 5.0 = 5%) so 1.9→1.5 (~21%) matters more than 9.5→9.1 (~4%).
+func computeAndStoreLineMovements(ctx context.Context, matches []models.Match, snapshotStorage storage.OddsSnapshotStorage, thresholdPercent float64) ([]LineMovement, error) {
+	if snapshotStorage == nil || thresholdPercent <= 0 {
 		return nil, nil
 	}
 
@@ -103,40 +103,50 @@ func computeAndStoreLineMovements(ctx context.Context, matches []models.Match, s
 					slog.Debug("GetLastOddsSnapshot failed", "match", gk, "bet", betKey, "bookmaker", bookmaker, "error", err)
 				}
 
-				// Compare with extremes before storing: catch gradual moves (e.g. 4.15→4.0→3.45 vs max 4.15)
-				if maxOdd > 0 && (maxOdd-currentOdd) >= thresholdAbs {
-					movements = append(movements, LineMovement{
-						MatchGroupKey: gk,
-						MatchName:     gm.name,
-						StartTime:     gm.startTime,
-						Sport:         gm.sport,
-						EventType:     evType,
-						OutcomeType:   outType,
-						Parameter:     param,
-						BetKey:        betKey,
-						Bookmaker:     bookmaker,
-						PreviousOdd:   maxOdd,
-						CurrentOdd:   currentOdd,
-						ChangeAbs:    currentOdd - maxOdd, // negative = падение от пика
-						RecordedAt:   now,
-					})
+				// Compare with extremes in percent: (current - ref) / ref * 100
+				if maxOdd > 0 {
+					dropPercent := (maxOdd - currentOdd) / maxOdd * 100
+					if dropPercent >= thresholdPercent {
+						changeAbs := currentOdd - maxOdd
+						movements = append(movements, LineMovement{
+							MatchGroupKey:   gk,
+							MatchName:       gm.name,
+							StartTime:       gm.startTime,
+							Sport:           gm.sport,
+							EventType:       evType,
+							OutcomeType:     outType,
+							Parameter:       param,
+							BetKey:          betKey,
+							Bookmaker:       bookmaker,
+							PreviousOdd:     maxOdd,
+							CurrentOdd:      currentOdd,
+							ChangeAbs:       changeAbs,
+							ChangePercent:   changeAbs / maxOdd * 100,
+							RecordedAt:      now,
+						})
+					}
 				}
-				if minOdd > 0 && (currentOdd-minOdd) >= thresholdAbs {
-					movements = append(movements, LineMovement{
-						MatchGroupKey: gk,
-						MatchName:     gm.name,
-						StartTime:     gm.startTime,
-						Sport:         gm.sport,
-						EventType:     evType,
-						OutcomeType:   outType,
-						Parameter:     param,
-						BetKey:        betKey,
-						Bookmaker:     bookmaker,
-						PreviousOdd:   minOdd,
-						CurrentOdd:   currentOdd,
-						ChangeAbs:    currentOdd - minOdd, // positive = рост от дна
-						RecordedAt:   now,
-					})
+				if minOdd > 0 {
+					risePercent := (currentOdd - minOdd) / minOdd * 100
+					if risePercent >= thresholdPercent {
+						changeAbs := currentOdd - minOdd
+						movements = append(movements, LineMovement{
+							MatchGroupKey:   gk,
+							MatchName:       gm.name,
+							StartTime:       gm.startTime,
+							Sport:           gm.sport,
+							EventType:       evType,
+							OutcomeType:     outType,
+							Parameter:       param,
+							BetKey:          betKey,
+							Bookmaker:       bookmaker,
+							PreviousOdd:     minOdd,
+							CurrentOdd:      currentOdd,
+							ChangeAbs:       changeAbs,
+							ChangePercent:   changeAbs / minOdd * 100,
+							RecordedAt:      now,
+						})
+					}
 				}
 
 				err = snapshotStorage.StoreOddsSnapshot(ctx, gk, gm.name, gm.sport, evType, outType, param, betKey, bookmaker, gm.startTime, currentOdd, now)

@@ -636,114 +636,59 @@ func parseGroupedEvents(matchID string, groupEvents []GroupEvent, subGames []Sub
 	return events
 }
 
-// parseMoneyline parses moneyline (1x2) events
+// parseMoneyline parses moneyline (1x2) events.
+// API may return 1X2 in separate arrays (one per outcome), so we collect from ALL arrays in ge.E.
 func parseMoneyline(eventsByType map[string]*models.Event, matchID string, ge GroupEvent, now time.Time) {
 	eventID := fmt.Sprintf("%s_1xbet_main_match", matchID)
 	ev := getOrCreateEvent(eventsByType, eventID, matchID, string(models.StandardEventMainMatch), now)
 
-	// Find main line (usually first non-empty array or marked with CE=1)
-	var mainEvents []Event
 	for _, eventArray := range ge.E {
-		if len(eventArray) > 0 {
-			// Check if this is the main line (CE=1 or first one)
-			for _, e := range eventArray {
-				if e.CE == 1 || len(mainEvents) == 0 {
-					mainEvents = eventArray
-					break
-				}
+		for _, e := range eventArray {
+			switch e.T {
+			case 1:
+				ev.Outcomes = append(ev.Outcomes, newOutcome(eventID, "home_win", "", e.C))
+			case 2:
+				ev.Outcomes = append(ev.Outcomes, newOutcome(eventID, "draw", "", e.C))
+			case 3:
+				ev.Outcomes = append(ev.Outcomes, newOutcome(eventID, "away_win", "", e.C))
 			}
-			if len(mainEvents) > 0 {
-				break
-			}
-		}
-	}
-
-	if len(mainEvents) == 0 && len(ge.E) > 0 && len(ge.E[0]) > 0 {
-		mainEvents = ge.E[0]
-	}
-
-	for _, e := range mainEvents {
-		switch e.T {
-		case 1:
-			// Home win
-			ev.Outcomes = append(ev.Outcomes, newOutcome(eventID, "home_win", "", e.C))
-		case 2:
-			// Draw
-			ev.Outcomes = append(ev.Outcomes, newOutcome(eventID, "draw", "", e.C))
-		case 3:
-			// Away win
-			ev.Outcomes = append(ev.Outcomes, newOutcome(eventID, "away_win", "", e.C))
 		}
 	}
 }
 
-// parseHandicap parses handicap events
+// parseHandicap parses handicap events.
+// API may return home/away handicaps in separate arrays, so we collect from ALL arrays in ge.E.
 func parseHandicap(eventsByType map[string]*models.Event, matchID string, ge GroupEvent, now time.Time) {
 	eventID := fmt.Sprintf("%s_1xbet_main_match", matchID)
 	ev := getOrCreateEvent(eventsByType, eventID, matchID, string(models.StandardEventMainMatch), now)
 
-	// Find main line (CE=1)
-	var mainEvents []Event
 	for _, eventArray := range ge.E {
 		for _, e := range eventArray {
-			if e.CE == 1 {
-				mainEvents = eventArray
-				break
+			switch e.T {
+			case 7:
+				ev.Outcomes = append(ev.Outcomes, newOutcome(eventID, "handicap_home", formatSignedLine(e.P), e.C))
+			case 8:
+				ev.Outcomes = append(ev.Outcomes, newOutcome(eventID, "handicap_away", formatSignedLine(-e.P), e.C))
 			}
-		}
-		if len(mainEvents) > 0 {
-			break
-		}
-	}
-
-	if len(mainEvents) == 0 && len(ge.E) > 0 && len(ge.E[0]) > 0 {
-		mainEvents = ge.E[0]
-	}
-
-	for _, e := range mainEvents {
-		switch e.T {
-		case 7:
-			// Home handicap
-			ev.Outcomes = append(ev.Outcomes, newOutcome(eventID, "handicap_home", formatSignedLine(e.P), e.C))
-		case 8:
-			// Away handicap
-			ev.Outcomes = append(ev.Outcomes, newOutcome(eventID, "handicap_away", formatSignedLine(-e.P), e.C))
 		}
 	}
 }
 
-// parseTotal parses total (over/under) events
+// parseTotal parses total (over/under) events.
+// API may return over/under in separate arrays, so we collect from ALL arrays in ge.E.
 func parseTotal(eventsByType map[string]*models.Event, matchID string, ge GroupEvent, now time.Time) {
 	eventID := fmt.Sprintf("%s_1xbet_main_match", matchID)
 	ev := getOrCreateEvent(eventsByType, eventID, matchID, string(models.StandardEventMainMatch), now)
 
-	// Find main line (CE=1)
-	var mainEvents []Event
 	for _, eventArray := range ge.E {
 		for _, e := range eventArray {
-			if e.CE == 1 {
-				mainEvents = eventArray
-				break
+			line := formatLine(e.P)
+			switch e.T {
+			case 9:
+				ev.Outcomes = append(ev.Outcomes, newOutcome(eventID, "total_over", line, e.C))
+			case 10:
+				ev.Outcomes = append(ev.Outcomes, newOutcome(eventID, "total_under", line, e.C))
 			}
-		}
-		if len(mainEvents) > 0 {
-			break
-		}
-	}
-
-	if len(mainEvents) == 0 && len(ge.E) > 0 && len(ge.E[0]) > 0 {
-		mainEvents = ge.E[0]
-	}
-
-	for _, e := range mainEvents {
-		line := formatLine(e.P)
-		switch e.T {
-		case 9:
-			// Over
-			ev.Outcomes = append(ev.Outcomes, newOutcome(eventID, "total_over", line, e.C))
-		case 10:
-			// Under
-			ev.Outcomes = append(ev.Outcomes, newOutcome(eventID, "total_under", line, e.C))
 		}
 	}
 }

@@ -13,21 +13,25 @@ import (
 const bookmakerName = "Zenit"
 
 // tableIDToEventType maps Zenit tableID (or category name) to standard event type.
-// Russian names from API: Угловые, Фолы, Желтые карточки, Офсайды, Удары в створ.
+// API returns camelCase / no spaces (e.g. "Тоталы", "Форы", "Нарушения"); we support both.
 var tableIDToEventType = map[string]string{
-	"Угловые":           string(models.StandardEventCorners),
-	"УгловыеМатч":       string(models.StandardEventCorners),
-	"Фолы":              string(models.StandardEventFouls),
-	"Желтые карточки":   string(models.StandardEventYellowCards),
-	"ЖелтыеКарточки":    string(models.StandardEventYellowCards),
-	"Офсайды":           string(models.StandardEventOffsides),
-	"Удары в створ":     string(models.StandardEventShotsOnTarget),
-	"УдарыВСтвор":       string(models.StandardEventShotsOnTarget),
+	"Угловые":            string(models.StandardEventCorners),
+	"УгловыеМатч":        string(models.StandardEventCorners),
+	"Фолы":               string(models.StandardEventFouls),
+	"Нарушения":          string(models.StandardEventFouls),
+	"Желтые карточки":    string(models.StandardEventYellowCards),
+	"ЖелтыеКарточки":     string(models.StandardEventYellowCards),
+	"Офсайды":            string(models.StandardEventOffsides),
+	"Удары в створ":      string(models.StandardEventShotsOnTarget),
+	"УдарыВСтвор":        string(models.StandardEventShotsOnTarget),
+	"Тоталы":             string(models.StandardEventMainMatch),
+	"ТоталМатча":         string(models.StandardEventMainMatch),
+	"Форы":               string(models.StandardEventMainMatch),
 	"Штанги/перекладины": "",
-	"Замены":            "",
-	"Видеопросмотры":   "",
-	"Игроки":            "",
-	"Сэйвы":             "",
+	"Замены":             "",
+	"Видеопросмотры":     "",
+	"Игроки":             "",
+	"Сэйвы":              "",
 }
 
 // ParseMatch builds models.Match from a single-match LineResponse (game + dict + t_b).
@@ -83,10 +87,13 @@ func ParseMatch(resp *LineResponse, gameID int) *models.Match {
 		match.Events = append(match.Events, *mainEvent)
 	}
 
-	// Extended markets from t_b
+	// Extended markets from t_b (totals, handicaps, corners, fouls, etc.)
 	tbBlock, hasTB := resp.TB[gameIDStr]
 	if hasTB && tbBlock.Data.Data != nil {
-		tbEvents := parseTBBlock(matchID, &tbBlock)
+		tbEvents, mainOutcomes := parseTBBlock(matchID, &tbBlock)
+		if len(mainOutcomes) > 0 && len(match.Events) > 0 {
+			match.Events[0].Outcomes = append(match.Events[0].Outcomes, mainOutcomes...)
+		}
 		match.Events = append(match.Events, tbEvents...)
 	}
 
@@ -200,9 +207,10 @@ type oddRow struct {
 }
 
 // parseTBBlock walks t_b[gameID].data.data (tid -> block) and collects events by tableID.
-func parseTBBlock(matchID string, block *TBBlock) []models.Event {
+// Returns (other events, main_match outcomes to merge into the first event).
+func parseTBBlock(matchID string, block *TBBlock) (events []models.Event, mainMatchOutcomes []models.Outcome) {
 	if block == nil || block.Data.Data == nil {
-		return nil
+		return nil, nil
 	}
 	byTable := make(map[string][]oddRow)
 
@@ -218,7 +226,6 @@ func parseTBBlock(matchID string, block *TBBlock) []models.Event {
 		collectOddsFromCh(tidBlock.Ch, tableID, byTable)
 	}
 
-	var events []models.Event
 	now := time.Now()
 	for tableID, rows := range byTable {
 		if len(rows) == 0 {
@@ -226,7 +233,6 @@ func parseTBBlock(matchID string, block *TBBlock) []models.Event {
 		}
 		eventType := tableIDToEventType[tableID]
 		if eventType == "" {
-			// Skip unsupported markets (or add as generic later)
 			continue
 		}
 		var outcomes []models.Outcome
@@ -236,9 +242,13 @@ func parseTBBlock(matchID string, block *TBBlock) []models.Event {
 			}
 			param := parseParamFromOddKey(r.OddKey)
 			outcomeType := inferOutcomeType(r.OddKey, param)
+			evID := matchID + "_main"
+			if eventType != string(models.StandardEventMainMatch) {
+				evID = matchID + "_" + tableID
+			}
 			outcomes = append(outcomes, models.Outcome{
 				ID:          r.ID,
-				EventID:     matchID + "_" + tableID,
+				EventID:     evID,
 				OutcomeType: outcomeType,
 				Parameter:   param,
 				Odds:        r.Odds,
@@ -248,6 +258,10 @@ func parseTBBlock(matchID string, block *TBBlock) []models.Event {
 			})
 		}
 		if len(outcomes) == 0 {
+			continue
+		}
+		if eventType == string(models.StandardEventMainMatch) {
+			mainMatchOutcomes = append(mainMatchOutcomes, outcomes...)
 			continue
 		}
 		marketName := models.GetMarketName(models.StandardEventType(eventType))
@@ -265,7 +279,7 @@ func parseTBBlock(matchID string, block *TBBlock) []models.Event {
 			UpdatedAt:  now,
 		})
 	}
-	return events
+	return events, mainMatchOutcomes
 }
 
 func collectOddsFromCh(ch []TBChNode, tableID string, byTable map[string][]oddRow) {
@@ -308,4 +322,42 @@ func inferOutcomeType(oddKey, param string) string {
 		return string(models.OutcomeTypeExactCount)
 	}
 	return string(models.OutcomeTypeExactCount)
+}
+
+// TBTableSummary is used by DumpTBBlockForDebug.
+type TBTableSummary struct {
+	TID      string
+	TableID  string
+	OddsCnt  int
+	MappedTo string // standard event type if tableID is in tableIDToEventType
+}
+
+// DumpTBBlockForDebug walks t_b block and returns per-tid summary (tableID, odds count, mapping).
+// Used by cmd/debug-zenit-tb to find why extended markets are missing.
+func DumpTBBlockForDebug(block *TBBlock) []TBTableSummary {
+	if block == nil || block.Data.Data == nil {
+		return nil
+	}
+	var out []TBTableSummary
+	for tidStr, tidBlock := range block.Data.Data {
+		tableID := "tid_" + tidStr
+		if tidBlock.Data != nil && tidBlock.Data.TableID != "" {
+			tableID = tidBlock.Data.TableID
+		}
+		cnt := countOddsInCh(tidBlock.Ch)
+		mapped := tableIDToEventType[tableID]
+		out = append(out, TBTableSummary{TID: tidStr, TableID: tableID, OddsCnt: cnt, MappedTo: mapped})
+	}
+	return out
+}
+
+func countOddsInCh(ch []TBChNode) int {
+	n := 0
+	for _, node := range ch {
+		if node.ID != "" && node.OddKey != "" && flToFloat(node.H) > 0 {
+			n++
+		}
+		n += countOddsInCh(node.Ch)
+	}
+	return n
 }

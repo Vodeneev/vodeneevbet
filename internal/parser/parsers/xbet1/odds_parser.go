@@ -668,7 +668,8 @@ func parseHandicap(eventsByType map[string]*models.Event, matchID string, ge Gro
 			case 7:
 				ev.Outcomes = append(ev.Outcomes, newOutcome(eventID, "handicap_home", formatSignedLine(e.P), e.C))
 			case 8:
-				ev.Outcomes = append(ev.Outcomes, newOutcome(eventID, "handicap_away", formatSignedLine(-e.P), e.C))
+				// API: T=8 is away handicap; P is already the away line (e.g. P=-2.5 → away -2.5, P=+2.5 → away +2.5). Do not negate.
+				ev.Outcomes = append(ev.Outcomes, newOutcome(eventID, "handicap_away", formatSignedLine(e.P), e.C))
 			}
 		}
 	}
@@ -764,7 +765,7 @@ func parseStatisticalGroup(eventsByType map[string]*models.Event, matchID string
 		case 7:
 			ev.Outcomes = append(ev.Outcomes, newOutcome(eventID, "handicap_home", formatSignedLine(e.P), e.C))
 		case 8:
-			ev.Outcomes = append(ev.Outcomes, newOutcome(eventID, "handicap_away", formatSignedLine(-e.P), e.C))
+			ev.Outcomes = append(ev.Outcomes, newOutcome(eventID, "handicap_away", formatSignedLine(e.P), e.C))
 		}
 	}
 	// Alternative encoding: two outcomes (e.g. T=794/795) as over/under for one line

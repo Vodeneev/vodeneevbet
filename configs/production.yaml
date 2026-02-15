@@ -305,6 +305,10 @@ value_calculator:
   telegram_bot_token: ""          # Telegram bot token (set via TELEGRAM_BOT_TOKEN env var)
   telegram_chat_id: 0              # Telegram chat ID to send notifications (set via TELEGRAM_CHAT_ID env var)
 
+  # Line movement: track any odds change in the same bookmaker, alert in Telegram
+  line_movement_enabled: true      # Enable tracking (runs in parallel to value/diff async)
+  line_movement_alert_threshold: 0.3   # Min absolute change to alert (e.g. 0.3 for 2.1 -> 2.4)
+
 logging:
   # Yandex Cloud Logging settings
   enabled: true                    # Enable sending logs to Yandex Cloud Logging

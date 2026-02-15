@@ -16,18 +16,19 @@ import (
 // Data is fetched on-demand from parser on each request.
 // Can also run asynchronously to process matches periodically and send alerts.
 type ValueCalculator struct {
-	httpClient   *HTTPMatchesClient
-	cfg          *config.ValueCalculatorConfig
-	diffStorage  storage.DiffBetStorage
-	notifier     *TelegramNotifier
-	asyncTicker  *time.Ticker
-	asyncMu      sync.RWMutex
-	asyncStopped bool
-	asyncCtx     context.Context
-	asyncCancel  context.CancelFunc
+	httpClient         *HTTPMatchesClient
+	cfg                *config.ValueCalculatorConfig
+	diffStorage        storage.DiffBetStorage
+	oddsSnapshotStorage storage.OddsSnapshotStorage
+	notifier           *TelegramNotifier
+	asyncTicker        *time.Ticker
+	asyncMu            sync.RWMutex
+	asyncStopped       bool
+	asyncCtx           context.Context
+	asyncCancel        context.CancelFunc
 }
 
-func NewValueCalculator(cfg *config.ValueCalculatorConfig, diffStorage storage.DiffBetStorage) *ValueCalculator {
+func NewValueCalculator(cfg *config.ValueCalculatorConfig, diffStorage storage.DiffBetStorage, oddsSnapshotStorage storage.OddsSnapshotStorage) *ValueCalculator {
 	var httpClient *HTTPMatchesClient
 	if cfg != nil && cfg.ParserURL != "" {
 		httpClient = NewHTTPMatchesClient(cfg.ParserURL)
@@ -39,10 +40,11 @@ func NewValueCalculator(cfg *config.ValueCalculatorConfig, diffStorage storage.D
 	}
 
 	return &ValueCalculator{
-		httpClient:  httpClient,
-		cfg:         cfg,
-		diffStorage: diffStorage,
-		notifier:    notifier,
+		httpClient:          httpClient,
+		cfg:                  cfg,
+		diffStorage:         diffStorage,
+		oddsSnapshotStorage: oddsSnapshotStorage,
+		notifier:            notifier,
 	}
 }
 
@@ -108,13 +110,13 @@ func (c *ValueCalculator) StartAsync() error {
 	return nil
 }
 
-// runAsyncProcessing runs the async processing loop
+// runAsyncProcessing runs the async processing loop.
+// Value/diff processing and line movement (прогрузы) run in parallel on each tick.
 func (c *ValueCalculator) runAsyncProcessing(ctx context.Context) {
 	// Run immediately on start
-	c.processMatchesAsync(ctx)
+	c.runAsyncIteration(ctx)
 
 	for {
-		// Check if async processing was stopped
 		c.asyncMu.RLock()
 		stopped := c.asyncStopped
 		c.asyncMu.RUnlock()
@@ -129,7 +131,6 @@ func (c *ValueCalculator) runAsyncProcessing(ctx context.Context) {
 			slog.Info("Stopping async processing")
 			return
 		case <-c.asyncTicker.C:
-			// Check again before processing
 			c.asyncMu.RLock()
 			stopped = c.asyncStopped
 			c.asyncMu.RUnlock()
@@ -137,9 +138,27 @@ func (c *ValueCalculator) runAsyncProcessing(ctx context.Context) {
 				slog.Info("Async processing stopped by user")
 				return
 			}
-			c.processMatchesAsync(ctx)
+			c.runAsyncIteration(ctx)
 		}
 	}
+}
+
+// runAsyncIteration runs value/diff processing and line movement in parallel
+func (c *ValueCalculator) runAsyncIteration(ctx context.Context) {
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		c.processMatchesAsync(ctx)
+	}()
+	if c.cfg != nil && c.cfg.LineMovementEnabled && c.oddsSnapshotStorage != nil {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			c.processLineMovementsAsync(ctx)
+		}()
+	}
+	wg.Wait()
 }
 
 // processMatchesAsync processes matches asynchronously and sends alerts for new high-value diffs
@@ -275,6 +294,54 @@ func (c *ValueCalculator) processMatchesAsync(ctx context.Context) {
 	}
 
 	slog.Info("Async processing complete", "alerts_sent", alertCount, "threshold", alertThreshold)
+}
+
+// processLineMovementsAsync tracks odds drops (прогрузы) in the same bookmaker, stores snapshots,
+// cleans data for started matches, and sends Telegram alerts for strong drops.
+func (c *ValueCalculator) processLineMovementsAsync(ctx context.Context) {
+	if c.httpClient == nil || c.oddsSnapshotStorage == nil {
+		return
+	}
+	threshold := 0.0
+	if c.cfg != nil && c.cfg.LineMovementAlertThreshold > 0 {
+		threshold = c.cfg.LineMovementAlertThreshold
+	}
+
+	// Clean snapshots for matches that already started so DB doesn't grow
+	if err := c.oddsSnapshotStorage.CleanSnapshotsForStartedMatches(ctx); err != nil {
+		slog.Warn("CleanSnapshotsForStartedMatches failed", "error", err)
+	}
+
+	reqCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+
+	matches, err := c.httpClient.GetMatches(reqCtx)
+	if err != nil {
+		slog.Error("Failed to fetch matches for line movement", "error", err)
+		return
+	}
+
+	movements, err := computeAndStoreLineMovements(ctx, matches, c.oddsSnapshotStorage, threshold)
+	if err != nil {
+		slog.Error("computeAndStoreLineMovements failed", "error", err)
+		return
+	}
+
+	alertCount := 0
+	for i := range movements {
+		lm := &movements[i]
+		if c.notifier != nil {
+			if err := c.notifier.SendLineMovementAlert(ctx, lm, threshold); err != nil {
+				slog.Error("Failed to send line movement alert", "error", err, "match", lm.MatchName)
+			} else {
+				alertCount++
+				slog.Info("Sent line movement alert", "match", lm.MatchName, "bookmaker", lm.Bookmaker, "change_abs", lm.ChangeAbs)
+			}
+		}
+	}
+	if len(movements) > 0 {
+		slog.Info("Line movement processing complete", "movements_detected", len(movements), "alerts_sent", alertCount)
+	}
 }
 
 // StopAsync stops the asynchronous processing

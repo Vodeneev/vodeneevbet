@@ -72,3 +72,15 @@ type DiffBetStorage interface {
 	// Close closes the database connection
 	Close() error
 }
+
+// OddsSnapshotStorage stores odds snapshots for line movement (прогрузы) detection.
+// Same bookmaker, same bet: compare current odd with previous to detect significant drops.
+type OddsSnapshotStorage interface {
+	// StoreOddsSnapshot saves current odd for (match_group_key, bet_key, bookmaker)
+	StoreOddsSnapshot(ctx context.Context, matchGroupKey, matchName, sport, eventType, outcomeType, parameter, betKey, bookmaker string, startTime time.Time, odd float64, recordedAt time.Time) error
+	// GetLastOddsSnapshot returns the most recent odd and recordedAt for (match_group_key, bet_key, bookmaker)
+	GetLastOddsSnapshot(ctx context.Context, matchGroupKey, betKey, bookmaker string) (odd float64, recordedAt time.Time, err error)
+	// CleanSnapshotsForStartedMatches deletes snapshots for matches that have already started (start_time < now)
+	CleanSnapshotsForStartedMatches(ctx context.Context) error
+	Close() error
+}

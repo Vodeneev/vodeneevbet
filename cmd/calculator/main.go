@@ -73,6 +73,7 @@ func main() {
 
 	// Initialize PostgreSQL storage for diffs if async is enabled
 	var diffStorage storage.DiffBetStorage
+	var oddsSnapshotStorage storage.OddsSnapshotStorage
 	if cfg.ValueCalculator.AsyncEnabled {
 		// Allow DSN override via environment variable
 		postgresDSN := cfg.Postgres.DSN
@@ -86,9 +87,10 @@ func main() {
 			os.Exit(1)
 		}
 
-		slog.Info("Initializing PostgreSQL diff storage...")
 		pgConfig := cfg.Postgres
 		pgConfig.DSN = postgresDSN
+
+		slog.Info("Initializing PostgreSQL diff storage...")
 		pgStorage, err := storage.NewPostgresDiffStorage(&pgConfig)
 		if err != nil {
 			slog.Error("Failed to initialize PostgreSQL storage", "error", err)
@@ -108,13 +110,27 @@ func main() {
 		defer cleanCancel()
 		if err := pgStorage.CleanDiffBets(cleanCtx); err != nil {
 			slog.Warn("Failed to clean diff_bets table", "error", err)
-			// Don't fail startup if cleanup fails, but log warning
 		} else {
 			slog.Info("diff_bets table cleaned successfully")
 		}
+
+		// Odds snapshot storage for line movement (прогрузы) tracking
+		if cfg.ValueCalculator.LineMovementEnabled {
+			slog.Info("Initializing PostgreSQL odds snapshot storage for line movement...")
+			oddsPg, err := storage.NewPostgresOddsSnapshotStorage(&pgConfig)
+			if err != nil {
+				slog.Error("Failed to initialize odds snapshot storage", "error", err)
+				os.Exit(1)
+			}
+			oddsSnapshotStorage = oddsPg
+			defer func() {
+				_ = oddsPg.Close()
+			}()
+			slog.Info("PostgreSQL odds snapshot storage initialized")
+		}
 	}
 
-	valueCalculator := calculator.NewValueCalculator(&cfg.ValueCalculator, diffStorage)
+	valueCalculator := calculator.NewValueCalculator(&cfg.ValueCalculator, diffStorage, oddsSnapshotStorage)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()

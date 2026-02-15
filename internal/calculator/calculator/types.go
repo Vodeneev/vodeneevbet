@@ -52,3 +52,21 @@ type ValueBet struct {
 	CalculatedAt time.Time `json:"calculated_at"`
 }
 
+// LineMovement represents a significant odds change in the same bookmaker for the same bet.
+type LineMovement struct {
+	MatchGroupKey string    `json:"match_group_key"`
+	MatchName     string    `json:"match_name"`
+	StartTime     time.Time `json:"start_time"`
+	Sport         string    `json:"sport"`
+
+	EventType   string    `json:"event_type"`
+	OutcomeType string    `json:"outcome_type"`
+	Parameter   string    `json:"parameter"`
+	BetKey      string    `json:"bet_key"`
+	Bookmaker   string    `json:"bookmaker"`
+	PreviousOdd float64   `json:"previous_odd"`
+	CurrentOdd  float64   `json:"current_odd"`
+	ChangeAbs   float64   `json:"change_abs"` // current - previous (positive = рост, negative = падение)
+	RecordedAt  time.Time `json:"recorded_at"`
+}
+

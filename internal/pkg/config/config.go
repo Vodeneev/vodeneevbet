@@ -117,6 +117,10 @@ type ValueCalculatorConfig struct {
 	MaxOdds              float64 `yaml:"max_odds"`               // Max odds for alerts and value bets; 0 = no limit (high odds have more variance)
 	TelegramBotToken     string  `yaml:"telegram_bot_token"`     // Telegram bot token for notifications
 	TelegramChatID       int64   `yaml:"telegram_chat_id"`       // Telegram chat ID to send notifications
+
+	// Line movement: track any odds change within same bookmaker
+	LineMovementEnabled        bool    `yaml:"line_movement_enabled"`        // Enable tracking of odds changes in same bookmaker
+	LineMovementAlertThreshold float64 `yaml:"line_movement_alert_threshold"` // Min absolute change to alert, e.g. 0.3 for 2.1->2.4
 }
 
 type HealthConfig struct {

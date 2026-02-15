@@ -63,6 +63,46 @@ func (n *TelegramNotifier) SendDiffAlert(ctx context.Context, diff *DiffBet, thr
 	}
 }
 
+// SendLineMovementAlert sends an alert for a significant odds change in the same bookmaker
+func (n *TelegramNotifier) SendLineMovementAlert(ctx context.Context, lm *LineMovement, thresholdAbs float64) error {
+	if n == nil || n.bot == nil {
+		return fmt.Errorf("telegram notifier not initialized")
+	}
+
+	message := n.formatLineMovementAlert(lm, thresholdAbs)
+	msg := tgbotapi.NewMessage(n.chatID, message)
+	msg.ParseMode = tgbotapi.ModeMarkdown
+
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	default:
+		_, err := n.bot.Send(msg)
+		return err
+	}
+}
+
+func (n *TelegramNotifier) formatLineMovementAlert(lm *LineMovement, thresholdAbs float64) string {
+	var builder strings.Builder
+	builder.WriteString(fmt.Sprintf("📊 *Изменение линии (≥%.2f)*\n\n", thresholdAbs))
+	builder.WriteString(fmt.Sprintf("*%s*\n", escapeMarkdown(lm.MatchName)))
+	builder.WriteString(fmt.Sprintf("📌 %s | %s", formatEventType(lm.EventType), formatOutcomeType(lm.OutcomeType)))
+	if lm.Parameter != "" {
+		builder.WriteString(fmt.Sprintf(" (%s)", lm.Parameter))
+	}
+	builder.WriteString("\n\n")
+	builder.WriteString(fmt.Sprintf("🏠 *%s*\n", escapeMarkdown(lm.Bookmaker)))
+	changeStr := fmt.Sprintf("%+.2f", lm.ChangeAbs)
+	builder.WriteString(fmt.Sprintf("Было: *%.2f* → стало: *%.2f* (%s)\n", lm.PreviousOdd, lm.CurrentOdd, changeStr))
+	if !lm.StartTime.IsZero() {
+		builder.WriteString(fmt.Sprintf("🕐 Начало: %s\n", formatTime(lm.StartTime)))
+	}
+	if lm.Sport != "" {
+		builder.WriteString(fmt.Sprintf("🏆 %s\n", lm.Sport))
+	}
+	return builder.String()
+}
+
 // formatDiffAlert formats a diff bet as a Telegram message
 func (n *TelegramNotifier) formatDiffAlert(diff *DiffBet, threshold int) string {
 	var builder strings.Builder

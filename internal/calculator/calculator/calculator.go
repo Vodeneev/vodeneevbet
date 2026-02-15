@@ -199,10 +199,30 @@ func (c *ValueCalculator) processMatchesAsync(ctx context.Context) {
 		return
 	}
 
-	slog.Debug("Fetched matches (football + esports), calculating diffs", "match_count", len(matches))
+	// Log merged match counts by sport (football vs esports)
+	matchesBySport := make(map[string]int)
+	for _, m := range matches {
+		s := m.Sport
+		if s == "" {
+			s = "unknown"
+		}
+		matchesBySport[s]++
+	}
+	slog.Info("Merged matches by sport", "total", len(matches), "by_sport", matchesBySport)
 
 	// Calculate all diffs
 	diffs := computeTopDiffs(matches, 1000) // Get more diffs for async processing
+
+	// Log how many diffs came from esports (dota2, cs)
+	diffsBySport := make(map[string]int)
+	for _, d := range diffs {
+		s := d.Sport
+		if s == "" {
+			s = "unknown"
+		}
+		diffsBySport[s]++
+	}
+	slog.Info("Diffs by sport", "total", len(diffs), "by_sport", diffsBySport)
 
 	logStatisticalEventsSummary(matches)
 

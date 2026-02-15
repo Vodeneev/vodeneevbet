@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"strings"
@@ -181,8 +182,25 @@ func (c *HTTPMatchesClient) GetMatchesAll(ctx context.Context) ([]models.Match, 
 	esports, errEsports := c.GetEsportsMatches(ctx)
 	if errEsports != nil {
 		// Only football is still returned; esports fetch failure is non-fatal
+		slog.Warn("Failed to fetch esports matches, using football only", "error", errEsports)
 		return football, nil
 	}
-	converted := EsportsMatchesToMatches(esports)
+	var esportsSummary EsportsConversionSummary
+	converted := EsportsMatchesToMatches(esports, &esportsSummary)
+	total := len(football) + len(converted)
+	slog.Info("Fetched matches for calculator",
+		"football", len(football),
+		"esports_raw", len(esports),
+		"esports_converted", len(converted),
+		"total_merged", total)
+	if esportsSummary.MatchCount > 0 {
+		slog.Info("Esports merge summary",
+			"match_count", esportsSummary.MatchCount,
+			"by_discipline", esportsSummary.ByDiscipline,
+			"by_bookmaker", esportsSummary.ByBookmaker,
+			"total_events", esportsSummary.TotalEvents,
+			"event_types", esportsSummary.UniqueEventTypes,
+			"sample_matches", esportsSummary.SampleMatches)
+	}
 	return append(football, converted...), nil
 }

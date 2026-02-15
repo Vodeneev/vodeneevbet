@@ -25,9 +25,10 @@ func computeAndStoreLineMovements(ctx context.Context, matches []models.Match, s
 	type betMap map[string]map[string]float64
 	groups := map[string]betMap{}
 	type groupMeta struct {
-		name      string
-		startTime time.Time
-		sport     string
+		name       string
+		startTime  time.Time
+		sport      string
+		tournament string
 	}
 	meta := map[string]groupMeta{}
 
@@ -39,9 +40,10 @@ func computeAndStoreLineMovements(ctx context.Context, matches []models.Match, s
 		}
 		if _, ok := meta[gk]; !ok {
 			meta[gk] = groupMeta{
-				name:      strings.TrimSpace(m.HomeTeam) + " vs " + strings.TrimSpace(m.AwayTeam),
-				startTime: m.StartTime,
-				sport:     m.Sport,
+				name:       strings.TrimSpace(m.HomeTeam) + " vs " + strings.TrimSpace(m.AwayTeam),
+				startTime:  m.StartTime,
+				sport:      m.Sport,
+				tournament: strings.TrimSpace(m.Tournament),
 			}
 		}
 		if _, ok := groups[gk]; !ok {
@@ -113,6 +115,7 @@ func computeAndStoreLineMovements(ctx context.Context, matches []models.Match, s
 							MatchName:       gm.name,
 							StartTime:       gm.startTime,
 							Sport:           gm.sport,
+							Tournament:      gm.tournament,
 							EventType:       evType,
 							OutcomeType:     outType,
 							Parameter:       param,
@@ -135,6 +138,7 @@ func computeAndStoreLineMovements(ctx context.Context, matches []models.Match, s
 							MatchName:       gm.name,
 							StartTime:       gm.startTime,
 							Sport:           gm.sport,
+							Tournament:      gm.tournament,
 							EventType:       evType,
 							OutcomeType:     outType,
 							Parameter:       param,
@@ -176,9 +180,10 @@ func getLineMovementsForTop(ctx context.Context, matches []models.Match, snapsho
 	type betMap map[string]map[string]float64
 	groups := map[string]betMap{}
 	type groupMeta struct {
-		name      string
-		startTime time.Time
-		sport     string
+		name       string
+		startTime  time.Time
+		sport      string
+		tournament string
 	}
 	meta := map[string]groupMeta{}
 
@@ -190,9 +195,10 @@ func getLineMovementsForTop(ctx context.Context, matches []models.Match, snapsho
 		}
 		if _, ok := meta[gk]; !ok {
 			meta[gk] = groupMeta{
-				name:      strings.TrimSpace(m.HomeTeam) + " vs " + strings.TrimSpace(m.AwayTeam),
-				startTime: m.StartTime,
-				sport:     m.Sport,
+				name:       strings.TrimSpace(m.HomeTeam) + " vs " + strings.TrimSpace(m.AwayTeam),
+				startTime:  m.StartTime,
+				sport:      m.Sport,
+				tournament: strings.TrimSpace(m.Tournament),
 			}
 		}
 		if _, ok := groups[gk]; !ok {
@@ -279,6 +285,7 @@ func getLineMovementsForTop(ctx context.Context, matches []models.Match, snapsho
 						MatchName:       gm.name,
 						StartTime:       gm.startTime,
 						Sport:           gm.sport,
+						Tournament:      gm.tournament,
 						EventType:       evType,
 						OutcomeType:     outType,
 						Parameter:       param,
@@ -299,6 +306,7 @@ func getLineMovementsForTop(ctx context.Context, matches []models.Match, snapsho
 						MatchName:       gm.name,
 						StartTime:       gm.startTime,
 						Sport:           gm.sport,
+						Tournament:      gm.tournament,
 						EventType:       evType,
 						OutcomeType:     outType,
 						Parameter:       param,

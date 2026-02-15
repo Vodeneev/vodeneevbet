@@ -29,6 +29,11 @@ func ParseGameDetails(game *GameDetails, leagueName string) *models.Match {
 		slog.Debug("1xbet: skip game (no home/away)", "game_id", game.I, "o1", game.O1, "o2", game.O2)
 		return nil
 	}
+	// Skip generic placeholders (API sometimes returns "Home"/"Away" without real team names)
+	if (homeTeam == "Home" && awayTeam == "Away") || (homeTeam == "Away" && awayTeam == "Home") {
+		slog.Debug("1xbet: skip game (generic Home/Away)", "game_id", game.I, "league", leagueName)
+		return nil
+	}
 
 	// Parse start time (Unix timestamp)
 	startTime := time.Unix(game.S, 0).UTC()

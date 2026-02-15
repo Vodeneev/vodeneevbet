@@ -58,6 +58,7 @@ type LineMovement struct {
 	MatchName     string    `json:"match_name"`
 	StartTime     time.Time `json:"start_time"`
 	Sport         string    `json:"sport"`
+	Tournament    string    `json:"tournament"` // league/championship name for identification (e.g. when match is "Home vs Away")
 
 	EventType   string    `json:"event_type"`
 	OutcomeType string    `json:"outcome_type"`

@@ -596,6 +596,18 @@ func fetchAndSendLineMovements(bot *tgbotapi.BotAPI, chatID int64, config BotCon
 			betInfo += fmt.Sprintf(" (%s)", lm.Parameter)
 		}
 		entry := fmt.Sprintf("*%d. %s*\n", i+1, escapeMarkdown(lm.MatchName))
+		if lm.Tournament != "" || lm.Sport != "" {
+			leagueLine := strings.TrimSpace(lm.Sport)
+			if lm.Tournament != "" {
+				if leagueLine != "" {
+					leagueLine += " • "
+				}
+				leagueLine += strings.TrimSpace(lm.Tournament)
+			}
+			if leagueLine != "" {
+				entry += fmt.Sprintf("🏆 %s\n", escapeMarkdown(leagueLine))
+			}
+		}
 		entry += fmt.Sprintf("📌 %s\n", betInfo)
 		entry += fmt.Sprintf("🏠 %s: *%.2f* → *%.2f* (%+.1f%%)\n", escapeMarkdown(lm.Bookmaker), lm.PreviousOdd, lm.CurrentOdd, lm.ChangePercent)
 		entry += fmt.Sprintf("🕐 Start: %s\n\n", formatTime(lm.StartTime))
@@ -830,6 +842,7 @@ type LineMovement struct {
 	MatchName       string    `json:"match_name"`
 	StartTime       time.Time `json:"start_time"`
 	Sport           string    `json:"sport"`
+	Tournament      string    `json:"tournament"` // league/championship for identification (e.g. when match is "Home vs Away")
 	EventType       string    `json:"event_type"`
 	OutcomeType     string    `json:"outcome_type"`
 	Parameter       string    `json:"parameter"`

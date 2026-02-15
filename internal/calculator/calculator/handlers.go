@@ -6,6 +6,7 @@ import "net/http"
 func (c *ValueCalculator) RegisterHTTP(mux *http.ServeMux) {
 	mux.HandleFunc("/diffs/top", c.handleTopDiffs)
 	mux.HandleFunc("/value-bets/top", c.handleTopValueBets)
+	mux.HandleFunc("/line-movements/top", c.handleTopLineMovements)
 	mux.HandleFunc("/diffs/status", c.handleStatus)
 	mux.HandleFunc("/async/stop", c.handleStopAsync)
 	mux.HandleFunc("/async/start", c.handleStartAsync)

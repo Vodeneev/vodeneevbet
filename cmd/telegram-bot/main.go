@@ -223,6 +223,14 @@ func handleMessage(bot *tgbotapi.BotAPI, message *tgbotapi.Message, config BotCo
 				}
 			}
 			fetchAndSendDiffs(bot, message.Chat.ID, config, limit, "upcoming")
+		case "/overlays":
+			limit := 10
+			if len(parts) > 1 {
+				if n, err := strconv.Atoi(parts[1]); err == nil && n > 0 && n <= 50 {
+					limit = n
+				}
+			}
+			fetchAndSendLineMovements(bot, message.Chat.ID, config, limit)
 		case "/stop":
 			stopAsyncProcessing(bot, message.Chat.ID, config)
 		default:
@@ -261,6 +269,14 @@ func handleMessage(bot *tgbotapi.BotAPI, message *tgbotapi.Message, config BotCo
 					}
 				}
 				fetchAndSendDiffs(bot, message.Chat.ID, config, limit, "upcoming")
+			case "overlays":
+				limit := 10
+				if len(parts) > 1 {
+					if n, err := strconv.Atoi(parts[1]); err == nil && n > 0 && n <= 50 {
+						limit = n
+					}
+				}
+				fetchAndSendLineMovements(bot, message.Chat.ID, config, limit)
 			default:
 				sendHelpMessage(bot, message.Chat.ID)
 			}
@@ -286,6 +302,9 @@ func sendHelpMessage(bot *tgbotapi.BotAPI, chatID int64) {
 /upcoming [limit] - Get top differences for upcoming matches
   Example: /upcoming 10
 
+/overlays [limit] - Get top line movements (прогрузы)
+  Example: /overlays 10
+
 /help - Show this help message
 
 *Usage:*
@@ -293,8 +312,9 @@ You can also send messages like:
 • "top 10" - Get top 10 differences
 • "live 5" - Get top 5 live matches
 • "upcoming 3" - Get top 3 upcoming matches
+• "overlays 10" - Get top 10 прогрузов
 
-*Note:* Limit must be between 1 and 50. Default is 5.`
+*Note:* Limit must be between 1 and 50. Default for /top, /live, /upcoming is 5; for /overlays is 10.`
 
 	msg := tgbotapi.NewMessage(chatID, helpText)
 	msg.ParseMode = tgbotapi.ModeMarkdown
@@ -488,6 +508,117 @@ func fetchAndSendDiffs(bot *tgbotapi.BotAPI, chatID int64, config BotConfig, lim
 		}
 	} else {
 		slog.Debug("Message builder is empty or only contains header, not sending", "chat_id", chatID)
+	}
+}
+
+func fetchAndSendLineMovements(bot *tgbotapi.BotAPI, chatID int64, config BotConfig, limit int) {
+	typing := tgbotapi.NewChatAction(chatID, tgbotapi.ChatTyping)
+	if _, err := bot.Request(typing); err != nil {
+		slog.Debug("Failed to send typing indicator", "chat_id", chatID, "error", err)
+	}
+
+	url := fmt.Sprintf("%s/line-movements/top?limit=%d", config.CalculatorURL, limit)
+	slog.Debug("Fetching line movements", "url", url)
+	client := &http.Client{Timeout: 30 * time.Second}
+	resp, err := client.Get(url)
+	if err != nil {
+		slog.Error("Failed to fetch line movements from calculator", "error", err)
+		msg := tgbotapi.NewMessage(chatID, fmt.Sprintf("❌ Error: Failed to connect to calculator service: %v", err))
+		if _, sendErr := bot.Send(msg); sendErr != nil {
+			slog.Error("Failed to send error message", "chat_id", chatID, "error", sendErr)
+		}
+		return
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		slog.Warn("Calculator returned non-OK status for line movements", "status", resp.StatusCode)
+		bodyBytes, _ := io.ReadAll(resp.Body)
+		var errorResp map[string]string
+		if err := json.NewDecoder(bytes.NewReader(bodyBytes)).Decode(&errorResp); err == nil {
+			msg := tgbotapi.NewMessage(chatID, fmt.Sprintf("❌ Error: %s", errorResp["error"]))
+			if _, sendErr := bot.Send(msg); sendErr != nil {
+				slog.Error("Failed to send error message", "chat_id", chatID, "error", sendErr)
+			}
+		} else {
+			msg := tgbotapi.NewMessage(chatID, fmt.Sprintf("❌ Error: Calculator returned status %d", resp.StatusCode))
+			if _, sendErr := bot.Send(msg); sendErr != nil {
+				slog.Error("Failed to send error message", "chat_id", chatID, "error", sendErr)
+			}
+		}
+		return
+	}
+
+	bodyBytes, err := io.ReadAll(resp.Body)
+	if err != nil {
+		slog.Error("Failed to read line movements response", "error", err)
+		msg := tgbotapi.NewMessage(chatID, fmt.Sprintf("❌ Error: Failed to read response: %v", err))
+		if _, sendErr := bot.Send(msg); sendErr != nil {
+			slog.Error("Failed to send error message", "chat_id", chatID, "error", sendErr)
+		}
+		return
+	}
+
+	var movements []LineMovement
+	if err := json.NewDecoder(bytes.NewReader(bodyBytes)).Decode(&movements); err != nil {
+		slog.Error("Failed to parse line movements response", "error", err)
+		msg := tgbotapi.NewMessage(chatID, fmt.Sprintf("❌ Error: Failed to parse response: %v", err))
+		if _, sendErr := bot.Send(msg); sendErr != nil {
+			slog.Error("Failed to send error message", "chat_id", chatID, "error", sendErr)
+		}
+		return
+	}
+
+	if len(movements) == 0 {
+		msg := tgbotapi.NewMessage(chatID, "📊 Нет актуальных прогрузов.")
+		if _, sendErr := bot.Send(msg); sendErr != nil {
+			slog.Error("Failed to send empty result message", "chat_id", chatID, "error", sendErr)
+		}
+		return
+	}
+
+	var builder strings.Builder
+	actualCount := len(movements)
+	if actualCount > limit {
+		actualCount = limit
+	}
+	header := fmt.Sprintf("📊 *Топ %d прогрузов*\n\n", actualCount)
+	builder.WriteString(header)
+
+	for i, lm := range movements {
+		if i >= limit {
+			break
+		}
+		eventStr := formatEventType(lm.EventType)
+		outcomeStr := formatOutcomeType(lm.OutcomeType)
+		betInfo := fmt.Sprintf("%s | %s", eventStr, outcomeStr)
+		if lm.Parameter != "" {
+			betInfo += fmt.Sprintf(" (%s)", lm.Parameter)
+		}
+		entry := fmt.Sprintf("*%d. %s*\n", i+1, escapeMarkdown(lm.MatchName))
+		entry += fmt.Sprintf("📌 %s\n", betInfo)
+		entry += fmt.Sprintf("🏠 %s: *%.2f* → *%.2f* (%+.1f%%)\n", escapeMarkdown(lm.Bookmaker), lm.PreviousOdd, lm.CurrentOdd, lm.ChangePercent)
+		entry += fmt.Sprintf("🕐 Start: %s\n\n", formatTime(lm.StartTime))
+
+		if builder.Len()+len(entry) > 4000 {
+			msg := tgbotapi.NewMessage(chatID, builder.String())
+			msg.ParseMode = tgbotapi.ModeMarkdown
+			if _, err := bot.Send(msg); err != nil {
+				slog.Error("Failed to send line movements message part", "chat_id", chatID, "error", err)
+				return
+			}
+			builder.Reset()
+			builder.WriteString(header)
+		}
+		builder.WriteString(entry)
+	}
+
+	if builder.Len() > len(header) {
+		msg := tgbotapi.NewMessage(chatID, builder.String())
+		msg.ParseMode = tgbotapi.ModeMarkdown
+		if _, err := bot.Send(msg); err != nil {
+			slog.Error("Failed to send line movements message", "chat_id", chatID, "error", err)
+		}
 	}
 }
 
@@ -691,6 +822,24 @@ func stopAsyncProcessing(bot *tgbotapi.BotAPI, chatID int64, config BotConfig) {
 	} else {
 		slog.Info("Successfully stopped async processing via bot")
 	}
+}
+
+// LineMovement represents a line movement / прогруз (matches the calculator response)
+type LineMovement struct {
+	MatchGroupKey   string    `json:"match_group_key"`
+	MatchName       string    `json:"match_name"`
+	StartTime       time.Time `json:"start_time"`
+	Sport           string    `json:"sport"`
+	EventType       string    `json:"event_type"`
+	OutcomeType     string    `json:"outcome_type"`
+	Parameter       string    `json:"parameter"`
+	BetKey          string    `json:"bet_key"`
+	Bookmaker       string    `json:"bookmaker"`
+	PreviousOdd     float64   `json:"previous_odd"`
+	CurrentOdd      float64   `json:"current_odd"`
+	ChangeAbs       float64   `json:"change_abs"`
+	ChangePercent   float64   `json:"change_percent"`
+	RecordedAt      time.Time `json:"recorded_at"`
 }
 
 // ValueBet represents a value bet (matches the calculator response)

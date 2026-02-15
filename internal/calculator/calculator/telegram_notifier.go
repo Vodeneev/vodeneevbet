@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"strings"
+	"sync"
 	"time"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
@@ -12,10 +13,15 @@ import (
 	"github.com/Vodeneev/vodeneevbet/internal/pkg/storage"
 )
 
+// Min interval between any two Telegram messages to the same chat to avoid 429 Too Many Requests (~30/min limit).
+const telegramSendInterval = 2 * time.Second
+
 // TelegramNotifier sends Telegram notifications for high-value diffs
 type TelegramNotifier struct {
-	bot    *tgbotapi.BotAPI
-	chatID int64
+	bot      *tgbotapi.BotAPI
+	chatID   int64
+	mu       sync.Mutex
+	lastSend time.Time
 }
 
 // NewTelegramNotifier creates a new Telegram notifier
@@ -43,26 +49,47 @@ func NewTelegramNotifier(token string, chatID int64) *TelegramNotifier {
 	}
 }
 
+// waitSendInterval waits until at least telegramSendInterval has passed since lastSend. Holds n.mu for the whole wait so sends are serialized. Call with n.mu held.
+func (n *TelegramNotifier) waitSendInterval(ctx context.Context) error {
+	for {
+		elapsed := time.Since(n.lastSend)
+		if elapsed >= telegramSendInterval {
+			return nil
+		}
+		wait := telegramSendInterval - elapsed
+		if wait > 500*time.Millisecond {
+			wait = 500 * time.Millisecond
+		}
+		n.mu.Unlock()
+		select {
+		case <-ctx.Done():
+			n.mu.Lock()
+			return ctx.Err()
+		case <-time.After(wait):
+			n.mu.Lock()
+		}
+	}
+}
+
 // SendDiffAlert sends an alert for a high-value diff
 func (n *TelegramNotifier) SendDiffAlert(ctx context.Context, diff *DiffBet, threshold int) error {
 	if n == nil || n.bot == nil {
 		return fmt.Errorf("telegram notifier not initialized")
 	}
 
-	// Format the alert message
 	message := n.formatDiffAlert(diff, threshold)
-
 	msg := tgbotapi.NewMessage(n.chatID, message)
 	msg.ParseMode = tgbotapi.ModeMarkdown
 
-	// Send with context timeout
-	select {
-	case <-ctx.Done():
-		return ctx.Err()
-	default:
-		_, err := n.bot.Send(msg)
+	n.mu.Lock()
+	if err := n.waitSendInterval(ctx); err != nil {
+		n.mu.Unlock()
 		return err
 	}
+	n.lastSend = time.Now()
+	_, err := n.bot.Send(msg)
+	n.mu.Unlock()
+	return err
 }
 
 // SendLineMovementAlert sends an alert for a significant odds change in the same bookmaker.
@@ -77,13 +104,15 @@ func (n *TelegramNotifier) SendLineMovementAlert(ctx context.Context, lm *LineMo
 	msg := tgbotapi.NewMessage(n.chatID, message)
 	msg.ParseMode = tgbotapi.ModeMarkdown
 
-	select {
-	case <-ctx.Done():
-		return ctx.Err()
-	default:
-		_, err := n.bot.Send(msg)
+	n.mu.Lock()
+	if err := n.waitSendInterval(ctx); err != nil {
+		n.mu.Unlock()
 		return err
 	}
+	n.lastSend = time.Now()
+	_, err := n.bot.Send(msg)
+	n.mu.Unlock()
+	return err
 }
 
 func (n *TelegramNotifier) formatLineMovementAlert(lm *LineMovement, thresholdPercent float64, now time.Time, history []storage.OddsHistoryPoint) string {

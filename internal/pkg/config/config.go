@@ -130,8 +130,9 @@ type ValueCalculatorConfig struct {
 	TelegramChatID       int64   `yaml:"telegram_chat_id"`       // Telegram chat ID to send notifications
 
 	// Line movement: track any odds change within same bookmaker
-	LineMovementEnabled        bool    `yaml:"line_movement_enabled"`        // Enable tracking of odds changes in same bookmaker
-	LineMovementAlertThreshold float64 `yaml:"line_movement_alert_threshold"` // Min change in % to alert, e.g. 5.0 for 5%
+	LineMovementEnabled           bool    `yaml:"line_movement_enabled"`             // Enable tracking of odds changes in same bookmaker
+	LineMovementAlertThreshold    float64 `yaml:"line_movement_alert_threshold"`     // Min change in % to alert, e.g. 5.0 for 5%
+	LineMovementTelegramAlerts    bool    `yaml:"line_movement_telegram_alerts"`     // Send line movement alerts to Telegram (default: false to avoid spam; tracking still runs if line_movement_enabled)
 }
 
 type HealthConfig struct {

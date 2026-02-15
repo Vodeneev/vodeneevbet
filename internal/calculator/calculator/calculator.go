@@ -329,6 +329,8 @@ func (c *ValueCalculator) processLineMovementsAsync(ctx context.Context) {
 
 	now := time.Now()
 	alertCount := 0
+	// Only send line movement alerts to Telegram if enabled (avoids spam; Telegram ~30 msg/min limit per chat)
+	sendLineMovementToTelegram := c.cfg != nil && c.cfg.LineMovementTelegramAlerts
 	// Delay between alerts to avoid Telegram "Too Many Requests" and spread messages
 	const delayBetweenAlerts = 1100 * time.Millisecond
 	for i := range movements {
@@ -340,16 +342,17 @@ func (c *ValueCalculator) processLineMovementsAsync(ctx context.Context) {
 			}
 		}
 		lm := &movements[i]
-		if c.notifier != nil {
+		if sendLineMovementToTelegram && c.notifier != nil {
 			history, _ := c.oddsSnapshotStorage.GetOddsHistory(ctx, lm.MatchGroupKey, lm.BetKey, lm.Bookmaker, 30)
 			if err := c.notifier.SendLineMovementAlert(ctx, lm, threshold, now, history); err != nil {
 				slog.Error("Failed to send line movement alert", "error", err, "match", lm.MatchName)
 			} else {
 				alertCount++
 				slog.Info("Sent line movement alert", "match", lm.MatchName, "bookmaker", lm.Bookmaker, "change_percent", lm.ChangePercent)
-				_ = c.oddsSnapshotStorage.ResetExtremesAfterAlert(ctx, lm.MatchGroupKey, lm.BetKey, lm.Bookmaker)
 			}
 		}
+		// Reset extremes so we don't re-detect the same movement every cycle (whether or not we sent to Telegram)
+		_ = c.oddsSnapshotStorage.ResetExtremesAfterAlert(ctx, lm.MatchGroupKey, lm.BetKey, lm.Bookmaker)
 	}
 	if len(movements) > 0 {
 		slog.Info("Line movement processing complete", "movements_detected", len(movements), "alerts_sent", alertCount)

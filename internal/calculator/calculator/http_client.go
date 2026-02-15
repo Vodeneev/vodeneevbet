@@ -3,6 +3,7 @@ package calculator
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -46,9 +47,44 @@ type matchesResponse struct {
 	} `json:"meta"`
 }
 
-// GetMatches fetches all matches from the parser's /matches endpoint
+// GetMatches fetches all matches from the parser's /matches endpoint.
+// Retries up to 3 times on transient errors (EOF, connection reset) with 2s backoff.
 func (c *HTTPMatchesClient) GetMatches(ctx context.Context) ([]models.Match, error) {
-	return c.fetchMatches(ctx)
+	const maxAttempts = 3
+	const backoff = 2 * time.Second
+	var lastErr error
+	for attempt := 1; attempt <= maxAttempts; attempt++ {
+		matches, err := c.fetchMatches(ctx)
+		if err == nil {
+			return matches, nil
+		}
+		lastErr = err
+		if !isRetriableFetchError(err) || attempt == maxAttempts {
+			return nil, err
+		}
+		if attempt < maxAttempts {
+			select {
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			case <-time.After(backoff):
+			}
+		}
+	}
+	return nil, lastErr
+}
+
+// isRetriableFetchError returns true for transient network errors (EOF, connection reset).
+func isRetriableFetchError(err error) bool {
+	if err == nil {
+		return false
+	}
+	if errors.Is(err, io.EOF) {
+		return true
+	}
+	s := err.Error()
+	return strings.Contains(s, "EOF") ||
+		strings.Contains(s, "connection reset") ||
+		strings.Contains(s, "connection refused")
 }
 
 // fetchMatches fetches all matches from the parser's /matches endpoint

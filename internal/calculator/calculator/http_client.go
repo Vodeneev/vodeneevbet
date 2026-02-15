@@ -167,3 +167,22 @@ func (c *HTTPMatchesClient) GetEsportsMatches(ctx context.Context) ([]models.Esp
 	}
 	return mr.Matches, nil
 }
+
+// GetMatchesAll fetches football matches and esports matches, converts esports to models.Match,
+// and returns a single slice so diffs/value/upcoming include both.
+func (c *HTTPMatchesClient) GetMatchesAll(ctx context.Context) ([]models.Match, error) {
+	if c == nil {
+		return nil, fmt.Errorf("HTTP client is not configured")
+	}
+	football, err := c.GetMatches(ctx)
+	if err != nil {
+		return nil, err
+	}
+	esports, errEsports := c.GetEsportsMatches(ctx)
+	if errEsports != nil {
+		// Only football is still returned; esports fetch failure is non-fatal
+		return football, nil
+	}
+	converted := EsportsMatchesToMatches(esports)
+	return append(football, converted...), nil
+}

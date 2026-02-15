@@ -193,21 +193,13 @@ func (c *ValueCalculator) processMatchesAsync(ctx context.Context) {
 	reqCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 
-	matches, err := c.httpClient.GetMatches(reqCtx)
+	matches, err := c.httpClient.GetMatchesAll(reqCtx)
 	if err != nil {
 		slog.Error("Failed to fetch matches for async processing", "error", err.Error())
 		return
 	}
 
-	// Киберспорт: забираем с того же парсера /esports/matches (пока только логируем, расчёт диффов — позже)
-	if c.httpClient != nil {
-		esportsMatches, errEsports := c.httpClient.GetEsportsMatches(reqCtx)
-		if errEsports == nil && len(esportsMatches) > 0 {
-			slog.Debug("Fetched esports matches", "count", len(esportsMatches))
-		}
-	}
-
-	slog.Debug("Fetched matches, calculating diffs", "match_count", len(matches))
+	slog.Debug("Fetched matches (football + esports), calculating diffs", "match_count", len(matches))
 
 	// Calculate all diffs
 	diffs := computeTopDiffs(matches, 1000) // Get more diffs for async processing
@@ -323,7 +315,7 @@ func (c *ValueCalculator) processLineMovementsAsync(ctx context.Context) {
 	reqCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 
-	matches, err := c.httpClient.GetMatches(reqCtx)
+	matches, err := c.httpClient.GetMatchesAll(reqCtx)
 	if err != nil {
 		slog.Error("Failed to fetch matches for line movement", "error", err)
 		return

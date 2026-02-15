@@ -55,7 +55,7 @@ func (c *ValueCalculator) handleTopValueBets(w http.ResponseWriter, r *http.Requ
 	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
 	defer cancel()
 
-	matches, err := c.httpClient.GetMatches(ctx)
+	matches, err := c.httpClient.GetMatchesAll(ctx)
 	if err != nil {
 		slog.Error("Failed to load matches in handleTopValueBets", "error", err)
 		w.Header().Set("Content-Type", "application/json")

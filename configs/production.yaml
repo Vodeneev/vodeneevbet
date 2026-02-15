@@ -1,7 +1,7 @@
 parser:
   # Production parser management
   # Empty array [] = run all registered parsers (local mode)
-  enabled_parsers: ["fonbet", "pinnacle888", "xbet1", "zenit"]
+  enabled_parsers: ["fonbet", "pinnacle888", "xbet1", "zenit", "olimp"]
 
   # Orchestrator mode: if bookmaker_services is set, parser does NOT run parsers locally,
   # but aggregates /matches from these URLs and triggers /parse on them.
@@ -316,6 +316,13 @@ parser:
     sport_id: 1
     # timeout: 30s   # по умолчанию parser.timeout
     # proxy_list: []
+
+  # Olimp (olimp.bet) line API — цепочка: sports-with-categories-with-competitions (vids=1) → competitions-with-events (vids[]=id:). Referer обязателен.
+  olimp:
+    base_url: "https://www.olimp.bet/api/v4/0/line"
+    sport_id: 1
+    referer: "https://www.olimp.bet/line/futbol-1/"
+    # timeout: 30s
 
 health:
   # HTTP server settings

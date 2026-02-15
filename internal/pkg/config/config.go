@@ -39,6 +39,16 @@ type ParserConfig struct {
 	Marathonbet       MarathonbetConfig `yaml:"marathonbet"`
 	Xbet1             Xbet1Config       `yaml:"xbet1"`
 	Zenit             ZenitConfig       `yaml:"zenit"`
+	Olimp             OlimpConfig       `yaml:"olimp"`
+}
+
+// OlimpConfig configures Olimp (olimp.bet) line API parser.
+// API: sports-with-categories-with-competitions (vids=1) → competitions-with-events (vids[]=id:) → events already have outcomes in step 2.
+type OlimpConfig struct {
+	BaseURL  string        `yaml:"base_url"`  // e.g. "https://www.olimp.bet/api/v4/0/line"
+	SportID  int           `yaml:"sport_id"`  // Sport ID (1 = Football, default: 1)
+	Timeout  time.Duration `yaml:"timeout"`  // HTTP timeout (default: use Parser.Timeout)
+	Referer  string        `yaml:"referer"`   // Referer for competitions-with-events (required; e.g. "https://www.olimp.bet/line/futbol-1/")
 }
 
 // ZenitConfig configures Zenit (zenitnow549.top) line API parser.

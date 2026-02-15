@@ -3,6 +3,7 @@ package health
 import (
 	"log/slog"
 	"sort"
+	"strings"
 	"sync"
 
 	"github.com/Vodeneev/vodeneevbet/internal/pkg/models"
@@ -163,6 +164,43 @@ func GetMatches() []models.Match {
 
 	slog.Debug("Retrieved matches from store", "count", len(matches), "store_size", storeSize)
 	return matches
+}
+
+// GetMatchesByName returns matches whose name contains the given substring (case-insensitive).
+// Name is matched against Match.Name; also against "HomeTeam - AwayTeam" and "HomeTeam vs AwayTeam".
+// Returns all matching matches with full events and outcomes (coefficients).
+func GetMatchesByName(nameQuery string) []models.Match {
+	if globalMatchStore == nil || strings.TrimSpace(nameQuery) == "" {
+		return []models.Match{}
+	}
+
+	globalMatchStore.mu.RLock()
+	defer globalMatchStore.mu.RUnlock()
+
+	q := strings.ToLower(strings.TrimSpace(nameQuery))
+	out := make([]models.Match, 0)
+
+	for _, match := range globalMatchStore.matches {
+		name := strings.ToLower(match.Name)
+		home := strings.ToLower(match.HomeTeam)
+		away := strings.ToLower(match.AwayTeam)
+		homeAway := home + " - " + away
+		homeVsAway := home + " vs " + away
+		if strings.Contains(name, q) || strings.Contains(homeAway, q) || strings.Contains(homeVsAway, q) ||
+			strings.Contains(home, q) || strings.Contains(away, q) {
+			matchCopy := *match
+			eventsCopy := make([]models.Event, len(match.Events))
+			copy(eventsCopy, match.Events)
+			matchCopy.Events = eventsCopy
+			out = append(out, matchCopy)
+		}
+	}
+
+	sort.Slice(out, func(i, j int) bool {
+		return out[i].UpdatedAt.After(out[j].UpdatedAt)
+	})
+
+	return out
 }
 
 // ClearMatches clears all matches from the in-memory store

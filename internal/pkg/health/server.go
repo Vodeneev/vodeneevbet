@@ -15,6 +15,7 @@ import (
 func init() {
 	// Set the GetMatches function for handlers
 	handlers.SetGetMatchesFunc(GetMatches)
+	handlers.SetGetMatchesByNameFunc(GetMatchesByName)
 	// Set the GetParsers function for handlers
 	handlers.SetGetParsersFunc(GetParsers)
 }
@@ -33,6 +34,9 @@ func Run(ctx context.Context, addr string, service string, storage interfaces.St
 
 	// Matches endpoint
 	mux.HandleFunc("/matches", handlers.HandleMatches)
+
+	// Match by name (for testing): returns matches with full events and coefficients
+	mux.HandleFunc("/match-by-name", handlers.HandleMatchByName)
 
 	// Manual parse endpoint
 	mux.HandleFunc("/parse", handlers.HandleParse)

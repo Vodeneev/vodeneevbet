@@ -73,14 +73,26 @@ type DiffBetStorage interface {
 	Close() error
 }
 
-// OddsSnapshotStorage stores odds snapshots for line movement (прогрузы) detection.
-// Same bookmaker, same bet: compare current odd with previous to detect significant drops.
+// OddsHistoryPoint is one recorded (odd, time) point for timeline in alerts.
+type OddsHistoryPoint struct {
+	Odd       float64
+	RecordedAt time.Time
+}
+
+// OddsSnapshotStorage stores odds snapshots for line movement detection.
+// Keeps max_odd and min_odd per (match, bet, bookmaker) so gradual moves (e.g. 4.15→4.0→3.45) are detected.
 type OddsSnapshotStorage interface {
-	// StoreOddsSnapshot saves current odd for (match_group_key, bet_key, bookmaker)
+	// StoreOddsSnapshot saves current odd and updates max_odd/min_odd for (match_group_key, bet_key, bookmaker)
 	StoreOddsSnapshot(ctx context.Context, matchGroupKey, matchName, sport, eventType, outcomeType, parameter, betKey, bookmaker string, startTime time.Time, odd float64, recordedAt time.Time) error
-	// GetLastOddsSnapshot returns the most recent odd and recordedAt for (match_group_key, bet_key, bookmaker)
-	GetLastOddsSnapshot(ctx context.Context, matchGroupKey, betKey, bookmaker string) (odd float64, recordedAt time.Time, err error)
-	// CleanSnapshotsForStartedMatches deletes snapshots for matches that have already started (start_time < now)
+	// AppendOddsHistory appends one (odd, recordedAt) point for timeline; startTime is used for cleanup.
+	AppendOddsHistory(ctx context.Context, matchGroupKey, betKey, bookmaker string, startTime time.Time, odd float64, recordedAt time.Time) error
+	// GetOddsHistory returns recent points (oldest first), at most limit. Used to show "6.70 (12 min ago) → 7.10 (now)".
+	GetOddsHistory(ctx context.Context, matchGroupKey, betKey, bookmaker string, limit int) ([]OddsHistoryPoint, error)
+	// GetLastOddsSnapshot returns last odd, max and min seen, and recordedAt (0,0,0,zero time,nil if no row)
+	GetLastOddsSnapshot(ctx context.Context, matchGroupKey, betKey, bookmaker string) (odd, maxOdd, minOdd float64, recordedAt time.Time, err error)
+	// ResetExtremesAfterAlert sets max_odd=odd and min_odd=odd for the row so we don't re-alert on same range
+	ResetExtremesAfterAlert(ctx context.Context, matchGroupKey, betKey, bookmaker string) error
+	// CleanSnapshotsForStartedMatches deletes snapshots and history for matches that have already started (start_time < now)
 	CleanSnapshotsForStartedMatches(ctx context.Context) error
 	Close() error
 }

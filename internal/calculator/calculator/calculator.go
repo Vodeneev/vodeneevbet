@@ -327,15 +327,18 @@ func (c *ValueCalculator) processLineMovementsAsync(ctx context.Context) {
 		return
 	}
 
+	now := time.Now()
 	alertCount := 0
 	for i := range movements {
 		lm := &movements[i]
 		if c.notifier != nil {
-			if err := c.notifier.SendLineMovementAlert(ctx, lm, threshold); err != nil {
+			history, _ := c.oddsSnapshotStorage.GetOddsHistory(ctx, lm.MatchGroupKey, lm.BetKey, lm.Bookmaker, 30)
+			if err := c.notifier.SendLineMovementAlert(ctx, lm, threshold, now, history); err != nil {
 				slog.Error("Failed to send line movement alert", "error", err, "match", lm.MatchName)
 			} else {
 				alertCount++
 				slog.Info("Sent line movement alert", "match", lm.MatchName, "bookmaker", lm.Bookmaker, "change_abs", lm.ChangeAbs)
+				_ = c.oddsSnapshotStorage.ResetExtremesAfterAlert(ctx, lm.MatchGroupKey, lm.BetKey, lm.Bookmaker)
 			}
 		}
 	}

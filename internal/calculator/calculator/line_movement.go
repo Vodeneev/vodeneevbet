@@ -10,9 +10,10 @@ import (
 	"github.com/Vodeneev/vodeneevbet/internal/pkg/storage"
 )
 
-// computeAndStoreLineMovements builds current odds per (match, bet, bookmaker), compares with
-// last snapshot from storage, detects significant changes (any direction), stores current snapshot,
-// and returns line movements where |current - previous| >= threshold (absolute).
+// computeAndStoreLineMovements builds current odds per (match, bet, bookmaker), compares current
+// with stored max_odd and min_odd (so gradual moves like 4.15→4.0→3.45 are caught as 4.15→3.45),
+// stores current snapshot (updating max/min), and returns line movements. Caller should call
+// ResetExtremesAfterAlert for each alerted movement to avoid re-alerting on the same range.
 func computeAndStoreLineMovements(ctx context.Context, matches []models.Match, snapshotStorage storage.OddsSnapshotStorage, thresholdAbs float64) ([]LineMovement, error) {
 	if snapshotStorage == nil || thresholdAbs <= 0 {
 		return nil, nil
@@ -97,38 +98,53 @@ func computeAndStoreLineMovements(ctx context.Context, matches []models.Match, s
 			}
 
 			for bookmaker, currentOdd := range byBook {
-				prevOdd, _, err := snapshotStorage.GetLastOddsSnapshot(ctx, gk, betKey, bookmaker)
+				_, maxOdd, minOdd, _, err := snapshotStorage.GetLastOddsSnapshot(ctx, gk, betKey, bookmaker)
 				if err != nil {
 					slog.Debug("GetLastOddsSnapshot failed", "match", gk, "bet", betKey, "bookmaker", bookmaker, "error", err)
+				}
+
+				// Compare with extremes before storing: catch gradual moves (e.g. 4.15→4.0→3.45 vs max 4.15)
+				if maxOdd > 0 && (maxOdd-currentOdd) >= thresholdAbs {
+					movements = append(movements, LineMovement{
+						MatchGroupKey: gk,
+						MatchName:     gm.name,
+						StartTime:     gm.startTime,
+						Sport:         gm.sport,
+						EventType:     evType,
+						OutcomeType:   outType,
+						Parameter:     param,
+						BetKey:        betKey,
+						Bookmaker:     bookmaker,
+						PreviousOdd:   maxOdd,
+						CurrentOdd:   currentOdd,
+						ChangeAbs:    currentOdd - maxOdd, // negative = падение от пика
+						RecordedAt:   now,
+					})
+				}
+				if minOdd > 0 && (currentOdd-minOdd) >= thresholdAbs {
+					movements = append(movements, LineMovement{
+						MatchGroupKey: gk,
+						MatchName:     gm.name,
+						StartTime:     gm.startTime,
+						Sport:         gm.sport,
+						EventType:     evType,
+						OutcomeType:   outType,
+						Parameter:     param,
+						BetKey:        betKey,
+						Bookmaker:     bookmaker,
+						PreviousOdd:   minOdd,
+						CurrentOdd:   currentOdd,
+						ChangeAbs:    currentOdd - minOdd, // positive = рост от дна
+						RecordedAt:   now,
+					})
 				}
 
 				err = snapshotStorage.StoreOddsSnapshot(ctx, gk, gm.name, gm.sport, evType, outType, param, betKey, bookmaker, gm.startTime, currentOdd, now)
 				if err != nil {
 					slog.Warn("StoreOddsSnapshot failed", "match", gk, "bet", betKey, "bookmaker", bookmaker, "error", err)
 				}
-
-				if prevOdd > 0 {
-					changeAbs := currentOdd - prevOdd
-					if changeAbs < 0 {
-						changeAbs = -changeAbs
-					}
-					if changeAbs >= thresholdAbs {
-						movements = append(movements, LineMovement{
-							MatchGroupKey: gk,
-							MatchName:     gm.name,
-							StartTime:     gm.startTime,
-							Sport:         gm.sport,
-							EventType:     evType,
-							OutcomeType:   outType,
-							Parameter:     param,
-							BetKey:        betKey,
-							Bookmaker:     bookmaker,
-							PreviousOdd:   prevOdd,
-							CurrentOdd:    currentOdd,
-							ChangeAbs:     currentOdd - prevOdd, // signed: + рост, - падение
-							RecordedAt:    now,
-						})
-					}
+				if err := snapshotStorage.AppendOddsHistory(ctx, gk, betKey, bookmaker, gm.startTime, currentOdd, now); err != nil {
+					slog.Debug("AppendOddsHistory failed", "match", gk, "bet", betKey, "bookmaker", bookmaker, "error", err)
 				}
 			}
 		}

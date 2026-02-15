@@ -8,6 +8,8 @@ import (
 	"time"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
+
+	"github.com/Vodeneev/vodeneevbet/internal/pkg/storage"
 )
 
 // TelegramNotifier sends Telegram notifications for high-value diffs
@@ -63,13 +65,14 @@ func (n *TelegramNotifier) SendDiffAlert(ctx context.Context, diff *DiffBet, thr
 	}
 }
 
-// SendLineMovementAlert sends an alert for a significant odds change in the same bookmaker
-func (n *TelegramNotifier) SendLineMovementAlert(ctx context.Context, lm *LineMovement, thresholdAbs float64) error {
+// SendLineMovementAlert sends an alert for a significant odds change in the same bookmaker.
+// history is used to show timeline (e.g. "6.70 (12 min ago) → 7.10 (now)").
+func (n *TelegramNotifier) SendLineMovementAlert(ctx context.Context, lm *LineMovement, thresholdAbs float64, now time.Time, history []storage.OddsHistoryPoint) error {
 	if n == nil || n.bot == nil {
 		return fmt.Errorf("telegram notifier not initialized")
 	}
 
-	message := n.formatLineMovementAlert(lm, thresholdAbs)
+	message := n.formatLineMovementAlert(lm, thresholdAbs, now, history)
 	msg := tgbotapi.NewMessage(n.chatID, message)
 	msg.ParseMode = tgbotapi.ModeMarkdown
 
@@ -82,9 +85,9 @@ func (n *TelegramNotifier) SendLineMovementAlert(ctx context.Context, lm *LineMo
 	}
 }
 
-func (n *TelegramNotifier) formatLineMovementAlert(lm *LineMovement, thresholdAbs float64) string {
+func (n *TelegramNotifier) formatLineMovementAlert(lm *LineMovement, thresholdAbs float64, now time.Time, history []storage.OddsHistoryPoint) string {
 	var builder strings.Builder
-	builder.WriteString(fmt.Sprintf("📊 *Изменение линии (≥%.2f)*\n\n", thresholdAbs))
+	builder.WriteString(fmt.Sprintf("📊 *Line movement (≥%.2f)*\n\n", thresholdAbs))
 	builder.WriteString(fmt.Sprintf("*%s*\n", escapeMarkdown(lm.MatchName)))
 	builder.WriteString(fmt.Sprintf("📌 %s | %s", formatEventType(lm.EventType), formatOutcomeType(lm.OutcomeType)))
 	if lm.Parameter != "" {
@@ -93,9 +96,26 @@ func (n *TelegramNotifier) formatLineMovementAlert(lm *LineMovement, thresholdAb
 	builder.WriteString("\n\n")
 	builder.WriteString(fmt.Sprintf("🏠 *%s*\n", escapeMarkdown(lm.Bookmaker)))
 	changeStr := fmt.Sprintf("%+.2f", lm.ChangeAbs)
-	builder.WriteString(fmt.Sprintf("Было: *%.2f* → стало: *%.2f* (%s)\n", lm.PreviousOdd, lm.CurrentOdd, changeStr))
+	builder.WriteString(fmt.Sprintf("Was: *%.2f* → now: *%.2f* (%s)\n", lm.PreviousOdd, lm.CurrentOdd, changeStr))
+	// Timeline: collapse consecutive same odds, e.g. "6.70 (12 min ago) → 6.85 (5 min ago) → 7.10 (now)"
+	if len(history) > 0 {
+		timeline := collapseConsecutiveOdds(history)
+		builder.WriteString("Timeline: ")
+		for i, p := range timeline {
+			if i > 0 {
+				builder.WriteString(" → ")
+			}
+			mins := int(now.Sub(p.RecordedAt).Minutes())
+			if mins <= 0 {
+				builder.WriteString(fmt.Sprintf("*%.2f* (now)", p.Odd))
+			} else {
+				builder.WriteString(fmt.Sprintf("*%.2f* (%d min ago)", p.Odd, mins))
+			}
+		}
+		builder.WriteString("\n")
+	}
 	if !lm.StartTime.IsZero() {
-		builder.WriteString(fmt.Sprintf("🕐 Начало: %s\n", formatTime(lm.StartTime)))
+		builder.WriteString(fmt.Sprintf("🕐 Kick-off: %s\n", formatTime(lm.StartTime)))
 	}
 	if lm.Sport != "" {
 		builder.WriteString(fmt.Sprintf("🏆 %s\n", lm.Sport))
@@ -103,35 +123,25 @@ func (n *TelegramNotifier) formatLineMovementAlert(lm *LineMovement, thresholdAb
 	return builder.String()
 }
 
-// formatDiffAlert formats a diff bet as a Telegram message
+// formatDiffAlert formats a diff bet as a Telegram message (English).
 func (n *TelegramNotifier) formatDiffAlert(diff *DiffBet, threshold int) string {
 	var builder strings.Builder
 
-	// Header with threshold
 	builder.WriteString(fmt.Sprintf("🚨 *Value Bet Alert (%d%%+)*\n\n", threshold))
-
-	// Match info
 	builder.WriteString(fmt.Sprintf("*%s*\n", escapeMarkdown(diff.MatchName)))
 	builder.WriteString(fmt.Sprintf("⚽ %s | %s", formatEventType(diff.EventType), formatOutcomeType(diff.OutcomeType)))
 	if diff.Parameter != "" {
 		builder.WriteString(fmt.Sprintf(" (%s)", diff.Parameter))
 	}
 	builder.WriteString("\n\n")
-
-	// Difference info
 	builder.WriteString(fmt.Sprintf("📈 *Difference: %.2f%%*\n", diff.DiffPercent))
 	builder.WriteString(fmt.Sprintf("💰 %s: %.2f | %s: %.2f\n", diff.MinBookmaker, diff.MinOdd, diff.MaxBookmaker, diff.MaxOdd))
-
-	// Time info
 	if !diff.StartTime.IsZero() {
-		builder.WriteString(fmt.Sprintf("🕐 Start: %s\n", formatTime(diff.StartTime)))
+		builder.WriteString(fmt.Sprintf("🕐 Kick-off: %s\n", formatTime(diff.StartTime)))
 	}
-
-	// Sport
 	if diff.Sport != "" {
-		builder.WriteString(fmt.Sprintf("🏆 Sport: %s\n", diff.Sport))
+		builder.WriteString(fmt.Sprintf("🏆 %s\n", diff.Sport))
 	}
-
 	return builder.String()
 }
 
@@ -160,6 +170,22 @@ func formatOutcomeType(outcomeType string) string {
 		}
 	}
 	return strings.Join(parts, " ")
+}
+
+// collapseConsecutiveOdds keeps first, last, and points where odd changed (shorter timeline).
+func collapseConsecutiveOdds(history []storage.OddsHistoryPoint) []storage.OddsHistoryPoint {
+	if len(history) <= 2 {
+		return history
+	}
+	var out []storage.OddsHistoryPoint
+	out = append(out, history[0])
+	for i := 1; i < len(history)-1; i++ {
+		if history[i].Odd != history[i-1].Odd || history[i].Odd != history[i+1].Odd {
+			out = append(out, history[i])
+		}
+	}
+	out = append(out, history[len(history)-1])
+	return out
 }
 
 func escapeMarkdown(text string) string {

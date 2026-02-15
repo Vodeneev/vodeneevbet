@@ -153,7 +153,7 @@ jobs:
           fi
           export COMPOSE_PROJECT_NAME=vodeneevbet_bookmaker
           export COMPOSE_PROFILES="${COMPOSE_PROFILES}"
-          ALL_SERVICES="fonbet pinnacle pinnacle888 marathonbet xbet1"
+          ALL_SERVICES="fonbet pinnacle pinnacle888 marathonbet xbet1 zenit"
           for svc in ${ALL_SERVICES}; do
             if ! echo "${COMPOSE_PROFILES}" | grep -qw "${svc}"; then
               echo "Stopping disabled service: ${svc}"

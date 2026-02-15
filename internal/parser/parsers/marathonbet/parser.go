@@ -444,6 +444,12 @@ func (p *Parser) TriggerNewCycle() error {
 
 // ParseOnce runs one full parse: all-events → leagues → event pages → AddMatch.
 func (p *Parser) ParseOnce(ctx context.Context) error {
+	start := time.Now()
+	var totalMatches int
+	defer func() {
+		slog.Info("Marathonbet: цикл парсинга завершён", "matches", totalMatches, "duration", time.Since(start))
+	}()
+
 	sportID := p.cfg.Parser.Marathonbet.SportID
 	if sportID <= 0 {
 		sportID = 11
@@ -493,6 +499,7 @@ func (p *Parser) ParseOnce(ctx context.Context) error {
 					}
 				}
 				health.AddMatch(match)
+				totalMatches++
 				slog.Info("Marathonbet: match added", "match", match.Name, "home", match.HomeTeam, "away", match.AwayTeam, "events", len(match.Events))
 			}
 		}

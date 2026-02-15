@@ -46,12 +46,14 @@ func (p *Parser) runOnce(ctx context.Context) error {
 	runOnceMu.Lock()
 	defer runOnceMu.Unlock()
 	start := time.Now()
-	defer func() { slog.Info("zenit: runOnce finished", "duration", time.Since(start)) }()
+	var totalMatches int
+	defer func() {
+		slog.Info("zenit: цикл парсинга завершён", "matches", totalMatches, "duration", time.Since(start))
+	}()
 
 	slog.Info("zenit: runOnce started")
 
 	offset := 0
-	totalMatches := 0
 	for {
 		select {
 		case <-ctx.Done():
@@ -113,7 +115,6 @@ func (p *Parser) runOnce(ctx context.Context) error {
 		offset += 50
 	}
 
-	slog.Info("zenit: runOnce done", "total_matches", totalMatches)
 	return nil
 }
 

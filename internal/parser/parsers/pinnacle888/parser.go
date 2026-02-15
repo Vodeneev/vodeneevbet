@@ -66,7 +66,10 @@ func (p *Parser) runOnce(ctx context.Context) error {
 	runOnceMu.Lock()
 	defer runOnceMu.Unlock()
 	start := time.Now()
-	defer func() { slog.Info("Pinnacle888: runOnce finished", "duration", time.Since(start)) }()
+	var totalMatches int
+	defer func() {
+		slog.Info("Pinnacle888: цикл парсинга завершён", "matches", totalMatches, "duration", time.Since(start))
+	}()
 
 	// Resolve mirror once at the start of each run; cache is reused. On error we don't re-resolve, next iteration will retry.
 	if p.cfg.Parser.Pinnacle888.OddsURL != "" && p.cfg.Parser.Pinnacle888.IncludePrematch {
@@ -86,6 +89,8 @@ func (p *Parser) runOnce(ctx context.Context) error {
 			}
 			if err := p.processMatchup(ctx, matchupID); err != nil {
 				slog.Error("Failed to process matchup", "matchup_id", matchupID, "error", err)
+			} else {
+				totalMatches++
 			}
 		}
 		return nil
@@ -113,7 +118,8 @@ func (p *Parser) runOnce(ctx context.Context) error {
 				}
 				health.AddMatch(match)
 			}
-			slog.Info("Pinnacle888: pre-match matches processed", "count", len(matches))
+			totalMatches = len(matches)
+			slog.Info("Pinnacle888: pre-match matches processed", "count", totalMatches)
 		}
 	}
 

@@ -45,6 +45,12 @@ func NewParser(config *config.Config) *Parser {
 
 // runOnce performs a single parsing run for all configured sports
 func (p *Parser) runOnce(ctx context.Context) error {
+	start := time.Now()
+	var totalMatches int
+	defer func() {
+		slog.Info("Fonbet: цикл парсинга завершён", "matches", totalMatches, "duration", time.Since(start))
+	}()
+
 	for _, sportStr := range p.config.ValueCalculator.Sports {
 		select {
 		case <-ctx.Done():
@@ -61,6 +67,10 @@ func (p *Parser) runOnce(ctx context.Context) error {
 		if err := p.eventProcessor.ProcessSportEvents(sportStr); err != nil {
 			slog.Error("Failed to parse events", "sport", sport, "error", err)
 			continue
+		}
+
+		if bp, ok := p.eventProcessor.(*BatchProcessor); ok {
+			totalMatches += bp.LastProcessedCount()
 		}
 
 		// Print performance summary after each run

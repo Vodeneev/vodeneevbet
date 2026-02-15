@@ -56,7 +56,10 @@ func (p *Parser) runOnce(ctx context.Context) error {
 	runOnceMu.Lock()
 	defer runOnceMu.Unlock()
 	start := time.Now()
-	defer func() { slog.Info("1xbet: runOnce finished", "duration", time.Since(start)) }()
+	var totalMatches int
+	defer func() {
+		slog.Info("1xbet: цикл парсинга завершён", "matches", totalMatches, "duration", time.Since(start))
+	}()
 
 	// Resolve mirror once at the start of each run
 	if p.cfg.Parser.Xbet1.MirrorURL != "" {
@@ -87,7 +90,8 @@ func (p *Parser) runOnce(ctx context.Context) error {
 				}
 				health.AddMatch(match)
 			}
-			slog.Info("1xbet: pre-match matches processed", "count", len(matches))
+			totalMatches = len(matches)
+			slog.Info("1xbet: pre-match matches processed", "count", totalMatches)
 		}
 	}
 

@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/Vodeneev/vodeneevbet/internal/pkg/health"
@@ -27,6 +28,8 @@ type BatchProcessor struct {
 	targetBatchTime time.Duration
 	minBatchSize    int
 	maxBatchSize    int
+	// lastProcessedCount — количество матчей, обработанных в последнем вызове ProcessSportEvents
+	lastProcessedCount atomic.Int64
 }
 
 // NewBatchProcessor creates a new batch processor
@@ -161,11 +164,17 @@ func (p *BatchProcessor) ProcessSportEvents(sport string) error {
 		totalOutcomes,
 	)
 
+	p.lastProcessedCount.Store(int64(processedCount))
 	slog.Info(fmt.Sprintf("Fonbet: Successfully processed matches %d (%s)", processedCount, sport))
 	slog.Debug("Total timing", "fetch", fetchDuration, "parse", parseDuration, "group", groupDuration, "process", processDuration, "total", totalDuration)
 	slog.Debug("Stats", "events", totalEvents, "outcomes", totalOutcomes)
 
 	return nil
+}
+
+// LastProcessedCount возвращает количество матчей, обработанных в последнем вызове ProcessSportEvents.
+func (p *BatchProcessor) LastProcessedCount() int {
+	return int(p.lastProcessedCount.Load())
 }
 
 // processMatchesInBatches processes matches in batches with parallel workers

@@ -71,6 +71,12 @@ func NewParser(cfg *config.Config) *Parser {
 
 // runOnce performs a single parsing run
 func (p *Parser) runOnce(ctx context.Context) error {
+	start := time.Now()
+	var totalMatches int
+	defer func() {
+		slog.Info("Pinnacle: цикл парсинга завершён", "matches", totalMatches, "duration", time.Since(start))
+	}()
+
 	// If matchup_ids are provided, run targeted mode.
 	if len(p.cfg.Parser.Pinnacle.MatchupIDs) > 0 {
 		for _, matchupID := range p.cfg.Parser.Pinnacle.MatchupIDs {
@@ -81,16 +87,20 @@ func (p *Parser) runOnce(ctx context.Context) error {
 			}
 			if err := p.processMatchup(ctx, matchupID); err != nil {
 				slog.Error("Failed to process matchup", "matchup_id", matchupID, "error", err)
+			} else {
+				totalMatches++
 			}
 		}
 		return nil
 	}
 
 	// Otherwise, discover and process all matchups for relevant sports.
-	if err := p.processAll(ctx); err != nil {
+	n, err := p.processAll(ctx)
+	if err != nil {
 		slog.Error("Failed to process all matchups", "error", err)
 		return err
 	}
+	totalMatches = n
 	return nil
 }
 
@@ -174,12 +184,12 @@ func (p *Parser) runIncrementalCycle(ctx context.Context, timeout time.Duration)
 	
 	// Process all matchups incrementally
 	// Data is saved incrementally after each match in processAll
-	if err := p.processAll(cycleCtx); err != nil {
+	if _, err := p.processAll(cycleCtx); err != nil {
 		slog.Error("Pinnacle: incremental cycle failed", "cycle_id", cycleID, "error", err)
 	}
 }
 
-func (p *Parser) processAll(ctx context.Context) error {
+func (p *Parser) processAll(ctx context.Context) (int, error) {
 	// Map project sports to Pinnacle sports.
 	// For now: football -> Soccer.
 	targetSportNames := []string{"Soccer"}
@@ -197,7 +207,7 @@ func (p *Parser) processAll(ctx context.Context) error {
 
 	sports, err := p.client.GetSports()
 	if err != nil {
-		return err
+		return 0, err
 	}
 	nameToID := map[string]int64{}
 	for _, sp := range sports {
@@ -210,6 +220,7 @@ func (p *Parser) processAll(ctx context.Context) error {
 	now := time.Now().UTC()
 	maxStart := now.Add(48 * time.Hour)
 
+	var totalAddedCount int
 	for _, sportName := range targetSportNames {
 		sportID, ok := nameToID[sportName]
 		if !ok || sportID == 0 {
@@ -219,12 +230,12 @@ func (p *Parser) processAll(ctx context.Context) error {
 		// Get regular matchups
 		matchups, err := p.client.GetSportMatchups(sportID)
 		if err != nil {
-			return err
+			return 0, err
 		}
 
 		markets, err := p.client.GetSportStraightMarkets(sportID)
 		if err != nil {
-			return err
+			return 0, err
 		}
 
 		// Filter markets upfront - only Period 0 (full match pre-match odds)
@@ -277,10 +288,11 @@ func (p *Parser) processAll(ctx context.Context) error {
 		}
 
 		// Process each main matchup as a match.
+		var addedCount int
 		for mainID, related := range group {
 			select {
 			case <-ctx.Done():
-				return nil
+				return totalAddedCount + addedCount, nil
 			default:
 			}
 
@@ -338,10 +350,12 @@ func (p *Parser) processAll(ctx context.Context) error {
 			// Add match to in-memory store for fast API access (primary storage)
 			// Data is served directly from memory
 			health.AddMatch(m)
+			addedCount++
 		}
+		totalAddedCount += addedCount
 	}
 
-	return nil
+	return totalAddedCount, nil
 }
 
 func (p *Parser) processMatchup(ctx context.Context, matchupID int64) error {

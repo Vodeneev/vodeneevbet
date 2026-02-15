@@ -56,6 +56,16 @@ func (c *ValueCalculator) handleTopLineMovements(w http.ResponseWriter, r *http.
 		return
 	}
 
+	// Exclude movements where current odds > 8 (high odds прогрузы not needed)
+	const maxCurrentOdd = 8.0
+	filtered := movements[:0]
+	for _, m := range movements {
+		if m.CurrentOdd <= maxCurrentOdd {
+			filtered = append(filtered, m)
+		}
+	}
+	movements = filtered
+
 	// Sort by absolute change percent descending (largest movements first)
 	sort.Slice(movements, func(i, j int) bool {
 		absI := movements[i].ChangePercent

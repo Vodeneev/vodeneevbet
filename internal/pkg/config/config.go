@@ -38,6 +38,17 @@ type ParserConfig struct {
 	Pinnacle888       Pinnacle888Config `yaml:"pinnacle888"`
 	Marathonbet       MarathonbetConfig `yaml:"marathonbet"`
 	Xbet1             Xbet1Config       `yaml:"xbet1"`
+	Zenit             ZenitConfig       `yaml:"zenit"`
+}
+
+// ZenitConfig configures Zenit (zenitnow549.top) line API parser.
+type ZenitConfig struct {
+	BaseURL      string        `yaml:"base_url"`       // e.g. "https://zenitnow549.top"
+	ImprintHash  string        `yaml:"imprint_hash"`   // Required: imprinthash header (or cookie imprint)
+	FrontVersion string        `yaml:"front_version"`  // Optional (default: "3.80.0")
+	SportID      int           `yaml:"sport_id"`      // Sport ID (1 = Football, default: 1)
+	Timeout      time.Duration `yaml:"timeout"`       // HTTP timeout (default: use Parser.Timeout)
+	ProxyList    []string      `yaml:"proxy_list"`    // Optional: list of proxies to try in order
 }
 
 // MarathonbetConfig configures Marathonbet HTML parser (all-events → leagues → event pages).

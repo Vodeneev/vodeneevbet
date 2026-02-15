@@ -1,7 +1,7 @@
 parser:
   # Production parser management
   # Empty array [] = run all registered parsers (local mode)
-  enabled_parsers: ["fonbet", "pinnacle888", "xbet1"]
+  enabled_parsers: ["fonbet", "pinnacle888", "xbet1", "zenit"]
 
   # Orchestrator mode: if bookmaker_services is set, parser does NOT run parsers locally,
   # but aggregates /matches from these URLs and triggers /parse on them.
@@ -17,6 +17,7 @@ parser:
     pinnacle888: "http://158.160.159.73:8083"
     # marathonbet: "http://158.160.159.73:8084"  # Disabled - 403 from site
     xbet1: "http://158.160.159.73:8085"
+    zenit: "http://158.160.159.73:8086"
 
   user_agent: "ValueBetBot/1.0 (https://github.com/Vodeneev/vodeneevbet)"
   timeout: 120s
@@ -305,6 +306,16 @@ parser:
       - "http://jeymixct:aix4sf39nnor@216.10.27.159:6837"   # USA, Dallas
       - "http://jeymixct:aix4sf39nnor@23.26.71.145:5628"    # USA, Orem
       - "http://jeymixct:aix4sf39nnor@23.229.19.94:8689"    # USA, Los Angeles
+
+  # Zenit (zenitnow549.top) line API — основная линия + расширенная (угловые, фолы, карточки) по запросу на матч
+  zenit:
+    base_url: "https://zenitnow549.top"
+    # imprint_hash: обязателен; взять из DevTools: Network → запрос к zenitnow549.top → Headers → imprinthash (или cookie imprint)
+    imprint_hash: ""
+    front_version: "3.80.0"
+    sport_id: 1
+    # timeout: 30s   # по умолчанию parser.timeout
+    # proxy_list: []
 
 health:
   # HTTP server settings

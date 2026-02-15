@@ -250,7 +250,8 @@ parser:
     base_url: ""  # Empty = resolve via mirror_url at runtime
     mirror_url: "https://1xbet-skwu.top/link"
     include_prematch: true  # Include pre-match matches (default: true)
-    sport_id: 1        # Sport ID (1 = Football, default: 1)
+    sport_id: 1        # Sport ID (1 = Football, default: 1); используется если sport_ids не задан
+    sport_ids: [1, 40] # Футбол + киберспорт (40)
     country_id: 1      # Country ID (1 = All countries, default: 1)
     virtual_sports: true  # Include virtual sports (default: true)
     # Proxy list for bypassing blocking (timeout/connection errors)
@@ -336,7 +337,7 @@ value_calculator:
   parser_url: "http://158.160.168.187/parser"  # URL to parser service (e.g. "http://parser:8080" in Docker)
   
   # Filters for parsers
-  sports: ["football"]             # Sports to parse (used by parsers, not calculator)
+  sports: ["football", "dota2", "cs"]  # Футбол + киберспорт (Fonbet: dota2/cs → /esports/matches; xbet: sport_ids [1, 40])
   
   # Note: For value bets calculation, we use ALL bookmakers with weighted average
   

@@ -199,6 +199,14 @@ func (c *ValueCalculator) processMatchesAsync(ctx context.Context) {
 		return
 	}
 
+	// Киберспорт: забираем с того же парсера /esports/matches (пока только логируем, расчёт диффов — позже)
+	if c.httpClient != nil {
+		esportsMatches, errEsports := c.httpClient.GetEsportsMatches(reqCtx)
+		if errEsports == nil && len(esportsMatches) > 0 {
+			slog.Debug("Fetched esports matches", "count", len(esportsMatches))
+		}
+	}
+
 	slog.Debug("Fetched matches, calculating diffs", "match_count", len(matches))
 
 	// Calculate all diffs

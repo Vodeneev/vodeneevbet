@@ -13,10 +13,9 @@ import (
 )
 
 func init() {
-	// Set the GetMatches function for handlers
 	handlers.SetGetMatchesFunc(GetMatches)
 	handlers.SetGetMatchesByNameFunc(GetMatchesByName)
-	// Set the GetParsers function for handlers
+	handlers.SetGetEsportsMatchesFunc(GetEsportsMatches)
 	handlers.SetGetParsersFunc(GetParsers)
 }
 
@@ -32,8 +31,11 @@ func Run(ctx context.Context, addr string, service string, storage interfaces.St
 	// Metrics endpoint
 	mux.HandleFunc("/metrics", handlers.HandleMetrics)
 
-	// Matches endpoint
+	// Matches endpoint (football)
 	mux.HandleFunc("/matches", handlers.HandleMatches)
+
+	// Esports matches (киберспорт, отдельная модель)
+	mux.HandleFunc("/esports/matches", handlers.HandleEsportsMatches)
 
 	// Match by name (for testing): returns matches with full events and coefficients
 	mux.HandleFunc("/match-by-name", handlers.HandleMatchByName)

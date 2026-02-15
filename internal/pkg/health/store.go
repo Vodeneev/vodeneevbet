@@ -108,6 +108,7 @@ func init() {
 	globalMatchStore = &InMemoryMatchStore{
 		matches: make(map[string]*models.Match),
 	}
+	initEsportsStore()
 }
 
 // AddMatch adds or updates a match in the in-memory store
@@ -215,4 +216,116 @@ func ClearMatches() {
 	clearedCount := len(globalMatchStore.matches)
 	globalMatchStore.matches = make(map[string]*models.Match)
 	slog.Info("Cleared matches from in-memory store", "cleared_count", clearedCount)
+}
+
+// --- Esports store (киберспорт, отдельно от футбола) ---
+
+var globalEsportsStore *InMemoryEsportsStore
+
+func initEsportsStore() {
+	if globalEsportsStore == nil {
+		globalEsportsStore = &InMemoryEsportsStore{
+			matches: make(map[string]*models.EsportsMatch),
+		}
+	}
+}
+
+// InMemoryEsportsStore stores esports matches in memory
+type InMemoryEsportsStore struct {
+	mu      sync.RWMutex
+	matches map[string]*models.EsportsMatch
+}
+
+// MergeEsportsMatchLists merges multiple esports match lists by match ID
+func MergeEsportsMatchLists(lists [][]models.EsportsMatch) []models.EsportsMatch {
+	byID := make(map[string]*models.EsportsMatch)
+	for _, list := range lists {
+		for i := range list {
+			m := &list[i]
+			mergeEsportsMatchInto(byID, m)
+		}
+	}
+	out := make([]models.EsportsMatch, 0, len(byID))
+	for _, m := range byID {
+		matchCopy := *m
+		marketsCopy := make([]models.EsportsMarket, len(m.Markets))
+		copy(marketsCopy, m.Markets)
+		matchCopy.Markets = marketsCopy
+		out = append(out, matchCopy)
+	}
+	sort.Slice(out, func(i, j int) bool {
+		return out[i].UpdatedAt.After(out[j].UpdatedAt)
+	})
+	return out
+}
+
+func mergeEsportsMatchInto(byID map[string]*models.EsportsMatch, m *models.EsportsMatch) {
+	if existing, ok := byID[m.ID]; ok {
+		existingMarkets := make(map[string]*models.EsportsMarket)
+		for i := range existing.Markets {
+			existingMarkets[existing.Markets[i].ID] = &existing.Markets[i]
+		}
+		for _, newMarket := range m.Markets {
+			if ex, exists := existingMarkets[newMarket.ID]; exists {
+				exOutcomes := make(map[string]*models.EsportsOutcome)
+				for i := range ex.Outcomes {
+					exOutcomes[ex.Outcomes[i].ID] = &ex.Outcomes[i]
+				}
+				for _, o := range newMarket.Outcomes {
+					if eo, ok := exOutcomes[o.ID]; ok {
+						eo.Odds = o.Odds
+						eo.UpdatedAt = o.UpdatedAt
+					} else {
+						ex.Outcomes = append(ex.Outcomes, o)
+					}
+				}
+				ex.UpdatedAt = newMarket.UpdatedAt
+		} else {
+			marketCopy := newMarket
+			marketCopy.Outcomes = make([]models.EsportsOutcome, len(newMarket.Outcomes))
+			copy(marketCopy.Outcomes, newMarket.Outcomes)
+			existing.Markets = append(existing.Markets, marketCopy)
+		}
+		}
+		existing.UpdatedAt = m.UpdatedAt
+		if m.Bookmaker != "" {
+			existing.Bookmaker = m.Bookmaker
+		}
+	} else {
+		matchCopy := *m
+		marketsCopy := make([]models.EsportsMarket, len(m.Markets))
+		copy(marketsCopy, m.Markets)
+		matchCopy.Markets = marketsCopy
+		byID[m.ID] = &matchCopy
+	}
+}
+
+// AddEsportsMatch adds or updates an esports match in the in-memory store
+func AddEsportsMatch(match *models.EsportsMatch) {
+	initEsportsStore()
+	globalEsportsStore.mu.Lock()
+	defer globalEsportsStore.mu.Unlock()
+	mergeEsportsMatchInto(globalEsportsStore.matches, match)
+	if slog.Default().Enabled(nil, slog.LevelDebug) {
+		slog.Debug("Stored esports match", "match_id", match.ID, "discipline", match.Discipline, "total", len(globalEsportsStore.matches))
+	}
+}
+
+// GetEsportsMatches returns all esports matches from in-memory store
+func GetEsportsMatches() []models.EsportsMatch {
+	initEsportsStore()
+	globalEsportsStore.mu.RLock()
+	defer globalEsportsStore.mu.RUnlock()
+	matches := make([]models.EsportsMatch, 0, len(globalEsportsStore.matches))
+	for _, m := range globalEsportsStore.matches {
+		matchCopy := *m
+		marketsCopy := make([]models.EsportsMarket, len(m.Markets))
+		copy(marketsCopy, m.Markets)
+		matchCopy.Markets = marketsCopy
+		matches = append(matches, matchCopy)
+	}
+	sort.Slice(matches, func(i, j int) bool {
+		return matches[i].UpdatedAt.After(matches[j].UpdatedAt)
+	})
+	return matches
 }

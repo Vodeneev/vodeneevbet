@@ -127,3 +127,43 @@ func (c *HTTPMatchesClient) fetchMatches(ctx context.Context) ([]models.Match, e
 
 	return matchesResp.Matches, nil
 }
+
+// esportsMatchesResponse represents the response from /esports/matches endpoint
+type esportsMatchesResponse struct {
+	Matches []models.EsportsMatch `json:"matches"`
+	Meta    struct {
+		Count    int    `json:"count"`
+		Duration string `json:"duration"`
+		Source   string `json:"source"`
+	} `json:"meta"`
+}
+
+// GetEsportsMatches fetches esports matches from the parser's /esports/matches endpoint (тот же baseURL).
+func (c *HTTPMatchesClient) GetEsportsMatches(ctx context.Context) ([]models.EsportsMatch, error) {
+	if c == nil {
+		return nil, fmt.Errorf("HTTP client is not configured")
+	}
+	u, err := url.Parse(c.baseURL + "/esports/matches")
+	if err != nil {
+		return nil, fmt.Errorf("invalid base URL: %w", err)
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+	req.Header.Set("Accept", "application/json")
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch esports matches: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("unexpected status code %d: %s", resp.StatusCode, string(body))
+	}
+	var mr esportsMatchesResponse
+	if err := json.NewDecoder(resp.Body).Decode(&mr); err != nil {
+		return nil, fmt.Errorf("failed to decode esports response: %w", err)
+	}
+	return mr.Matches, nil
+}

@@ -10,6 +10,9 @@ const (
 	Hockey     Sport = "hockey"
 	Volleyball Sport = "volleyball"
 	Baseball   Sport = "baseball"
+	// Киберспорт (Fonbet: sportCategoryId 19 = Dota2, 20 = CS; xbet: sports=40)
+	Dota2 Sport = "dota2"
+	CS    Sport = "cs"
 )
 
 // SportInfo contains additional information about a sport
@@ -51,6 +54,16 @@ func (s Sport) GetSportInfo() SportInfo {
 			Name:  "Baseball",
 			Alias: "baseball",
 		}
+	case Dota2:
+		return SportInfo{
+			Name:  "Dota 2",
+			Alias: "dota2",
+		}
+	case CS:
+		return SportInfo{
+			Name:  "Counter-Strike",
+			Alias: "cs",
+		}
 	default:
 		return SportInfo{
 			Name:  "Unknown",
@@ -62,7 +75,7 @@ func (s Sport) GetSportInfo() SportInfo {
 // IsValid checks if sport is supported
 func (s Sport) IsValid() bool {
 	switch s {
-	case Football, Basketball, Tennis, Hockey, Volleyball, Baseball:
+	case Football, Basketball, Tennis, Hockey, Volleyball, Baseball, Dota2, CS:
 		return true
 	default:
 		return false
@@ -83,6 +96,8 @@ func GetAllSports() []Sport {
 		Hockey,
 		Volleyball,
 		Baseball,
+		Dota2,
+		CS,
 	}
 }
 

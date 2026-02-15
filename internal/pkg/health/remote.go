@@ -163,4 +163,73 @@ func SetMatchesAggregator(services map[string]string, timeout time.Duration) {
 		defer cancel()
 		return AggregateMatches(ctx, services, timeout)
 	})
+	handlers.SetGetEsportsMatchesFunc(func() []models.EsportsMatch {
+		ctx, cancel := context.WithTimeout(context.Background(), timeout)
+		defer cancel()
+		return AggregateEsportsMatches(ctx, services, timeout)
+	})
+}
+
+// esportsMatchesResponse is the JSON response from /esports/matches endpoint
+type esportsMatchesResponse struct {
+	Matches []models.EsportsMatch `json:"matches"`
+	Meta    struct {
+		Count    int    `json:"count"`
+		Duration string `json:"duration"`
+		Source   string `json:"source"`
+	} `json:"meta"`
+}
+
+// AggregateEsportsMatches fetches /esports/matches from each bookmaker service in parallel and merges.
+func AggregateEsportsMatches(ctx context.Context, services map[string]string, timeout time.Duration) []models.EsportsMatch {
+	if len(services) == 0 {
+		return nil
+	}
+	client := &http.Client{Timeout: timeout}
+	var mu sync.Mutex
+	var lists [][]models.EsportsMatch
+	var wg sync.WaitGroup
+	for name, baseURL := range services {
+		name, baseURL := name, strings.TrimSuffix(baseURL, "/")
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			matches, err := fetchEsportsMatches(ctx, client, baseURL)
+			if err != nil {
+				slog.Debug("Failed to fetch esports matches from bookmaker service", "name", name, "url", baseURL, "error", err)
+				return
+			}
+			mu.Lock()
+			lists = append(lists, matches)
+			mu.Unlock()
+		}()
+	}
+	wg.Wait()
+	return MergeEsportsMatchLists(lists)
+}
+
+func fetchEsportsMatches(ctx context.Context, client *http.Client, baseURL string) ([]models.EsportsMatch, error) {
+	u, err := url.Parse(baseURL + "/esports/matches")
+	if err != nil {
+		return nil, fmt.Errorf("invalid URL: %w", err)
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Accept", "application/json")
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("status %d: %s", resp.StatusCode, string(body))
+	}
+	var mr esportsMatchesResponse
+	if err := json.NewDecoder(resp.Body).Decode(&mr); err != nil {
+		return nil, err
+	}
+	return mr.Matches, nil
 }

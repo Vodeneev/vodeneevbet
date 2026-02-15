@@ -116,9 +116,10 @@ type Xbet1Config struct {
 	MirrorURL       string   `yaml:"mirror_url"` // Mirror URL to resolve actual baseURL (e.g., "https://1xbet-skwu.top/link")
 	ProxyList       []string `yaml:"proxy_list"` // List of proxies to try in order
 	IncludePrematch bool     `yaml:"include_prematch"` // Include pre-match matches (default: true)
-	SportID         int      `yaml:"sport_id"`   // Sport ID (1 = Football, default: 1)
-	CountryID      int      `yaml:"country_id"` // Country ID (1 = all countries, default: 1)
-	VirtualSports  bool     `yaml:"virtual_sports"` // Include virtual sports (default: true)
+	SportID         int      `yaml:"sport_id"`   // Sport ID (1 = Football, default: 1); used when SportIDs is empty
+	SportIDs        []int    `yaml:"sport_ids"`  // Если задан — парсим все указанные виды (например 1=футбол, 40=киберспорт)
+	CountryID       int      `yaml:"country_id"` // Country ID (1 = all countries, default: 1)
+	VirtualSports   bool     `yaml:"virtual_sports"` // Include virtual sports (default: true)
 }
 
 type ValueCalculatorConfig struct {

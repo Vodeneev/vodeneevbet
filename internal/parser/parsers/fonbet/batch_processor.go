@@ -146,7 +146,7 @@ func (p *BatchProcessor) ProcessSportEvents(sport string) error {
 
 	// Process matches in batches with parallel workers
 	processStart := time.Now()
-	processedCount, totalEvents, totalOutcomes, ydbWriteTime := p.processMatchesInBatches(eventsByMatch, factorsByEventID)
+	processedCount, totalEvents, totalOutcomes, ydbWriteTime := p.processMatchesInBatches(eventsByMatch, factorsByEventID, sport)
 	processDuration := time.Since(processStart)
 
 	totalDuration := time.Since(startTime)
@@ -182,6 +182,7 @@ func (p *BatchProcessor) LastProcessedCount() int {
 func (p *BatchProcessor) processMatchesInBatches(
 	eventsByMatch map[string][]FonbetAPIEvent,
 	factorsByEventID map[int64]FonbetFactorGroup,
+	sport string,
 ) (int, int, int, time.Duration) {
 	// Convert to slice for batch processing with filtering
 	matches := make([]MatchData, 0, len(eventsByMatch))
@@ -228,6 +229,7 @@ func (p *BatchProcessor) processMatchesInBatches(
 			MainEvent:         mainEvent,
 			StatisticalEvents: statisticalEvents,
 			FactorGroups:      factorGroups,
+			Sport:             sport,
 		})
 	}
 
@@ -419,48 +421,66 @@ func (p *BatchProcessor) worker(
 			continue
 		}
 
-		// Process the match
-		// Note: CustomFactors from main API response should already contain updated odds for live matches
-		matchModel, err := p.buildMatchWithEventsAndFactors(
-			match.MainEvent,
-			match.StatisticalEvents,
-			match.FactorGroups,
-		)
-
 		buildTime := time.Since(buildStart)
-		var storeTime time.Duration
 		var eventsCount, outcomesCount int
+		var success bool
+		var err error
 
-		if err == nil && matchModel != nil {
-			eventsCount = len(matchModel.Events)
-			for _, event := range matchModel.Events {
-				outcomesCount += len(event.Outcomes)
+		// Киберспорт (dota2, cs) → отдельная модель EsportsMatch, не футбольная
+		if match.Sport == "dota2" || match.Sport == "cs" {
+			var mainFactors []FonbetFactor
+			for _, g := range match.FactorGroups {
+				if g.EventID == match.MainEvent.ID {
+					mainFactors = g.Factors
+					break
+				}
 			}
-
-			// Add match to in-memory store for fast API access
-			health.AddMatch(matchModel)
-
-			// Store time is always 0 (no external storage)
-			storeTime := time.Duration(0)
-
-			// Record match timing
-			tracker.RecordMatch(match.ID, eventsCount, outcomesCount, buildTime, storeTime, time.Since(startTime), err == nil)
+			lineMatch := BuildEsportsLineMatch(match.MainEvent, mainFactors, match.Sport, "Unknown Tournament", "fonbet")
+			if lineMatch != nil {
+				em := lineMatch.ToEsportsMatch()
+				if em != nil {
+					health.AddEsportsMatch(em)
+					eventsCount = len(em.Markets)
+					for _, mk := range em.Markets {
+						outcomesCount += len(mk.Outcomes)
+					}
+					success = true
+					tracker.RecordMatch(match.ID, eventsCount, outcomesCount, buildTime, 0, time.Since(startTime), true)
+				}
+			}
+		} else {
+			// Футбол: текущий путь
+			var matchModel *models.Match
+			matchModel, err = p.buildMatchWithEventsAndFactors(
+				match.MainEvent,
+				match.StatisticalEvents,
+				match.FactorGroups,
+			)
+			if err == nil && matchModel != nil {
+				eventsCount = len(matchModel.Events)
+				for _, event := range matchModel.Events {
+					outcomesCount += len(event.Outcomes)
+				}
+				success = true
+				health.AddMatch(matchModel)
+				tracker.RecordMatch(match.ID, eventsCount, outcomesCount, buildTime, 0, time.Since(startTime), true)
+			}
 		}
 
 		duration := time.Since(startTime)
 
 		resultsChan <- ProcessResult{
 			MatchID:       match.ID,
-			Success:       err == nil,
+			Success:       success,
 			Error:         err,
 			Duration:      duration,
 			EventsCount:   eventsCount,
 			OutcomesCount: outcomesCount,
-			YDBWriteTime:  storeTime,
+			YDBWriteTime:  0,
 		}
 
 		if duration > 1*time.Second {
-			slog.Debug("Worker match processing", "match_id", match.ID, "duration", duration, "build_time", buildTime, "store_time", storeTime, "events", eventsCount, "outcomes", outcomesCount)
+			slog.Debug("Worker match processing", "match_id", match.ID, "duration", duration, "build_time", buildTime, "events", eventsCount, "outcomes", outcomesCount)
 		}
 	}
 }
@@ -471,6 +491,7 @@ type MatchData struct {
 	MainEvent         FonbetAPIEvent
 	StatisticalEvents []FonbetAPIEvent
 	FactorGroups      []FonbetFactorGroup
+	Sport             string // football, dota2, cs — для ветки esports
 }
 
 // ProcessResult represents the result of processing a match
@@ -484,14 +505,31 @@ type ProcessResult struct {
 	YDBWriteTime  time.Duration
 }
 
+// fonbetEsportCategoryID returns Fonbet sportCategoryId for esports (19=Dota2, 20=CS).
+// В API Fonbet нет топ-уровня с alias "dota2"/"cs", сегменты приходят с sportCategoryId 19/20.
+func fonbetEsportCategoryID(sportAlias string) int {
+	switch sportAlias {
+	case "dota2":
+		return 19
+	case "cs":
+		return 20
+	default:
+		return 0
+	}
+}
+
 func (p *BatchProcessor) getAllowedSportIDs(sports []FonbetSport, sportAlias string) map[int64]struct{} {
-	// Find top-level sport category id.
+	// Find top-level sport category id by alias (football, hockey, etc.)
 	sportCategoryID := 0
 	for _, s := range sports {
 		if s.Kind == "sport" && s.Alias == sportAlias {
 			sportCategoryID = s.ID
 			break
 		}
+	}
+	// Киберспорт: в Fonbet сегменты Dota2/CS имеют sportCategoryId 19/20, топ-уровня с alias "dota2"/"cs" нет
+	if sportCategoryID == 0 {
+		sportCategoryID = fonbetEsportCategoryID(sportAlias)
 	}
 	if sportCategoryID == 0 {
 		return nil

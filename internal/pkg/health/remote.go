@@ -187,7 +187,8 @@ func AggregateEsportsMatches(ctx context.Context, services map[string]string, ti
 	}
 	client := &http.Client{Timeout: timeout}
 	var mu sync.Mutex
-	var lists [][]models.EsportsMatch
+	// name -> matches, to log per-service counts and merge
+	byService := make(map[string][]models.EsportsMatch)
 	var wg sync.WaitGroup
 	for name, baseURL := range services {
 		name, baseURL := name, strings.TrimSuffix(baseURL, "/")
@@ -196,15 +197,27 @@ func AggregateEsportsMatches(ctx context.Context, services map[string]string, ti
 			defer wg.Done()
 			matches, err := fetchEsportsMatches(ctx, client, baseURL)
 			if err != nil {
-				slog.Debug("Failed to fetch esports matches from bookmaker service", "name", name, "url", baseURL, "error", err)
+				slog.Warn("Failed to fetch esports matches from bookmaker service", "name", name, "url", baseURL, "error", err)
+				mu.Lock()
+				byService[name] = nil
+				mu.Unlock()
 				return
 			}
 			mu.Lock()
-			lists = append(lists, matches)
+			byService[name] = matches
 			mu.Unlock()
 		}()
 	}
 	wg.Wait()
+	var lists [][]models.EsportsMatch
+	for name, matches := range byService {
+		if len(matches) > 0 {
+			lists = append(lists, matches)
+			slog.Info("Esports from bookmaker service", "name", name, "count", len(matches))
+		} else if matches != nil {
+			slog.Info("Esports from bookmaker service (empty)", "name", name)
+		}
+	}
 	return MergeEsportsMatchLists(lists)
 }
 

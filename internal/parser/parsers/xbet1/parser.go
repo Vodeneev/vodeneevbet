@@ -268,14 +268,23 @@ func (p *Parser) processLeaguesFlowIncremental(ctx context.Context) {
 			return
 		default:
 		}
+		if sportID == 40 {
+			slog.Info("1xbet: starting esports flow (sport_id=40)", "country_id", countryID)
+		}
 		slog.Info("1xbet: starting incremental leagues flow", "sport_id", sportID, "country_id", countryID)
 
 		champs, err := p.client.GetChamps(sportID, countryID, virtualSports)
 		if err != nil {
 			slog.Error("1xbet: failed to get championships", "sport_id", sportID, "error", err)
+			if sportID == 40 {
+				slog.Warn("1xbet: esports (sport_id=40) GetChamps failed — no esports from xbet", "error", err)
+			}
 			continue
 		}
 		slog.Info("1xbet: fetched championships", "sport_id", sportID, "count", len(champs))
+		if sportID == 40 && len(champs) == 0 {
+			slog.Warn("1xbet: esports (sport_id=40) GetChamps returned 0 champs — check API or config")
+		}
 
 		var champsWithMatches []ChampItem
 		for _, champ := range champs {
@@ -325,6 +334,9 @@ func (p *Parser) processLeaguesFlowIncremental(ctx context.Context) {
 			"sport_id", sportID,
 			"championships_processed", len(champsWithMatches),
 			"matches_total", matchesTotal)
+		if sportID == 40 {
+			slog.Info("1xbet: esports (sport_id=40) flow finished", "championships", len(champsWithMatches), "football_matches_in_run", matchesTotal)
+		}
 	}
 }
 
@@ -352,13 +364,17 @@ func (p *Parser) processSingleChampionship(ctx context.Context, champ ChampItem)
 	// Get matches for this championship
 	matchList, err := p.client.GetMatches(sportID, champ.LI, 40, 4, countryID, virtualSports)
 	if err != nil {
-		slog.Warn("1xbet: failed to get championship matches", "championship", champ.LE, "error", err)
+		slog.Warn("1xbet: failed to get championship matches", "championship", champ.LE, "sport_id", sportID, "error", err)
+		if sportID == 40 {
+			slog.Warn("1xbet: esports GetMatches failed", "champ_id", champ.LI, "error", err)
+		}
 		return matches
 	}
-	
-	slog.Info("1xbet: fetched championship matches", "championship", champ.LE, "matches_count", len(matchList))
-	
+
+	slog.Info("1xbet: fetched championship matches", "championship", champ.LE, "sport_id", sportID, "matches_count", len(matchList))
+
 	// Process each match
+	var esportsAdded int
 	for idx, matchData := range matchList {
 		select {
 		case <-ctx.Done():
@@ -366,14 +382,20 @@ func (p *Parser) processSingleChampionship(ctx context.Context, champ ChampItem)
 			return matches
 		default:
 		}
-		
-		// Log match processing start
-		slog.Info("1xbet: processing match from championship", "championship", champ.LE, "championship_id", champ.LI, "match_index", idx+1, "total_matches", len(matchList), "match_id", matchData.I)
-		
+
+		// Log match processing start (skip per-match Info for non-esports to reduce noise; esports log below)
+		if sportID != 40 {
+			slog.Info("1xbet: processing match from championship", "championship", champ.LE, "championship_id", champ.LI, "match_index", idx+1, "total_matches", len(matchList), "match_id", matchData.I)
+		}
+
 		// Get detailed game information
 		gameDetails, err := p.client.GetGame(matchData.I, true, true, 250, 4, "", countryID, 1, true)
 		if err != nil {
-			slog.Debug("1xbet: failed to get game details", "championship", champ.LE, "match_id", matchData.I, "error", err)
+			if sportID == 40 {
+				slog.Info("1xbet: esports GetGame failed (first failures logged)", "match_id", matchData.I, "champ", champ.LE, "error", err)
+			} else {
+				slog.Debug("1xbet: failed to get game details", "championship", champ.LE, "match_id", matchData.I, "error", err)
+			}
 			continue
 		}
 
@@ -384,7 +406,12 @@ func (p *Parser) processSingleChampionship(ctx context.Context, champ ChampItem)
 				em := lineMatch.ToEsportsMatch()
 				if em != nil {
 					health.AddEsportsMatch(em)
+					esportsAdded++
+				} else {
+					slog.Debug("1xbet: esports ToEsportsMatch returned nil", "match_id", matchData.I)
 				}
+			} else {
+				slog.Debug("1xbet: esports BuildLineMatchFromGameDetails returned nil", "match_id", matchData.I)
 			}
 			continue
 		}
@@ -395,13 +422,16 @@ func (p *Parser) processSingleChampionship(ctx context.Context, champ ChampItem)
 			matches = append(matches, match)
 		}
 	}
-	
+
 	champDuration := time.Since(champStart)
-	slog.Debug("1xbet: championship processing completed", 
+	if sportID == 40 && esportsAdded > 0 {
+		slog.Info("1xbet: championship esports added to store", "championship", champ.LE, "champ_id", champ.LI, "esports_added", esportsAdded, "duration", champDuration)
+	}
+	slog.Debug("1xbet: championship processing completed",
 		"championship", champ.LE,
 		"matches", len(matches),
 		"duration", champDuration)
-	
+
 	return matches
 }
 

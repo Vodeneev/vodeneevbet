@@ -185,6 +185,263 @@
     "newells old": "newells old boys",
 
     "queens park": "queens park",
-    "queen's park": "queens park"
+    "queen's park": "queens park",
+
+    "inter milan u23": "internazionale u23",
+    "internazionale u23": "internazionale u23",
+
+    "tepatitlan": "tepatitlan morelos",
+    "tepatitlan morelos": "tepatitlan morelos",
+
+    "inter milan": "internazionale",
+    "internazionale": "internazionale",
+
+    "ae kifisia": "kifisia",
+    "kifisia": "kifisia",
+
+    "fluminense rj": "fluminense",
+    "fluminense": "fluminense",
+
+    "diosgyori vtk": "diosgyori",
+    "diosgyori": "diosgyori",
+
+    "raal la louviere": "la louviere",
+    "la louviere": "la louviere",
+
+    "sturm graz ii": "sturm 2 graz",
+    "sturm 2 graz": "sturm 2 graz",
+
+    "msv duisburg": "duisburg",
+    "duisburg": "duisburg",
+
+    "1860 munich": "munich 1860",
+    "munich 1860": "munich 1860",
+
+    "agropecuario argentino": "agropecuario",
+    "agropecuario": "agropecuario",
+
+    "akhmat grozny": "akhmat",
+    "akhmat": "akhmat",
+
+    "akron togliatti": "akron tolyatti",
+    "akron tolyatti": "akron tolyatti",
+
+    "alianza fc": "alianza fc valledupar",
+    "alianza fc valledupar": "alianza fc valledupar",
+    "alianza valledupar": "alianza fc valledupar",
+
+    "barcelona sc": "barcelona guayaquil",
+    "barcelona guayaquil": "barcelona guayaquil",
+
+    "mainz 05": "mainz",
+    "mainz": "mainz",
+
+    "bodo glimt": "bodo/glimt",
+    "bodo/glimt": "bodo/glimt",
+
+    "bohemians 1905": "bohemians prague",
+    "bohemians prague": "bohemians prague",
+
+    "bohemians": "bohemians dublin",
+    "bohemians dublin": "bohemians dublin",
+
+    "botafogo fr rj": "botafogo rj",
+    "botafogo rj": "botafogo rj",
+
+    "brest": "stade brestois 29",
+    "stade brestois 29": "stade brestois 29",
+
+    "celta vigo": "celta",
+    "celta": "celta",
+
+    "club almagro": "almagro",
+    "almagro": "almagro",
+
+    "mk dons": "milton keynes dons",
+    "milton keynes dons": "milton keynes dons",
+
+    "cultural leonesa": "leonesa",
+    "leonesa": "leonesa",
+
+    "darmstadt": "darmstadt 98",
+    "darmstadt 98": "darmstadt 98",
+
+    "hnk rijeka": "rijeka",
+    "rijeka": "rijeka",
+
+    "asociacion deportiva tarma": "deportiva tarma",
+    "deportiva tarma": "deportiva tarma",
+
+    "utc de cajamarca": "utc cajamarca",
+    "utc cajamarca": "utc cajamarca",
+
+    "aucas": "deportivo aucas",
+    "deportivo aucas": "deportivo aucas",
+
+    "everton vina del mar": "everton vm",
+    "everton vm": "everton vm",
+
+    "kapfenberger sv": "kapfenberg",
+    "kapfenberg": "kapfenberg",
+
+    "rapid vienna ii": "rapid 2 vienna",
+    "rapid 2 vienna": "rapid 2 vienna",
+
+    "scr altach": "rheindorf altach",
+    "rheindorf altach": "rheindorf altach",
+
+    "ca tigre": "tigre",
+    "tigre": "tigre",
+
+    "muang thong united": "muangthong united",
+    "muangthong united": "muangthong united",
+
+    "atletico morelia": "dorados",
+    "dorados": "dorados",
+    "dorados sinaloa": "dorados",
+    "dorados de sinaloa": "dorados",
+
+    "arema fc": "arema cronous",
+    "arema cronous": "arema cronous",
+
+    "lanus": "club atletico lanus",
+    "club atletico lanus": "club atletico lanus",
+
+    "ceramica cleopatra": "ceramika cleopatra",
+    "ceramika cleopatra": "ceramika cleopatra",
+
+    "pyramids fc": "pyramids",
+    "pyramids": "pyramids",
+
+    "san telmo": "ca san telmo",
+    "ca san telmo": "ca san telmo",
+    "atletico san telmo": "ca san telmo",
+
+    "san miguel": "ca san miguel",
+    "ca san miguel": "ca san miguel",
+    "atletico san miguel": "ca san miguel",
+
+    "san martin de tucuman": "san martin tucuman",
+    "san martin tucuman": "san martin tucuman",
+
+    "serik belediyespor": "serik belediespor",
+    "serik belediespor": "serik belediespor",
+
+    "drita": "kf drita",
+    "kf drita": "kf drita",
+
+    "fortuna dusseldorf": "fortuna düsseldorf",
+    "fortuna düsseldorf": "fortuna düsseldorf",
+
+    "erzurumspor": "erzurumspor bb",
+    "erzurumspor bb": "erzurumspor bb",
+
+    "keciorengucu": "keciorengucu ankara",
+    "keciorengucu ankara": "keciorengucu ankara",
+
+    "etoile carouge": "etoile-carouge",
+    "etoile-carouge": "etoile-carouge",
+
+    "yverdon-sport": "yverdon sport",
+    "yverdon sport": "yverdon sport",
+
+    "gimnasia jujuy": "gimnasia y esgrima jujuy",
+    "gimnasia y esgrima jujuy": "gimnasia y esgrima jujuy",
+    "gimnasia y esgrima de jujuy": "gimnasia y esgrima jujuy",
+
+    "fortaleza ceif": "fortaleza zipaquira",
+    "fortaleza zipaquira": "fortaleza zipaquira",
+
+    "gimnasia mendoza": "gimnasia y esgrima mendoza",
+    "gimnasia y esgrima mendoza": "gimnasia y esgrima mendoza",
+
+    "gimnasia y tiro": "gimnasia tiro",
+    "gimnasia tiro": "gimnasia tiro",
+
+    "patronato": "patronato parana",
+    "patronato parana": "patronato parana",
+
+    "grazer ak": "gak",
+    "gak": "gak",
+
+    "hapoel kiryat shmona": "hapoel ironi kiryat shmona",
+    "hapoel ironi kiryat shmona": "hapoel ironi kiryat shmona",
+
+    "havelse": "tsv havelse",
+    "tsv havelse": "tsv havelse",
+
+    "ingolstadt": "ingolstadt 04",
+    "ingolstadt 04": "ingolstadt 04",
+
+    "hellas verona": "verona",
+    "verona": "verona",
+
+    "paderborn": "paderborn 07",
+    "paderborn 07": "paderborn 07",
+
+    "hoffenheim ii": "hoffenheim 2",
+    "hoffenheim 2": "hoffenheim 2",
+
+    "zlin": "fastav zlin",
+    "fastav zlin": "fastav zlin",
+
+    "jablonec": "mfk karvina",
+    "mfk karvina": "mfk karvina",
+    "karvina": "mfk karvina",
+
+    "jef united chiba": "jef united",
+    "jef united": "jef united",
+
+    "juventud": "juventud las piedras",
+    "juventud las piedras": "juventud las piedras",
+    "juventud de las piedras": "juventud las piedras",
+
+    "lask linz": "lask",
+    "lask": "lask",
+
+    "lausanne-sport": "lausanne sports",
+    "lausanne sports": "lausanne sports",
+
+    "roda jc": "roda kerkrade",
+    "roda kerkrade": "roda kerkrade",
+
+    "st mirren": "saint mirren",
+    "saint mirren": "saint mirren",
+
+    "nakhon ratchasima fc": "nakhonratchasima",
+    "nakhonratchasima": "nakhonratchasima",
+
+    "port fc": "port bangkok",
+    "port bangkok": "port bangkok",
+
+    "ofi crete": "ofi",
+    "ofi": "ofi",
+
+    "podbrezova": "zeleziarne podbrezova",
+    "zeleziarne podbrezova": "zeleziarne podbrezova",
+
+    "st patrick´s athletic": "saint patrick's athletic",
+    "saint patrick's athletic": "saint patrick's athletic",
+
+    "vukovar": "vukovar 91",
+    "vukovar 91": "vukovar 91",
+
+    "universitario de deportes": "universitario lima",
+    "universitario lima": "universitario lima",
+
+    "stuttgart ii": "stuttgart 2",
+    "stuttgart 2": "stuttgart 2",
+
+    "sv waldhof mannheim 07": "waldhof mannheim",
+    "waldhof mannheim": "waldhof mannheim",
+
+    "sv ried": "ried",
+    "ried": "ried",
+
+    "ssv ulm": "ulm 1846",
+    "ulm 1846": "ulm 1846",
+
+    "borneo samarinda": "borneo",
+    "borneo": "borneo"
   }
 }

@@ -536,16 +536,15 @@ func (p *BatchProcessor) getAllowedSportIDs(sports []FonbetSport, sportAlias str
 	}
 
 	allowed := make(map[int64]struct{}, len(sports))
+	esportCategory := sportCategoryID == 19 || sportCategoryID == 20 // Dota2, CS — не подмешивать сегменты с null category
 	for _, s := range sports {
 		// "segment" entries carry sportCategoryId which points to the top-level sport id.
 		if s.SportCategoryID == sportCategoryID {
 			allowed[int64(s.ID)] = struct{}{}
 		}
-		// Some segments may have null sportCategoryId but still belong to the sport
-		// Allow segments with kind="segment" that don't have sportCategoryId set
-		// (they will be filtered later if they don't match the sport)
-		if s.Kind == "segment" && s.SportCategoryID == 0 && sportCategoryID > 0 {
-			// Allow all segments for now - they will be filtered by event processing
+		// Для футбола и др.: сегменты с пустым sportCategoryId допускаем (могут относиться к спорту).
+		// Для киберспорта (19/20) НЕ добавляем сегменты с null — иначе в dota2/cs попадают футбольные матчи.
+		if !esportCategory && s.Kind == "segment" && s.SportCategoryID == 0 && sportCategoryID > 0 {
 			allowed[int64(s.ID)] = struct{}{}
 		}
 	}

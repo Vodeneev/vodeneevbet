@@ -199,10 +199,12 @@ func flToFloat(h interface{}) float64 {
 	}
 }
 
-// oddRow holds one odds row extracted from t_b tree
+// oddRow holds one odds row extracted from t_b tree (O, T from API distinguish over/under or handicap side).
 type oddRow struct {
 	ID     string
 	OddKey string
+	O      string
+	T      string
 	Odds   float64
 }
 
@@ -241,7 +243,7 @@ func parseTBBlock(matchID string, block *TBBlock) (events []models.Event, mainMa
 				continue
 			}
 			param := parseParamFromOddKey(r.OddKey)
-			outcomeType := inferOutcomeType(r.OddKey, param)
+			outcomeType := InferOutcomeType(r.OddKey, param, tableID, r.O, r.T)
 			evID := matchID + "_main"
 			if eventType != string(models.StandardEventMainMatch) {
 				evID = matchID + "_" + tableID
@@ -287,7 +289,9 @@ func collectOddsFromCh(ch []TBChNode, tableID string, byTable map[string][]oddRo
 		if node.ID != "" && node.OddKey != "" {
 			odds := flToFloat(node.H)
 			if odds > 0 {
-				byTable[tableID] = append(byTable[tableID], oddRow{ID: node.ID, OddKey: node.OddKey, Odds: odds})
+				byTable[tableID] = append(byTable[tableID], oddRow{
+					ID: node.ID, OddKey: node.OddKey, O: node.O, T: node.T, Odds: odds,
+				})
 			}
 		}
 		if len(node.Ch) > 0 {
@@ -296,8 +300,9 @@ func collectOddsFromCh(ch []TBChNode, tableID string, byTable map[string][]oddRo
 	}
 }
 
-// parseParamFromOddKey extracts parameter from oddKey e.g. "22790570|11|2" -> "2.5", "22790570|9|-3.5" -> "-3.5"
-func parseParamFromOddKey(oddKey string) string {
+// ParseParamFromOddKey extracts parameter from oddKey e.g. "22790570|11|2" -> "2", "22790570|9|-3.5" -> "-3.5".
+// Exported for debug/test scripts.
+func ParseParamFromOddKey(oddKey string) string {
 	parts := strings.Split(oddKey, "|")
 	if len(parts) >= 3 {
 		return parts[2]
@@ -308,20 +313,101 @@ func parseParamFromOddKey(oddKey string) string {
 	return ""
 }
 
-func inferOutcomeType(oddKey, param string) string {
+func parseParamFromOddKey(oddKey string) string {
+	return ParseParamFromOddKey(oddKey)
+}
+
+// InferOutcomeType maps Zenit oddKey+param+tableID+O+T to standard outcome type.
+// tableID: "Тоталы", "ТоталМатча" = totals; "Форы" = handicaps (exact_count); corners/fouls/cards = statistical totals.
+// O and T are API outcome codes: typically "1" = over / home, "2" = under / away (or "9"/"10" in some APIs).
+// Exported for debug/test scripts.
+func InferOutcomeType(oddKey, param, tableID, o, t string) string {
 	parts := strings.Split(oddKey, "|")
 	if len(parts) < 2 {
 		return string(models.OutcomeTypeExactCount)
 	}
-	// Zenit: second part often market id; third part param (e.g. 2 for total 2.5, -3.5 for handicap)
 	if param == "" {
 		return string(models.OutcomeTypeExactCount)
 	}
-	if strings.Contains(param, ".") || len(parts) >= 3 {
-		// Total or handicap: alternate over/under or home/away by position in list; we don't have position here
+	code := o
+	if code == "" {
+		code = t
+	}
+	// Totals (main match total goals): O/T "1" = over, "2" = under (common convention)
+	switch tableID {
+	case "Тоталы", "ТоталМатча":
+		if code == "1" || code == "9" {
+			return string(models.OutcomeTypeTotalOver)
+		}
+		if code == "2" || code == "10" {
+			return string(models.OutcomeTypeTotalUnder)
+		}
+		return string(models.OutcomeTypeExactCount)
+	case "Форы":
+		// Handicap: one outcome per line, parameter is the line; we keep exact_count (no handicap_home/away in models).
+		return string(models.OutcomeTypeExactCount)
+	default:
+		// Statistical (corners, fouls, yellow cards, etc.): same convention, 1=over, 2=under
+		if code == "1" || code == "9" {
+			return string(models.OutcomeTypeTotalOver)
+		}
+		if code == "2" || code == "10" {
+			return string(models.OutcomeTypeTotalUnder)
+		}
 		return string(models.OutcomeTypeExactCount)
 	}
-	return string(models.OutcomeTypeExactCount)
+}
+
+// DebugOddRow holds one odds row from t_b with raw API fields (OddKey, O, T) for debugging.
+type DebugOddRow struct {
+	TableID  string
+	OddKey   string
+	Param    string
+	O        string // API outcome code, may indicate over/under (e.g. "1"/"2")
+	T        string
+	Odds     float64
+	Inferred string // InferOutcomeType(OddKey, Param)
+}
+
+// DumpTBOddRows walks t_b block and returns all odds rows with tableID, oddKey, O, T, param and inferred outcome type.
+// Used by cmd/zenit-parse-test to inspect why everything becomes Exact Count.
+func DumpTBOddRows(block *TBBlock) []DebugOddRow {
+	if block == nil || block.Data.Data == nil {
+		return nil
+	}
+	var out []DebugOddRow
+	for tidStr, tidBlock := range block.Data.Data {
+		tableID := "tid_" + tidStr
+		if tidBlock.Data != nil && tidBlock.Data.TableID != "" {
+			tableID = tidBlock.Data.TableID
+		}
+		collectDebugOddsFromCh(tidBlock.Ch, tableID, &out)
+	}
+	for i := range out {
+		out[i].Param = ParseParamFromOddKey(out[i].OddKey)
+		out[i].Inferred = InferOutcomeType(out[i].OddKey, out[i].Param, out[i].TableID, out[i].O, out[i].T)
+	}
+	return out
+}
+
+func collectDebugOddsFromCh(ch []TBChNode, tableID string, out *[]DebugOddRow) {
+	for _, node := range ch {
+		if node.ID != "" && node.OddKey != "" {
+			odds := flToFloat(node.H)
+			if odds > 0 {
+				*out = append(*out, DebugOddRow{
+					TableID: tableID,
+					OddKey:  node.OddKey,
+					O:       node.O,
+					T:       node.T,
+					Odds:    odds,
+				})
+			}
+		}
+		if len(node.Ch) > 0 {
+			collectDebugOddsFromCh(node.Ch, tableID, out)
+		}
+	}
 }
 
 // TBTableSummary is used by DumpTBBlockForDebug.

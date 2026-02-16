@@ -40,11 +40,9 @@ func ParseEvent(ev *OlimpEvent, leagueName string) *models.Match {
 		return nil
 	}
 	// Try to get English team names first (for better matching with other bookmakers)
-	homeTeam := ev.Team1Name
-	awayTeam := ev.Team2Name
+	// Priority: English names from Names map > Transliterated Team1Name/Team2Name > Transliterated Names["2"]
+	var homeTeam, awayTeam string
 	
-	// Check if Names map has English names (key "en" or "2" might contain English)
-	// Priority: English names from Names map > Team1Name/Team2Name > Names["2"]
 	if ev.Names != nil {
 		// Try to find English names in Names map
 		// Common keys: "en", "2" (sometimes English), "1" (sometimes Russian)
@@ -66,18 +64,33 @@ func ParseEvent(ev *OlimpEvent, leagueName string) *models.Match {
 		}
 	}
 	
-	// Fallback to Team1Name/Team2Name if not set yet
+	// Fallback: use Team1Name/Team2Name and transliterate if they contain Cyrillic
 	if homeTeam == "" || awayTeam == "" {
-		homeTeam = ev.Team1Name
-		awayTeam = ev.Team2Name
+		homeRaw := strings.TrimSpace(ev.Team1Name)
+		awayRaw := strings.TrimSpace(ev.Team2Name)
+		homeTeam = Transliterate(homeRaw)
+		awayTeam = Transliterate(awayRaw)
+		if homeTeam == "" {
+			homeTeam = homeRaw
+		}
+		if awayTeam == "" {
+			awayTeam = awayRaw
+		}
 	}
 	
-	// Final fallback to Names["2"]
+	// Final fallback: transliterate Names["2"] if it contains Cyrillic
 	if (homeTeam == "" || awayTeam == "") && ev.Names != nil && ev.Names["2"] != "" {
-		parts := strings.SplitN(ev.Names["2"], " - ", 2)
+		name2 := ev.Names["2"]
+		parts := strings.SplitN(name2, " - ", 2)
 		if len(parts) == 2 {
-			homeTeam = strings.TrimSpace(parts[0])
-			awayTeam = strings.TrimSpace(parts[1])
+			homeTeam = Transliterate(strings.TrimSpace(parts[0]))
+			awayTeam = Transliterate(strings.TrimSpace(parts[1]))
+			if homeTeam == "" {
+				homeTeam = strings.TrimSpace(parts[0])
+			}
+			if awayTeam == "" {
+				awayTeam = strings.TrimSpace(parts[1])
+			}
 		}
 	}
 	

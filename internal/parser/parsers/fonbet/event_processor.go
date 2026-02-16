@@ -285,7 +285,7 @@ func (p *EventProcessor) buildHierarchicalMatch(mainEvent FonbetAPIEvent, statis
 	}
 
 	// Use match builder to create the match
-	matchBuilder := NewMatchBuilder("Fonbet")
+	matchBuilder := NewMatchBuilder("fonbet")
 	match, err := matchBuilder.BuildMatch(mainFonbetEvent, statEvents, factors)
 	if err != nil {
 		return nil, err

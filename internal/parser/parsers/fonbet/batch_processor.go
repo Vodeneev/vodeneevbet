@@ -644,7 +644,7 @@ func (p *BatchProcessor) buildMatchWithEventsAndFactors(
 	}
 
 	// Use match builder to create the match
-	matchBuilder := NewMatchBuilder("Fonbet")
+	matchBuilder := NewMatchBuilder("fonbet")
 	match, err := matchBuilder.BuildMatch(mainFonbetEvent, statEvents, factorsInterface)
 	if err != nil {
 		return nil, fmt.Errorf("failed to build match: %w", err)

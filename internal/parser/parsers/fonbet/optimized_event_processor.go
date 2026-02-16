@@ -217,7 +217,7 @@ func (p *OptimizedEventProcessor) processMatchWithEventsAndFactors(
 
 	// Use match builder to create the match
 	buildStart := time.Now()
-	matchBuilder := NewMatchBuilder("Fonbet")
+	matchBuilder := NewMatchBuilder("fonbet")
 	match, err := matchBuilder.BuildMatch(mainFonbetEvent, statEvents, factorsInterface)
 	if err != nil {
 		return fmt.Errorf("failed to build match: %w", err)

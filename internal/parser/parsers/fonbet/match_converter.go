@@ -3,6 +3,7 @@ package fonbet
 import (
 	"fmt"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/Vodeneev/vodeneevbet/internal/pkg/models"
@@ -15,8 +16,13 @@ type MatchConverter struct {
 
 // NewMatchConverter creates a new match converter for a specific bookmaker
 func NewMatchConverter(bookmaker string) *MatchConverter {
+	// Normalize bookmaker name to lowercase for consistency
+	normalized := strings.ToLower(strings.TrimSpace(bookmaker))
+	if normalized == "" {
+		normalized = "unknown"
+	}
 	return &MatchConverter{
-		bookmaker: bookmaker,
+		bookmaker: normalized,
 	}
 }
 

@@ -25,7 +25,7 @@ func NewParserWrapper(config *config.Config) *ParserWrapper {
 
 	return &ParserWrapper{
 		parser: fonbetCoreParser,
-		name:   "Fonbet",
+		name:   "fonbet",
 	}
 }
 

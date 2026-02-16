@@ -146,28 +146,30 @@ func (s *Sanitizer) sanitizeBookmaker(bookmaker string) string {
 	// Standardize bookmaker names
 	sanitized := strings.TrimSpace(bookmaker)
 	
-	// Map common variations to standard names
+	// Normalize to lowercase for consistency
+	normalized := strings.ToLower(sanitized)
+	
+	// Map common variations to standard lowercase names
 	bookmakerMap := map[string]string{
-		"fonbet":     "Fonbet",
-		"bet365":     "Bet365",
-		"pinnacle":   "Pinnacle",
-		"betfair":    "Betfair",
-		"sbobet":     "SBOBET",
-		"williamhill": "WilliamHill",
-		"william hill": "WilliamHill",
+		"fonbet":      "fonbet",
+		"bet365":      "bet365",
+		"pinnacle":    "pinnacle",
+		"pinnacle888": "pinnacle888",
+		"1xbet":       "1xbet",
+		"xbet1":       "1xbet", // alias
+		"betfair":     "betfair",
+		"sbobet":      "sbobet",
+		"williamhill": "williamhill",
+		"william hill": "williamhill",
+		"zenit":       "zenit",
+		"olimp":       "olimp",
+		"marathonbet": "marathonbet",
 	}
 	
-	if standard, exists := bookmakerMap[strings.ToLower(sanitized)]; exists {
+	if standard, exists := bookmakerMap[normalized]; exists {
 		return standard
 	}
 	
-	// If not in map, capitalize first letter of each word
-	words := strings.Fields(sanitized)
-	for i, word := range words {
-		if len(word) > 0 {
-			words[i] = strings.ToUpper(word[:1]) + strings.ToLower(word[1:])
-		}
-	}
-	
-	return strings.Join(words, " ")
+	// If not in map, return lowercase version
+	return normalized
 }

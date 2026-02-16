@@ -275,13 +275,20 @@ func (v *Validator) isValidOutcomeType(outcomeType string) bool {
 }
 
 func (v *Validator) isValidBookmaker(bookmaker string) bool {
+	// Normalize to lowercase for comparison
+	normalized := strings.ToLower(strings.TrimSpace(bookmaker))
 	validBookmakers := map[string]bool{
-		"Fonbet":   true,
-		"Bet365":   true,
-		"Pinnacle": true,
-		"Betfair":  true,
-		"SBOBET":   true,
-		"WilliamHill": true,
+		"fonbet":      true,
+		"bet365":      true,
+		"pinnacle":    true,
+		"pinnacle888": true,
+		"1xbet":       true,
+		"betfair":     true,
+		"sbobet":      true,
+		"williamhill": true,
+		"zenit":       true,
+		"olimp":       true,
+		"marathonbet": true,
 	}
-	return validBookmakers[bookmaker]
+	return validBookmakers[normalized]
 }

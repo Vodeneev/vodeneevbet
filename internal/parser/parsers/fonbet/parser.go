@@ -30,7 +30,7 @@ func NewParser(config *config.Config) *Parser {
 	// Create components
 	eventFetcher := NewEventFetcher(config)
 	oddsParser := NewOddsParser()
-	matchBuilder := NewMatchBuilder("Fonbet")
+	matchBuilder := NewMatchBuilder("fonbet")
 	eventProcessor := NewBatchProcessor(nil, eventFetcher, oddsParser, matchBuilder)
 
 	return &Parser{

@@ -168,13 +168,15 @@ func (b *MatchBuilder) buildEventModel(fonbetEvent FonbetEvent, odds map[string]
 	if bookmakerKey == "" {
 		bookmakerKey = "unknown"
 	}
+	// Normalize bookmaker name to lowercase for consistency
+	normalizedBookmaker := bookmakerKey
 	
 	event := &models.Event{
 		ID:         fmt.Sprintf("%s_%s_%s", matchID, bookmakerKey, eventType),
 		MatchID:    matchID,
 		EventType:  string(eventType),
 		MarketName: marketName,
-		Bookmaker:  b.bookmaker,
+		Bookmaker:  normalizedBookmaker,
 		Outcomes:   []models.Outcome{},
 		CreatedAt:  now,
 		UpdatedAt:  now,
@@ -190,7 +192,7 @@ func (b *MatchBuilder) buildEventModel(fonbetEvent FonbetEvent, odds map[string]
 			OutcomeType: stdOutcome,
 			Parameter:   param,
 			Odds:        oddsValue,
-			Bookmaker:   b.bookmaker,
+			Bookmaker:   normalizedBookmaker,
 			CreatedAt:   now,
 			UpdatedAt:   now,
 		}

@@ -5,12 +5,13 @@ import (
 	"log/slog"
 	"strconv"
 	"strings"
+	"unicode"
 	"time"
 
 	"github.com/Vodeneev/vodeneevbet/internal/pkg/models"
 )
 
-const bookmakerName = "Olimp"
+const bookmakerName = "olimp"
 
 // groupName to standard event type (corners, fouls, yellow_cards, offsides).
 // Note: "Нарушения" (violations) with sub-markets "Пенальти" (penalties) and "Удаление" (red cards)
@@ -38,19 +39,51 @@ func ParseEvent(ev *OlimpEvent, leagueName string) *models.Match {
 	if ev == nil {
 		return nil
 	}
+	// Try to get English team names first (for better matching with other bookmakers)
 	homeTeam := ev.Team1Name
 	awayTeam := ev.Team2Name
-	if homeTeam == "" || awayTeam == "" {
-		if ev.Names != nil && ev.Names["2"] != "" {
-			parts := strings.SplitN(ev.Names["2"], " - ", 2)
+	
+	// Check if Names map has English names (key "en" or "2" might contain English)
+	// Priority: English names from Names map > Team1Name/Team2Name > Names["2"]
+	if ev.Names != nil {
+		// Try to find English names in Names map
+		// Common keys: "en", "2" (sometimes English), "1" (sometimes Russian)
+		if enName, ok := ev.Names["en"]; ok && enName != "" {
+			parts := strings.SplitN(enName, " - ", 2)
 			if len(parts) == 2 {
-				homeTeam, awayTeam = strings.TrimSpace(parts[0]), strings.TrimSpace(parts[1])
+				homeTeam = strings.TrimSpace(parts[0])
+				awayTeam = strings.TrimSpace(parts[1])
+			}
+		} else if name2, ok := ev.Names["2"]; ok && name2 != "" {
+			// Check if Names["2"] contains English (no Cyrillic)
+			if !containsCyrillic(name2) {
+				parts := strings.SplitN(name2, " - ", 2)
+				if len(parts) == 2 {
+					homeTeam = strings.TrimSpace(parts[0])
+					awayTeam = strings.TrimSpace(parts[1])
+				}
 			}
 		}
-		if homeTeam == "" || awayTeam == "" {
-			slog.Debug("olimp: skip event (no team names)", "event_id", ev.ID)
-			return nil
+	}
+	
+	// Fallback to Team1Name/Team2Name if not set yet
+	if homeTeam == "" || awayTeam == "" {
+		homeTeam = ev.Team1Name
+		awayTeam = ev.Team2Name
+	}
+	
+	// Final fallback to Names["2"]
+	if (homeTeam == "" || awayTeam == "") && ev.Names != nil && ev.Names["2"] != "" {
+		parts := strings.SplitN(ev.Names["2"], " - ", 2)
+		if len(parts) == 2 {
+			homeTeam = strings.TrimSpace(parts[0])
+			awayTeam = strings.TrimSpace(parts[1])
 		}
+	}
+	
+	if homeTeam == "" || awayTeam == "" {
+		slog.Debug("olimp: skip event (no team names)", "event_id", ev.ID)
+		return nil
 	}
 	startTime := time.Unix(ev.StartDateTime, 0).UTC()
 	if startTime.Before(time.Now().UTC()) {
@@ -252,4 +285,14 @@ func ParseEvent(ev *OlimpEvent, leagueName string) *models.Match {
 		return nil
 	}
 	return match
+}
+
+// containsCyrillic checks if string contains Cyrillic characters
+func containsCyrillic(s string) bool {
+	for _, r := range s {
+		if unicode.Is(unicode.Cyrillic, r) {
+			return true
+		}
+	}
+	return false
 }

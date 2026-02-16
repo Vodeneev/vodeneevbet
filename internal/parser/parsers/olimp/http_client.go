@@ -1,15 +1,20 @@
 package olimp
 
 import (
+	"bytes"
 	"compress/gzip"
 	"context"
+	"crypto/tls"
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/url"
+	"os"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -17,13 +22,16 @@ const defaultBaseURL = "https://www.olimp.bet/api/v4/0/line"
 const defaultReferer = "https://www.olimp.bet/line/futbol-1/"
 
 type Client struct {
-	baseURL  string
-	sportID  int
-	referer  string
-	client   *http.Client
+	baseURL           string
+	sportID           int
+	referer           string
+	client            *http.Client
+	proxyList         []string
+	currentProxyIndex int
+	proxyMu           sync.Mutex
 }
 
-func NewClient(baseURL string, sportID int, timeout time.Duration, referer string) *Client {
+func NewClient(baseURL string, sportID int, timeout time.Duration, referer string, proxyList []string) *Client {
 	if baseURL == "" {
 		baseURL = defaultBaseURL
 	}
@@ -37,11 +45,31 @@ func NewClient(baseURL string, sportID int, timeout time.Duration, referer strin
 	if referer == "" {
 		referer = defaultReferer
 	}
+
+	insecureTLS := os.Getenv("OLIMP_INSECURE_TLS") == "1"
+
+	// Create default transport (without proxy - we'll use proxy per request)
+	transport := http.DefaultTransport.(*http.Transport).Clone()
+	if transport.TLSClientConfig == nil {
+		transport.TLSClientConfig = &tls.Config{}
+	}
+	if insecureTLS {
+		transport.TLSClientConfig.InsecureSkipVerify = true
+	}
+	transport.Proxy = http.ProxyFromEnvironment
+
+	// Use proxy list from config
+	if len(proxyList) > 0 {
+		slog.Debug("Olimp: Using proxy list from config", "proxy_count", len(proxyList))
+	}
+
 	return &Client{
-		baseURL: baseURL,
-		sportID: sportID,
-		referer: referer,
-		client:  &http.Client{Timeout: timeout},
+		baseURL:           baseURL,
+		sportID:           sportID,
+		referer:           referer,
+		client:            &http.Client{Timeout: timeout, Transport: transport},
+		proxyList:         proxyList,
+		currentProxyIndex: 0,
 	}
 }
 
@@ -91,20 +119,131 @@ func (c *Client) GetEventLine(ctx context.Context, eventID string) (*OlimpEvent,
 }
 
 func (c *Client) do(ctx context.Context, rawURL, referer string) ([]byte, error) {
+	// Try proxies in order if available, fallback to direct connection
+	if len(c.proxyList) > 0 {
+		slog.Debug("Olimp: Using proxy list", "proxy_count", len(c.proxyList), "url", rawURL)
+		return c.doWithProxyRetry(ctx, rawURL, referer)
+	}
+
+	slog.Debug("Olimp: No proxy list configured, using direct connection", "url", rawURL)
+	return c.doDirect(ctx, rawURL, referer)
+}
+
+func (c *Client) doDirect(ctx context.Context, rawURL, referer string) ([]byte, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Set("Accept", "application/json")
-	req.Header.Set("Accept-Encoding", "gzip")
-	req.Header.Set("Accept-Language", "en-US,en;q=0.9")
-	req.Header.Set("User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36")
-	req.Header.Set("Referer", referer)
+	c.setHeaders(req, referer)
 	resp, err := c.client.Do(req)
 	if err != nil {
 		return nil, err
 	}
 	defer resp.Body.Close()
+	return c.handleResponse(resp)
+}
+
+func (c *Client) doWithProxyRetry(ctx context.Context, rawURL, referer string) ([]byte, error) {
+	// Try each proxy in the list
+	c.proxyMu.Lock()
+	startIndex := c.currentProxyIndex
+	c.proxyMu.Unlock()
+
+	for attempt := 0; attempt < len(c.proxyList); attempt++ {
+		c.proxyMu.Lock()
+		proxyIndex := (startIndex + attempt) % len(c.proxyList)
+		proxyURLStr := c.proxyList[proxyIndex]
+		c.proxyMu.Unlock()
+
+		proxyURL, err := url.Parse(proxyURLStr)
+		if err != nil {
+			slog.Warn("Olimp: Invalid proxy URL", "proxy", maskProxyURL(proxyURLStr), "error", err)
+			continue
+		}
+
+		// Log proxy attempt
+		slog.Info("Olimp: Trying proxy", "proxy_index", proxyIndex+1, "total_proxies", len(c.proxyList), "proxy", maskProxyURL(proxyURLStr), "url", rawURL)
+
+		// Create transport with this proxy
+		transport := http.DefaultTransport.(*http.Transport).Clone()
+		if transport.TLSClientConfig == nil {
+			transport.TLSClientConfig = &tls.Config{}
+		}
+		if os.Getenv("OLIMP_INSECURE_TLS") == "1" {
+			transport.TLSClientConfig.InsecureSkipVerify = true
+		}
+		transport.Proxy = http.ProxyURL(proxyURL)
+
+		client := &http.Client{
+			Timeout:   c.client.Timeout,
+			Transport: transport,
+		}
+
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
+		if err != nil {
+			slog.Warn("Olimp: Failed to create request, trying next proxy", "proxy", maskProxyURL(proxyURLStr), "error", err)
+			continue
+		}
+
+		c.setHeaders(req, referer)
+
+		resp, err := client.Do(req)
+		if err != nil {
+			slog.Warn("Olimp: Proxy failed, trying next", "proxy", maskProxyURL(proxyURLStr), "error", err)
+			continue
+		}
+
+		// Check if response is valid JSON (not HTML blocking page)
+		contentType := resp.Header.Get("Content-Type")
+		bodyPeek := make([]byte, 100)
+		n, _ := resp.Body.Read(bodyPeek)
+
+		// Check if it's JSON by looking at first character
+		isJSON := n > 0 && (bodyPeek[0] == '[' || bodyPeek[0] == '{')
+		isHTML := n > 0 && bodyPeek[0] == '<'
+
+		if resp.StatusCode == http.StatusOK && (strings.Contains(contentType, "application/json") || isJSON) && !isHTML {
+			// Success! Create a new reader that includes the peeked bytes
+			bodyReader := io.MultiReader(bytes.NewReader(bodyPeek[:n]), resp.Body)
+
+			// Create a new response with the combined body
+			resp.Body = io.NopCloser(bodyReader)
+
+			// Update current proxy index
+			c.proxyMu.Lock()
+			c.currentProxyIndex = proxyIndex
+			c.proxyMu.Unlock()
+			slog.Info("Olimp: Using working proxy", "proxy_index", proxyIndex+1, "proxy", maskProxyURL(proxyURLStr), "url", rawURL)
+
+			body, err := c.handleResponse(resp)
+			resp.Body.Close()
+			return body, err
+		}
+
+		// Not JSON - read body to check what we got before closing
+		body, _ := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		preview := string(body)
+		if len(preview) > 200 {
+			preview = preview[:200] + "..."
+		}
+		slog.Warn("Olimp: Proxy returned blocked/invalid response, trying next", "proxy", maskProxyURL(proxyURLStr), "status", resp.StatusCode, "content_type", contentType, "body_preview", preview)
+	}
+
+	// All proxies failed, try direct connection as last resort
+	slog.Warn("Olimp: All proxies failed, trying direct connection", "url", rawURL, "total_proxies_tried", len(c.proxyList))
+	return c.doDirect(ctx, rawURL, referer)
+}
+
+func (c *Client) setHeaders(req *http.Request, referer string) {
+	req.Header.Set("Accept", "application/json")
+	req.Header.Set("Accept-Encoding", "gzip")
+	req.Header.Set("Accept-Language", "en-US,en;q=0.9")
+	req.Header.Set("User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36")
+	req.Header.Set("Referer", referer)
+}
+
+func (c *Client) handleResponse(resp *http.Response) ([]byte, error) {
 	if resp.StatusCode != http.StatusOK {
 		b, _ := io.ReadAll(resp.Body)
 		return nil, fmt.Errorf("HTTP %d: %s", resp.StatusCode, string(b))
@@ -119,4 +258,19 @@ func (c *Client) do(ctx context.Context, rawURL, referer string) ([]byte, error)
 		r = gz
 	}
 	return io.ReadAll(r)
+}
+
+func maskProxyURL(proxyURL string) string {
+	// Mask password in proxy URL for logging
+	parsed, err := url.Parse(proxyURL)
+	if err != nil {
+		return "***"
+	}
+	if parsed.User != nil {
+		password, _ := parsed.User.Password()
+		if password != "" {
+			parsed.User = url.UserPassword(parsed.User.Username(), "***")
+		}
+	}
+	return parsed.String()
 }

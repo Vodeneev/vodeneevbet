@@ -33,7 +33,7 @@ func NewParser(cfg *config.Config) *Parser {
 	if timeout <= 0 {
 		timeout = 30 * time.Second
 	}
-	client := NewClient(o.BaseURL, o.SportID, timeout, o.Referer)
+	client := NewClient(o.BaseURL, o.SportID, timeout, o.Referer, o.ProxyList)
 	return &Parser{cfg: cfg, client: client}
 }
 

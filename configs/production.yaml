@@ -325,6 +325,60 @@ parser:
     sport_id: 1
     referer: "https://www.olimp.bet/line/futbol-1/"
     # timeout: 30s
+    # Proxy list for bypassing blocking (timeout/connection errors)
+    # Client will try proxies in order until one works, falls back to direct connection if all fail
+    # Format: http://user:pass@ip:port or http://ip:port
+    proxy_list:
+      - "http://jzbtyqog:dtl1krhljqq7@31.59.20.176:6754"     # UK, London
+      - "http://jzbtyqog:dtl1krhljqq7@23.95.150.145:6114"   # USA, Buffalo
+      - "http://jzbtyqog:dtl1krhljqq7@198.23.239.134:6540"  # USA, Buffalo
+      - "http://jzbtyqog:dtl1krhljqq7@45.38.107.97:6014"    # UK, London
+      - "http://jzbtyqog:dtl1krhljqq7@107.172.163.27:6543"  # USA, Bloomingdale
+      - "http://jzbtyqog:dtl1krhljqq7@198.105.121.200:6462" # UK, City Of London
+      - "http://jzbtyqog:dtl1krhljqq7@64.137.96.74:6641"    # Spain, Madrid
+      - "http://jzbtyqog:dtl1krhljqq7@216.10.27.159:6837"   # USA, Dallas
+      - "http://jzbtyqog:dtl1krhljqq7@23.26.71.145:5628"    # USA, Orem
+      - "http://jzbtyqog:dtl1krhljqq7@23.229.19.94:8689"    # USA, Los Angeles
+      - "http://ctlhsgsw:bkz0ulz2m9xs@31.59.20.176:6754"     # UK, London
+      - "http://ctlhsgsw:bkz0ulz2m9xs@23.95.150.145:6114"   # USA, Buffalo
+      - "http://ctlhsgsw:bkz0ulz2m9xs@198.23.239.134:6540"  # USA, Buffalo
+      - "http://ctlhsgsw:bkz0ulz2m9xs@45.38.107.97:6014"    # UK, London
+      - "http://ctlhsgsw:bkz0ulz2m9xs@107.172.163.27:6543"  # USA, Bloomingdale
+      - "http://ctlhsgsw:bkz0ulz2m9xs@198.105.121.200:6462" # UK, City Of London
+      - "http://ctlhsgsw:bkz0ulz2m9xs@64.137.96.74:6641"    # Spain, Madrid
+      - "http://ctlhsgsw:bkz0ulz2m9xs@216.10.27.159:6837"   # USA, Dallas
+      - "http://ctlhsgsw:bkz0ulz2m9xs@23.26.71.145:5628"    # USA, Orem
+      - "http://ctlhsgsw:bkz0ulz2m9xs@23.229.19.94:8689"    # USA, Los Angeles
+      - "http://fqedauvl:y1uawopz5uu5@31.59.20.176:6754"     # UK, London
+      - "http://fqedauvl:y1uawopz5uu5@23.95.150.145:6114"   # USA, Buffalo
+      - "http://fqedauvl:y1uawopz5uu5@198.23.239.134:6540"  # USA, Buffalo
+      - "http://fqedauvl:y1uawopz5uu5@45.38.107.97:6014"    # UK, London
+      - "http://fqedauvl:y1uawopz5uu5@107.172.163.27:6543"  # USA, Bloomingdale
+      - "http://fqedauvl:y1uawopz5uu5@198.105.121.200:6462" # UK, City Of London
+      - "http://fqedauvl:y1uawopz5uu5@64.137.96.74:6641"    # Spain, Madrid
+      - "http://fqedauvl:y1uawopz5uu5@216.10.27.159:6837"   # USA, Dallas
+      - "http://fqedauvl:y1uawopz5uu5@23.26.71.145:5628"    # USA, Orem
+      - "http://fqedauvl:y1uawopz5uu5@23.229.19.94:8689"    # USA, Los Angeles
+      - "http://sfdskuuk:1qe7z78cmps7@31.59.20.176:6754"     # UK, London
+      - "http://sfdskuuk:1qe7z78cmps7@23.95.150.145:6114"   # USA, Buffalo
+      - "http://sfdskuuk:1qe7z78cmps7@198.23.239.134:6540"  # USA, Buffalo
+      - "http://sfdskuuk:1qe7z78cmps7@45.38.107.97:6014"    # UK, London
+      - "http://sfdskuuk:1qe7z78cmps7@107.172.163.27:6543"  # USA, Bloomingdale
+      - "http://sfdskuuk:1qe7z78cmps7@198.105.121.200:6462" # UK, City Of London
+      - "http://sfdskuuk:1qe7z78cmps7@64.137.96.74:6641"    # Spain, Madrid
+      - "http://sfdskuuk:1qe7z78cmps7@216.10.27.159:6837"   # USA, Dallas
+      - "http://sfdskuuk:1qe7z78cmps7@23.26.71.145:5628"    # USA, Orem
+      - "http://sfdskuuk:1qe7z78cmps7@23.229.19.94:8689"    # USA, Los Angeles
+      - "http://jeymixct:aix4sf39nnor@31.59.20.176:6754"     # UK, London
+      - "http://jeymixct:aix4sf39nnor@23.95.150.145:6114"   # USA, Buffalo
+      - "http://jeymixct:aix4sf39nnor@198.23.239.134:6540"  # USA, Buffalo
+      - "http://jeymixct:aix4sf39nnor@45.38.107.97:6014"    # UK, London
+      - "http://jeymixct:aix4sf39nnor@107.172.163.27:6543"  # USA, Bloomingdale
+      - "http://jeymixct:aix4sf39nnor@198.105.121.200:6462" # UK, City Of London
+      - "http://jeymixct:aix4sf39nnor@64.137.96.74:6641"    # Spain, Madrid
+      - "http://jeymixct:aix4sf39nnor@216.10.27.159:6837"   # USA, Dallas
+      - "http://jeymixct:aix4sf39nnor@23.26.71.145:5628"    # USA, Orem
+      - "http://jeymixct:aix4sf39nnor@23.229.19.94:8689"    # USA, Los Angeles
 
 health:
   # HTTP server settings

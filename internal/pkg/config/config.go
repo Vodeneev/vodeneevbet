@@ -45,10 +45,11 @@ type ParserConfig struct {
 // OlimpConfig configures Olimp (olimp.bet) line API parser.
 // API: sports-with-categories-with-competitions (vids=1) → competitions-with-events (vids[]=id:) → events already have outcomes in step 2.
 type OlimpConfig struct {
-	BaseURL  string        `yaml:"base_url"`  // e.g. "https://www.olimp.bet/api/v4/0/line"
-	SportID  int           `yaml:"sport_id"`  // Sport ID (1 = Football, default: 1)
-	Timeout  time.Duration `yaml:"timeout"`  // HTTP timeout (default: use Parser.Timeout)
-	Referer  string        `yaml:"referer"`   // Referer for competitions-with-events (required; e.g. "https://www.olimp.bet/line/futbol-1/")
+	BaseURL   string        `yaml:"base_url"`   // e.g. "https://www.olimp.bet/api/v4/0/line"
+	SportID   int           `yaml:"sport_id"`   // Sport ID (1 = Football, default: 1)
+	Timeout   time.Duration `yaml:"timeout"`   // HTTP timeout (default: use Parser.Timeout)
+	Referer   string        `yaml:"referer"`    // Referer for competitions-with-events (required; e.g. "https://www.olimp.bet/line/futbol-1/")
+	ProxyList []string      `yaml:"proxy_list"` // List of proxies to try in order
 }
 
 // ZenitConfig configures Zenit (zenitnow549.top) line API parser.

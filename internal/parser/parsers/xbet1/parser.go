@@ -288,7 +288,10 @@ func (p *Parser) processLeaguesFlowIncremental(ctx context.Context) {
 
 		var champsWithMatches []ChampItem
 		for _, champ := range champs {
-			if champ.T == 1000 || champ.T == 0 {
+			// Football: only main leagues (T=1000 or T=0). Esports (sport_id=40): API uses other T values — take all.
+			if sportID == 40 {
+				champsWithMatches = append(champsWithMatches, champ)
+			} else if champ.T == 1000 || champ.T == 0 {
 				champsWithMatches = append(champsWithMatches, champ)
 			}
 		}

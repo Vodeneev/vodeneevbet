@@ -13,12 +13,16 @@ import (
 const bookmakerName = "Olimp"
 
 // groupName to standard event type (corners, fouls, yellow_cards, offsides).
+// Note: "Нарушения" (violations) with sub-markets "Пенальти" (penalties) and "Удаление" (red cards)
+// should NOT be mapped to fouls - they are separate markets.
 func statisticalEventType(groupName string) string {
 	g := strings.ToLower(groupName)
 	switch {
 	case strings.Contains(g, "углов") || strings.Contains(g, "corner"):
 		return string(models.StandardEventCorners)
-	case strings.Contains(g, "фол") || strings.Contains(g, "нарушен") || strings.Contains(g, "foul"):
+	case strings.Contains(g, "фол") || strings.Contains(g, "foul"):
+		// Only map to fouls if it's explicitly "фол", not "нарушения" (violations)
+		// "Нарушения" includes penalties and red cards, which are separate markets
 		return string(models.StandardEventFouls)
 	case strings.Contains(g, "желт") || strings.Contains(g, "карточ") || strings.Contains(g, "yellow") || strings.Contains(g, "жк"):
 		return string(models.StandardEventYellowCards)
@@ -90,6 +94,22 @@ func ParseEvent(ev *OlimpEvent, leagueName string) *models.Match {
 		}
 		statType := statisticalEventType(o.GroupName)
 		if statType != "" {
+			// Exclude "Нарушения" (violations) with sub-markets "Пенальти" (penalties) and "Удаление" (red cards)
+			// from fouls - they are separate markets
+			lowerGroupName := strings.ToLower(o.GroupName)
+			lowerUnprocessedName := strings.ToLower(o.UnprocessedName)
+			lowerShortName := strings.ToLower(o.ShortName)
+			if statType == string(models.StandardEventFouls) {
+				// Skip if it's about penalties or red cards (violations market)
+				if strings.Contains(lowerGroupName, "пенальти") || strings.Contains(lowerGroupName, "penalty") ||
+					strings.Contains(lowerGroupName, "удален") || strings.Contains(lowerGroupName, "red") ||
+					strings.Contains(lowerUnprocessedName, "пенальти") || strings.Contains(lowerUnprocessedName, "penalty") ||
+					strings.Contains(lowerUnprocessedName, "удален") || strings.Contains(lowerUnprocessedName, "red") ||
+					strings.Contains(lowerShortName, "пенальти") || strings.Contains(lowerShortName, "penalty") ||
+					strings.Contains(lowerShortName, "удален") || strings.Contains(lowerShortName, "red") {
+					continue // Skip violations market (penalties/red cards), not fouls
+				}
+			}
 			// Угловые, фолы, ЖК, офсайды — тоталы (больше/меньше) или точное число
 			if statisticalByType[statType] == nil {
 				statisticalByType[statType] = make(map[string][]models.Outcome)

@@ -319,7 +319,7 @@ func parseParamFromOddKey(oddKey string) string {
 
 // InferOutcomeType maps Zenit oddKey+param+tableID+O+T to standard outcome type.
 // tableID: "Тоталы", "ТоталМатча" = totals; "Форы" = handicaps (exact_count); corners/fouls/cards = statistical totals.
-// O and T are API outcome codes: typically "1" = over / home, "2" = under / away (or "9"/"10" in some APIs).
+// O and T are API outcome codes: "1"/"9" = under, "2"/"10" = over (Zenit convention is inverted from common).
 // Exported for debug/test scripts.
 func InferOutcomeType(oddKey, param, tableID, o, t string) string {
 	parts := strings.Split(oddKey, "|")
@@ -333,26 +333,26 @@ func InferOutcomeType(oddKey, param, tableID, o, t string) string {
 	if code == "" {
 		code = t
 	}
-	// Totals (main match total goals): O/T "1" = over, "2" = under (common convention)
+	// Totals (main match total goals): O/T "1"/"9" = under, "2"/"10" = over (Zenit convention is inverted)
 	switch tableID {
 	case "Тоталы", "ТоталМатча":
 		if code == "1" || code == "9" {
-			return string(models.OutcomeTypeTotalOver)
+			return string(models.OutcomeTypeTotalUnder)
 		}
 		if code == "2" || code == "10" {
-			return string(models.OutcomeTypeTotalUnder)
+			return string(models.OutcomeTypeTotalOver)
 		}
 		return string(models.OutcomeTypeExactCount)
 	case "Форы":
 		// Handicap: one outcome per line, parameter is the line; we keep exact_count (no handicap_home/away in models).
 		return string(models.OutcomeTypeExactCount)
 	default:
-		// Statistical (corners, fouls, yellow cards, etc.): same convention, 1=over, 2=under
+		// Statistical (corners, fouls, yellow cards, etc.): same convention, 1=under, 2=over
 		if code == "1" || code == "9" {
-			return string(models.OutcomeTypeTotalOver)
+			return string(models.OutcomeTypeTotalUnder)
 		}
 		if code == "2" || code == "10" {
-			return string(models.OutcomeTypeTotalUnder)
+			return string(models.OutcomeTypeTotalOver)
 		}
 		return string(models.OutcomeTypeExactCount)
 	}

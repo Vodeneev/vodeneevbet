@@ -4,7 +4,6 @@ import (
 	_ "embed"
 	"encoding/json"
 	"log/slog"
-	"os"
 	"strings"
 	"sync"
 	"time"
@@ -63,11 +62,9 @@ func normalizeKeyPart(s string) string {
 	beforeNormalize := s
 	s = normalizeTeamName(s)
 
-	// Log team name normalization for debugging (only if DEBUG_TEAM_NORMALIZATION is set)
-	if os.Getenv("DEBUG_TEAM_NORMALIZATION") == "1" {
-		if beforeNormalize != s || strings.Contains(strings.ToLower(original), "lanus") || strings.Contains(strings.ToLower(original), "cska") {
-			slog.Info("Team normalization", "original", original, "after_preprocessing", beforeNormalize, "normalized", s)
-		}
+	// Log team name normalization for debugging
+	if beforeNormalize != s || strings.Contains(strings.ToLower(original), "lanus") || strings.Contains(strings.ToLower(original), "cska") {
+		slog.Info("Team normalization", "original", original, "after_preprocessing", beforeNormalize, "normalized", s)
 	}
 
 	return s
@@ -98,9 +95,7 @@ func normalizeTeamName(name string) string {
 	// First, check for known full name variations (before processing)
 	normalized := applyKnownFullNameVariations(name)
 	if normalized != name {
-		if os.Getenv("DEBUG_TEAM_NORMALIZATION") == "1" {
-			slog.Info("Pattern applied", "original", originalName, "normalized", normalized)
-		}
+		slog.Info("Pattern applied", "original", originalName, "normalized", normalized)
 		return normalized
 	}
 
@@ -158,12 +153,10 @@ func normalizeTeamName(name string) string {
 		knownName := applyKnownFullNameVariations(nameWithoutSuffixes)
 		// Check if this is a known pattern (even if normalization returns the same value)
 		if isKnownPattern(nameWithoutSuffixes) {
-			if os.Getenv("DEBUG_TEAM_NORMALIZATION") == "1" {
-				if knownName != nameWithoutSuffixes {
-					slog.Info("Pattern applied after suffix removal", "name_without_suffixes", nameWithoutSuffixes, "normalized", knownName, "original", originalName)
-				} else {
-					slog.Info("Known pattern but no change", "name_without_suffixes", nameWithoutSuffixes, "original", originalName)
-				}
+			if knownName != nameWithoutSuffixes {
+				slog.Info("Pattern applied after suffix removal", "name_without_suffixes", nameWithoutSuffixes, "normalized", knownName, "original", originalName)
+			} else {
+				slog.Info("Known pattern but no change", "name_without_suffixes", nameWithoutSuffixes, "original", originalName)
 			}
 			return knownName
 		}
@@ -273,33 +266,27 @@ func applyKnownFullNameVariations(name string) string {
 
 	// Check for exact matches
 	if normalized, ok := fullNamePatterns[name]; ok {
-		if os.Getenv("DEBUG_TEAM_NORMALIZATION") == "1" {
-			slog.Info("Pattern exact match", "name", name, "normalized", normalized)
-		}
+		slog.Info("Pattern exact match", "name", name, "normalized", normalized)
 		return normalized
 	}
 
 	// Check if name starts with any pattern (handles cases like "Bayern Munich FC")
 	for pattern, normalized := range fullNamePatterns {
 		if strings.HasPrefix(name, pattern+" ") || name == pattern {
-			if os.Getenv("DEBUG_TEAM_NORMALIZATION") == "1" {
-				slog.Info("Pattern prefix match", "name", name, "pattern", pattern, "normalized", normalized)
-			}
+			slog.Info("Pattern prefix match", "name", name, "pattern", pattern, "normalized", normalized)
 			return normalized
 		}
 		// Check if pattern is prefix followed by space or hyphen
 		if strings.HasPrefix(name, pattern) && len(name) > len(pattern) {
 			nextChar := name[len(pattern)]
 			if nextChar == ' ' || nextChar == '-' {
-				if os.Getenv("DEBUG_TEAM_NORMALIZATION") == "1" {
-					slog.Info("Pattern prefix+separator match", "name", name, "pattern", pattern, "normalized", normalized)
-				}
+				slog.Info("Pattern prefix+separator match", "name", name, "pattern", pattern, "normalized", normalized)
 				return normalized
 			}
 		}
 	}
 
-	if os.Getenv("DEBUG_TEAM_NORMALIZATION") == "1" && (strings.Contains(strings.ToLower(name), "lanus") || strings.Contains(strings.ToLower(name), "cska") || strings.Contains(strings.ToLower(name), "club atletico")) {
+	if strings.Contains(strings.ToLower(name), "lanus") || strings.Contains(strings.ToLower(name), "cska") || strings.Contains(strings.ToLower(name), "club atletico") {
 		slog.Info("Pattern no match found", "name", name, "patterns_checked", len(fullNamePatterns))
 		// Log some example patterns for debugging
 		if strings.Contains(strings.ToLower(name), "lanus") {

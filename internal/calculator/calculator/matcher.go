@@ -9,7 +9,7 @@ import (
 )
 
 // matchGroupKey creates a unique key for grouping matches from different bookmakers.
-// Format: "sport|team1|team2|start_time" where teams are sorted alphabetically.
+// Format: "sport|team1|team2|start_time"
 func matchGroupKey(m models.Match) string {
 	home := normalizeTeam(m.HomeTeam)
 	away := normalizeTeam(m.AwayTeam)
@@ -27,13 +27,6 @@ func matchGroupKey(m models.Match) string {
 		return ""
 	}
 
-	// Normalize team order (sort alphabetically) to handle different home/away assignments
-	// This ensures same match from different bookmakers gets same group key
-	teams := []string{home, away}
-	if teams[0] > teams[1] {
-		teams[0], teams[1] = teams[1], teams[0]
-	}
-
 	sport := strings.ToLower(strings.TrimSpace(m.Sport))
 	if sport == "" {
 		sport = "unknown"
@@ -43,9 +36,9 @@ func matchGroupKey(m models.Match) string {
 	t := m.StartTime.UTC().Truncate(30 * time.Minute)
 	if t.IsZero() {
 		// If no start time, group only by teams.
-		return sport + "|" + teams[0] + "|" + teams[1]
+		return sport + "|" + home + "|" + away
 	}
-	return sport + "|" + teams[0] + "|" + teams[1] + "|" + t.Format(time.RFC3339)
+	return sport + "|" + home + "|" + away + "|" + t.Format(time.RFC3339)
 }
 
 // teamNamePrefixes are stripped for grouping so "RC Hades" and "Hades" match the same match.

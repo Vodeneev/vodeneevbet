@@ -100,13 +100,14 @@ func computeAndStoreLineMovements(ctx context.Context, matches []models.Match, s
 			}
 
 			for bookmaker, currentOdd := range byBook {
-				_, maxOdd, minOdd, _, err := snapshotStorage.GetLastOddsSnapshot(ctx, gk, betKey, bookmaker)
+				_, maxOdd, _, _, err := snapshotStorage.GetLastOddsSnapshot(ctx, gk, betKey, bookmaker)
 				if err != nil {
 					slog.Debug("GetLastOddsSnapshot failed", "match", gk, "bet", betKey, "bookmaker", bookmaker, "error", err)
 				}
 
 				// Compare with extremes in percent: (current - ref) / ref * 100
-				if maxOdd > 0 {
+				// Only track drops (falling odds), not rises
+				if maxOdd > 0 && currentOdd < maxOdd {
 					dropPercent := (maxOdd - currentOdd) / maxOdd * 100
 					if dropPercent >= thresholdPercent {
 						changeAbs := currentOdd - maxOdd
@@ -125,29 +126,6 @@ func computeAndStoreLineMovements(ctx context.Context, matches []models.Match, s
 							CurrentOdd:      currentOdd,
 							ChangeAbs:       changeAbs,
 							ChangePercent:   changeAbs / maxOdd * 100,
-							RecordedAt:      now,
-						})
-					}
-				}
-				if minOdd > 0 {
-					risePercent := (currentOdd - minOdd) / minOdd * 100
-					if risePercent >= thresholdPercent {
-						changeAbs := currentOdd - minOdd
-						movements = append(movements, LineMovement{
-							MatchGroupKey:   gk,
-							MatchName:       gm.name,
-							StartTime:       gm.startTime,
-							Sport:           gm.sport,
-							Tournament:      gm.tournament,
-							EventType:       evType,
-							OutcomeType:     outType,
-							Parameter:       param,
-							BetKey:          betKey,
-							Bookmaker:       bookmaker,
-							PreviousOdd:     minOdd,
-							CurrentOdd:      currentOdd,
-							ChangeAbs:       changeAbs,
-							ChangePercent:   changeAbs / minOdd * 100,
 							RecordedAt:      now,
 						})
 					}
@@ -275,8 +253,8 @@ func getLineMovementsForTop(ctx context.Context, matches []models.Match, snapsho
 					continue
 				}
 				maxOdd := row.MaxOdd
-				minOdd := row.MinOdd
 
+				// Only track drops (falling odds), not rises
 				if maxOdd > 0 && currentOdd < maxOdd {
 					changeAbs := currentOdd - maxOdd
 					changePercent := changeAbs / maxOdd * 100
@@ -292,27 +270,6 @@ func getLineMovementsForTop(ctx context.Context, matches []models.Match, snapsho
 						BetKey:          betKey,
 						Bookmaker:       bookmaker,
 						PreviousOdd:     maxOdd,
-						CurrentOdd:      currentOdd,
-						ChangeAbs:       changeAbs,
-						ChangePercent:   changePercent,
-						RecordedAt:      now,
-					})
-				}
-				if minOdd > 0 && currentOdd > minOdd {
-					changeAbs := currentOdd - minOdd
-					changePercent := changeAbs / minOdd * 100
-					movements = append(movements, LineMovement{
-						MatchGroupKey:   gk,
-						MatchName:       gm.name,
-						StartTime:       gm.startTime,
-						Sport:           gm.sport,
-						Tournament:      gm.tournament,
-						EventType:       evType,
-						OutcomeType:     outType,
-						Parameter:       param,
-						BetKey:          betKey,
-						Bookmaker:       bookmaker,
-						PreviousOdd:     minOdd,
 						CurrentOdd:      currentOdd,
 						ChangeAbs:       changeAbs,
 						ChangePercent:   changePercent,

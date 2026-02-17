@@ -21,16 +21,9 @@ var (
 // IMPORTANT: this assumes team names are in the same language/format across sources.
 // For best results, keep both parsers in English (e.g. Fonbet lang=en, Pinnacle is English).
 // Format: team1|team2|time (sport removed as we only work with football)
-// Teams are sorted alphabetically to handle different home/away assignments across bookmakers
 func CanonicalMatchID(homeTeam, awayTeam string, startTime time.Time) string {
 	home := normalizeKeyPart(homeTeam)
 	away := normalizeKeyPart(awayTeam)
-
-	// Normalize team order (sort alphabetically) to handle different home/away assignments
-	// This ensures same match from different bookmakers gets same ID
-	if home > away {
-		home, away = away, home
-	}
 
 	// Use exact time without rounding
 	ts := "unknown-time"

@@ -8,7 +8,7 @@ import (
 	"github.com/Vodeneev/vodeneevbet/internal/pkg/models"
 )
 
-// BuildEsportsLineMatch builds line.Match from Fonbet main event and its factors (for dota2/cs).
+// BuildEsportsLineMatch builds line.Match from Fonbet main event and its factors (for esports: dota2, cs, valorant, lol, kog, crossfire, callofduty).
 // Used to feed AddEsportsMatch via line.Match.ToEsportsMatch().
 func BuildEsportsLineMatch(mainEvent FonbetAPIEvent, mainFactors []FonbetFactor, sport, league, bookmaker string) *line.Match {
 	if mainEvent.Team1 == "" || mainEvent.Team2 == "" {

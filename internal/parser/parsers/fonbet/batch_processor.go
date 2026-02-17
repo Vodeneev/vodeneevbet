@@ -426,8 +426,8 @@ func (p *BatchProcessor) worker(
 		var success bool
 		var err error
 
-		// Киберспорт (dota2, cs) → отдельная модель EsportsMatch, не футбольная
-		if match.Sport == "dota2" || match.Sport == "cs" {
+		// Киберспорт (dota2, cs, valorant, lol, kog, crossfire, callofduty) → отдельная модель EsportsMatch, не футбольная
+		if isEsportSport(match.Sport) {
 			var mainFactors []FonbetFactor
 			for _, g := range match.FactorGroups {
 				if g.EventID == match.MainEvent.ID {
@@ -491,7 +491,7 @@ type MatchData struct {
 	MainEvent         FonbetAPIEvent
 	StatisticalEvents []FonbetAPIEvent
 	FactorGroups      []FonbetFactorGroup
-	Sport             string // football, dota2, cs — для ветки esports
+	Sport             string // football, dota2, cs, valorant, lol, kog, crossfire, callofduty — для ветки esports
 }
 
 // ProcessResult represents the result of processing a match
@@ -505,17 +505,39 @@ type ProcessResult struct {
 	YDBWriteTime  time.Duration
 }
 
-// fonbetEsportCategoryID returns Fonbet sportCategoryId for esports (19=Dota2, 20=CS).
-// В API Fonbet нет топ-уровня с alias "dota2"/"cs", сегменты приходят с sportCategoryId 19/20.
+// fonbetEsportCategoryID returns Fonbet sportCategoryId for esports.
+// В API Fonbet нет топ-уровня с alias для киберспорта, сегменты приходят с sportCategoryId.
 func fonbetEsportCategoryID(sportAlias string) int {
 	switch sportAlias {
 	case "dota2":
 		return 19
 	case "cs":
 		return 20
+	case "valorant":
+		return 21
+	case "lol":
+		return 22
+	case "kog":
+		return 78
+	case "crossfire":
+		return 148
+	case "callofduty":
+		return 169
 	default:
 		return 0
 	}
+}
+
+// isFonbetEsportCategoryID checks if sportCategoryID is an esports category in Fonbet API
+func isFonbetEsportCategoryID(sportCategoryID int) bool {
+	return sportCategoryID == 19 || sportCategoryID == 20 || sportCategoryID == 21 || 
+		sportCategoryID == 22 || sportCategoryID == 78 || sportCategoryID == 148 || sportCategoryID == 169
+}
+
+// isEsportSport checks if sport string is an esports sport
+func isEsportSport(sport string) bool {
+	return sport == "dota2" || sport == "cs" || sport == "valorant" || 
+		sport == "lol" || sport == "kog" || sport == "crossfire" || sport == "callofduty"
 }
 
 func (p *BatchProcessor) getAllowedSportIDs(sports []FonbetSport, sportAlias string) map[int64]struct{} {
@@ -527,7 +549,7 @@ func (p *BatchProcessor) getAllowedSportIDs(sports []FonbetSport, sportAlias str
 			break
 		}
 	}
-	// Киберспорт: в Fonbet сегменты Dota2/CS имеют sportCategoryId 19/20, топ-уровня с alias "dota2"/"cs" нет
+	// Киберспорт: в Fonbet сегменты имеют sportCategoryId (19=Dota2, 20=CS, 21=Valorant, 22=LOL, 78=KOG, 148=CrossFire, 169=CallOfDuty), топ-уровня с alias нет
 	if sportCategoryID == 0 {
 		sportCategoryID = fonbetEsportCategoryID(sportAlias)
 	}
@@ -536,14 +558,15 @@ func (p *BatchProcessor) getAllowedSportIDs(sports []FonbetSport, sportAlias str
 	}
 
 	allowed := make(map[int64]struct{}, len(sports))
-	esportCategory := sportCategoryID == 19 || sportCategoryID == 20 // Dota2, CS — не подмешивать сегменты с null category
+	// Все категории киберспорта: не подмешивать сегменты с null category
+	esportCategory := isFonbetEsportCategoryID(sportCategoryID)
 	for _, s := range sports {
 		// "segment" entries carry sportCategoryId which points to the top-level sport id.
 		if s.SportCategoryID == sportCategoryID {
 			allowed[int64(s.ID)] = struct{}{}
 		}
 		// Для футбола и др.: сегменты с пустым sportCategoryId допускаем (могут относиться к спорту).
-		// Для киберспорта (19/20) НЕ добавляем сегменты с null — иначе в dota2/cs попадают футбольные матчи.
+		// Для киберспорта (19, 20, 21, 22, 78, 148, 169) НЕ добавляем сегменты с null — иначе в киберспорт попадают футбольные матчи.
 		if !esportCategory && s.Kind == "segment" && s.SportCategoryID == 0 && sportCategoryID > 0 {
 			allowed[int64(s.ID)] = struct{}{}
 		}

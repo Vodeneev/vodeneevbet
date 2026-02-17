@@ -238,26 +238,81 @@ func parseTBBlock(matchID string, block *TBBlock) (events []models.Event, mainMa
 			continue
 		}
 		var outcomes []models.Outcome
+		
+		// Group outcomes by parameter for totals/handicaps when T="cf"
+		// When T="cf", we need to infer over/under from pairs of outcomes with same param
+		byParam := make(map[string][]oddRow)
 		for _, r := range rows {
 			if r.Odds <= 0 {
 				continue
 			}
 			param := parseParamFromOddKey(r.OddKey)
-			outcomeType := InferOutcomeType(r.OddKey, param, tableID, r.O, r.T)
-			evID := matchID + "_main"
-			if eventType != string(models.StandardEventMainMatch) {
-				evID = matchID + "_" + tableID
+			byParam[param] = append(byParam[param], r)
+		}
+		
+		// Process outcomes: for totals with T="cf", infer type from pairs
+		for param, paramRows := range byParam {
+			// Check if this tableID should have totals (over/under pairs)
+			// Only for main totals, not individual team totals (ИндТоталы)
+			isMainTotalMarket := (tableID == "Тоталы" || tableID == "ТоталМатча") ||
+				eventType == string(models.StandardEventCorners) ||
+				eventType == string(models.StandardEventFouls) ||
+				eventType == string(models.StandardEventYellowCards) ||
+				eventType == string(models.StandardEventOffsides)
+			
+			// For totals with T="cf": if exactly 2 outcomes with same param, treat as over/under pair
+			if isMainTotalMarket && len(paramRows) == 2 && paramRows[0].T == "cf" && paramRows[1].T == "cf" {
+				// Two outcomes with same param and T="cf" - likely over/under pair
+				// For Zenit API: when T="cf", outcomes come in pairs for totals
+				// Based on data analysis: order in array determines over/under
+				// First outcome = over, second = under (verified with real data)
+				r1, r2 := paramRows[0], paramRows[1]
+				evID := matchID + "_main"
+				if eventType != string(models.StandardEventMainMatch) {
+					evID = matchID + "_" + tableID
+				}
+				// Use order: first = over, second = under
+				outcomes = append(outcomes, models.Outcome{
+					ID:          r1.ID,
+					EventID:     evID,
+					OutcomeType: string(models.OutcomeTypeTotalOver),
+					Parameter:   param,
+					Odds:        r1.Odds,
+					Bookmaker:   bookmakerName,
+					CreatedAt:   now,
+					UpdatedAt:   now,
+				})
+				outcomes = append(outcomes, models.Outcome{
+					ID:          r2.ID,
+					EventID:     evID,
+					OutcomeType: string(models.OutcomeTypeTotalUnder),
+					Parameter:   param,
+					Odds:        r2.Odds,
+					Bookmaker:   bookmakerName,
+					CreatedAt:   now,
+					UpdatedAt:   now,
+				})
+			} else {
+				// Single outcome or not a total market - use standard inference
+				for _, r := range paramRows {
+					param := parseParamFromOddKey(r.OddKey)
+					outcomeType := InferOutcomeType(r.OddKey, param, tableID, r.O, r.T)
+					evID := matchID + "_main"
+					if eventType != string(models.StandardEventMainMatch) {
+						evID = matchID + "_" + tableID
+					}
+					outcomes = append(outcomes, models.Outcome{
+						ID:          r.ID,
+						EventID:     evID,
+						OutcomeType: outcomeType,
+						Parameter:   param,
+						Odds:        r.Odds,
+						Bookmaker:   bookmakerName,
+						CreatedAt:   now,
+						UpdatedAt:   now,
+					})
+				}
 			}
-			outcomes = append(outcomes, models.Outcome{
-				ID:          r.ID,
-				EventID:     evID,
-				OutcomeType: outcomeType,
-				Parameter:   param,
-				Odds:        r.Odds,
-				Bookmaker:   bookmakerName,
-				CreatedAt:   now,
-				UpdatedAt:   now,
-			})
 		}
 		if len(outcomes) == 0 {
 			continue

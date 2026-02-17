@@ -46,7 +46,7 @@ func ParseGameDetails(game *GameDetails, leagueName string) *models.Match {
 	}
 
 	// Build match
-	matchID := models.CanonicalMatchID(homeTeam, awayTeam, startTime)
+	matchID := models.CanonicalMatchIDWithBookmaker(homeTeam, awayTeam, startTime, "xbet1")
 	matchName := fmt.Sprintf("%s vs %s", homeTeam, awayTeam)
 
 	match := &models.Match{

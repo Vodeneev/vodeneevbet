@@ -23,8 +23,13 @@ var (
 // For best results, keep both parsers in English (e.g. Fonbet lang=en, Pinnacle is English).
 // Format: team1|team2|time (sport removed as we only work with football)
 func CanonicalMatchID(homeTeam, awayTeam string, startTime time.Time) string {
-	home := normalizeKeyPart(homeTeam)
-	away := normalizeKeyPart(awayTeam)
+	return CanonicalMatchIDWithBookmaker(homeTeam, awayTeam, startTime, "")
+}
+
+// CanonicalMatchIDWithBookmaker builds a stable cross-bookmaker match identifier with bookmaker info for logging.
+func CanonicalMatchIDWithBookmaker(homeTeam, awayTeam string, startTime time.Time, bookmaker string) string {
+	home := normalizeKeyPart(homeTeam, bookmaker)
+	away := normalizeKeyPart(awayTeam, bookmaker)
 
 	// Use exact time without rounding
 	ts := "unknown-time"
@@ -35,7 +40,7 @@ func CanonicalMatchID(homeTeam, awayTeam string, startTime time.Time) string {
 	return home + "|" + away + "|" + ts
 }
 
-func normalizeKeyPart(s string) string {
+func normalizeKeyPart(s string, bookmaker string) string {
 	original := s
 	s = strings.ToLower(strings.TrimSpace(s))
 	if s == "" {
@@ -60,11 +65,13 @@ func normalizeKeyPart(s string) string {
 
 	// Normalize team name using intelligent extraction of key words
 	beforeNormalize := s
-	s = normalizeTeamName(s)
+	s = normalizeTeamName(s, bookmaker)
 
-	// Log team name normalization for debugging
-	if beforeNormalize != s || strings.Contains(strings.ToLower(original), "lanus") || strings.Contains(strings.ToLower(original), "cska") {
-		slog.Info("Team normalization", "original", original, "after_preprocessing", beforeNormalize, "normalized", s)
+	// Log team name normalization only for xbet and only if lanus is found
+	isXbet := strings.Contains(strings.ToLower(bookmaker), "xbet") || strings.Contains(strings.ToLower(bookmaker), "1xbet")
+	containsLanus := strings.Contains(strings.ToLower(original), "lanus")
+	if isXbet && containsLanus {
+		slog.Info("Team normalization", "original", original, "after_preprocessing", beforeNormalize, "normalized", s, "bookmaker", bookmaker)
 	}
 
 	return s
@@ -90,12 +97,17 @@ func removePrepositions(s string) string {
 }
 
 // normalizeTeamName normalizes team names by extracting key words and removing common suffixes
-func normalizeTeamName(name string) string {
+func normalizeTeamName(name string, bookmaker string) string {
 	originalName := name
 	// First, check for known full name variations (before processing)
-	normalized := applyKnownFullNameVariations(name)
+	normalized := applyKnownFullNameVariations(name, bookmaker)
+	isXbet := strings.Contains(strings.ToLower(bookmaker), "xbet") || strings.Contains(strings.ToLower(bookmaker), "1xbet")
+	containsLanus := strings.Contains(strings.ToLower(name), "lanus")
+	if normalized != name && isXbet && containsLanus {
+		slog.Info("Pattern applied", "original", originalName, "normalized", normalized, "bookmaker", bookmaker)
+		return normalized
+	}
 	if normalized != name {
-		slog.Info("Pattern applied", "original", originalName, "normalized", normalized)
 		return normalized
 	}
 
@@ -150,13 +162,15 @@ func normalizeTeamName(name string) string {
 	// Check if name without suffixes matches a known combination
 	if len(wordsWithoutSuffixes) > 0 {
 		nameWithoutSuffixes := strings.ToLower(strings.Join(wordsWithoutSuffixes, " "))
-		knownName := applyKnownFullNameVariations(nameWithoutSuffixes)
+		knownName := applyKnownFullNameVariations(nameWithoutSuffixes, bookmaker)
 		// Check if this is a known pattern (even if normalization returns the same value)
 		if isKnownPattern(nameWithoutSuffixes) {
-			if knownName != nameWithoutSuffixes {
-				slog.Info("Pattern applied after suffix removal", "name_without_suffixes", nameWithoutSuffixes, "normalized", knownName, "original", originalName)
-			} else {
-				slog.Info("Known pattern but no change", "name_without_suffixes", nameWithoutSuffixes, "original", originalName)
+			isXbet := strings.Contains(strings.ToLower(bookmaker), "xbet") || strings.Contains(strings.ToLower(bookmaker), "1xbet")
+			containsLanus := strings.Contains(strings.ToLower(nameWithoutSuffixes), "lanus") || strings.Contains(strings.ToLower(originalName), "lanus")
+			if knownName != nameWithoutSuffixes && isXbet && containsLanus {
+				slog.Info("Pattern applied after suffix removal", "name_without_suffixes", nameWithoutSuffixes, "normalized", knownName, "original", originalName, "bookmaker", bookmaker)
+			} else if isXbet && containsLanus {
+				slog.Info("Known pattern but no change", "name_without_suffixes", nameWithoutSuffixes, "original", originalName, "bookmaker", bookmaker)
 			}
 			return knownName
 		}
@@ -261,45 +275,51 @@ func getFullNamePatterns() map[string]string {
 }
 
 // applyKnownFullNameVariations handles complete team name patterns
-func applyKnownFullNameVariations(name string) string {
+func applyKnownFullNameVariations(name string, bookmaker string) string {
 	fullNamePatterns := getFullNamePatterns()
+	isXbet := strings.Contains(strings.ToLower(bookmaker), "xbet") || strings.Contains(strings.ToLower(bookmaker), "1xbet")
+	containsLanus := strings.Contains(strings.ToLower(name), "lanus")
 
 	// Check for exact matches
 	if normalized, ok := fullNamePatterns[name]; ok {
-		slog.Info("Pattern exact match", "name", name, "normalized", normalized)
+		if isXbet && containsLanus {
+			slog.Info("Pattern exact match", "name", name, "normalized", normalized, "bookmaker", bookmaker)
+		}
 		return normalized
 	}
 
 	// Check if name starts with any pattern (handles cases like "Bayern Munich FC")
 	for pattern, normalized := range fullNamePatterns {
 		if strings.HasPrefix(name, pattern+" ") || name == pattern {
-			slog.Info("Pattern prefix match", "name", name, "pattern", pattern, "normalized", normalized)
+			if isXbet && containsLanus {
+				slog.Info("Pattern prefix match", "name", name, "pattern", pattern, "normalized", normalized, "bookmaker", bookmaker)
+			}
 			return normalized
 		}
 		// Check if pattern is prefix followed by space or hyphen
 		if strings.HasPrefix(name, pattern) && len(name) > len(pattern) {
 			nextChar := name[len(pattern)]
 			if nextChar == ' ' || nextChar == '-' {
-				slog.Info("Pattern prefix+separator match", "name", name, "pattern", pattern, "normalized", normalized)
+				if isXbet && containsLanus {
+					slog.Info("Pattern prefix+separator match", "name", name, "pattern", pattern, "normalized", normalized, "bookmaker", bookmaker)
+				}
 				return normalized
 			}
 		}
 	}
 
-	if strings.Contains(strings.ToLower(name), "lanus") || strings.Contains(strings.ToLower(name), "cska") || strings.Contains(strings.ToLower(name), "club atletico") {
-		slog.Info("Pattern no match found", "name", name, "patterns_checked", len(fullNamePatterns))
+	if isXbet && containsLanus {
+		slog.Info("Pattern no match found", "name", name, "patterns_checked", len(fullNamePatterns), "bookmaker", bookmaker)
 		// Log some example patterns for debugging
-		if strings.Contains(strings.ToLower(name), "lanus") {
-			if val, ok := fullNamePatterns["lanus"]; ok {
-				slog.Info("Pattern 'lanus' exists in map", "value", val)
-			} else {
-				slog.Info("Pattern 'lanus' NOT found in map")
-			}
-			if val, ok := fullNamePatterns["club atletico lanus"]; ok {
-				slog.Info("Pattern 'club atletico lanus' exists in map", "value", val)
-			} else {
-				slog.Info("Pattern 'club atletico lanus' NOT found in map")
-			}
+		if val, ok := fullNamePatterns["lanus"]; ok {
+			slog.Info("Pattern 'lanus' exists in map", "value", val, "bookmaker", bookmaker)
+		} else {
+			slog.Info("Pattern 'lanus' NOT found in map", "bookmaker", bookmaker)
+		}
+		if val, ok := fullNamePatterns["club atletico lanus"]; ok {
+			slog.Info("Pattern 'club atletico lanus' exists in map", "value", val, "bookmaker", bookmaker)
+		} else {
+			slog.Info("Pattern 'club atletico lanus' NOT found in map", "bookmaker", bookmaker)
 		}
 	}
 

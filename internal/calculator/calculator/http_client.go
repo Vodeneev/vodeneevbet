@@ -170,7 +170,7 @@ func (c *HTTPMatchesClient) GetEsportsMatches(ctx context.Context) ([]models.Esp
 }
 
 // GetMatchesAll fetches football matches and esports matches, converts esports to models.Match,
-// and returns a single slice so diffs/value/upcoming include both.
+// filters out finished matches (started more than 3 hours ago), and returns a single slice.
 func (c *HTTPMatchesClient) GetMatchesAll(ctx context.Context) ([]models.Match, error) {
 	if c == nil {
 		return nil, fmt.Errorf("HTTP client is not configured")
@@ -183,16 +183,23 @@ func (c *HTTPMatchesClient) GetMatchesAll(ctx context.Context) ([]models.Match, 
 	if errEsports != nil {
 		// Only football is still returned; esports fetch failure is non-fatal
 		slog.Warn("Failed to fetch esports matches, using football only", "error", errEsports)
-		return football, nil
+		return c.filterFinishedMatches(football), nil
 	}
 	var esportsSummary EsportsConversionSummary
 	converted := EsportsMatchesToMatches(esports, &esportsSummary)
+	allMatches := append(football, converted...)
+	
+	// Filter out finished matches before returning
+	filtered := c.filterFinishedMatches(allMatches)
+	
 	total := len(football) + len(converted)
 	slog.Info("Fetched matches for calculator",
 		"football", len(football),
 		"esports_raw", len(esports),
 		"esports_converted", len(converted),
-		"total_merged", total)
+		"total_merged", total,
+		"after_filtering", len(filtered),
+		"filtered_out", total-len(filtered))
 	if esportsSummary.MatchCount > 0 {
 		slog.Info("Esports merge summary",
 			"match_count", esportsSummary.MatchCount,
@@ -202,5 +209,26 @@ func (c *HTTPMatchesClient) GetMatchesAll(ctx context.Context) ([]models.Match, 
 			"event_types", esportsSummary.UniqueEventTypes,
 			"sample_matches", esportsSummary.SampleMatches)
 	}
-	return append(football, converted...), nil
+	return filtered, nil
+}
+
+// filterFinishedMatches filters out matches that have already finished (started more than 3 hours ago).
+// Matches typically last up to 2-3 hours, so we exclude matches that started more than 3 hours ago.
+func (c *HTTPMatchesClient) filterFinishedMatches(matches []models.Match) []models.Match {
+	now := time.Now().UTC()
+	maxLiveAge := 3 * time.Hour
+	
+	filtered := make([]models.Match, 0, len(matches))
+	for _, m := range matches {
+		// Skip matches that have already finished (started more than maxLiveAge ago)
+		if !m.StartTime.IsZero() {
+			hasStarted := m.StartTime.Before(now) || m.StartTime.Equal(now)
+			isTooOld := hasStarted && now.Sub(m.StartTime) > maxLiveAge
+			if isTooOld {
+				continue
+			}
+		}
+		filtered = append(filtered, m)
+	}
+	return filtered
 }

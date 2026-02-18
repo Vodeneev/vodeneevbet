@@ -16,12 +16,39 @@ import (
 // Min interval between any two Telegram messages to the same chat to avoid 429 Too Many Requests (~30/min limit).
 const telegramSendInterval = 2 * time.Second
 
+// messageType represents the type of message to send
+type messageType int
+
+const (
+	messageTypeDiff messageType = iota
+	messageTypeLineMovement
+)
+
+// queuedMessage represents a message queued for sending
+type queuedMessage struct {
+	msgType         messageType
+	text            string
+	diff            *DiffBet
+	threshold       int
+	lineMovement    *LineMovement
+	thresholdPercent float64
+	now             time.Time
+	history         []storage.OddsHistoryPoint
+}
+
 // TelegramNotifier sends Telegram notifications for high-value diffs
 type TelegramNotifier struct {
 	bot      *tgbotapi.BotAPI
 	chatID   int64
 	mu       sync.Mutex
 	lastSend time.Time
+	
+	// Async queue for sending messages
+	queue     chan queuedMessage
+	queueDone chan struct{}
+	wg        sync.WaitGroup
+	ctx       context.Context
+	cancel    context.CancelFunc
 }
 
 // NewTelegramNotifier creates a new Telegram notifier
@@ -41,58 +68,126 @@ func NewTelegramNotifier(token string, chatID int64) *TelegramNotifier {
 		return nil
 	}
 
+	ctx, cancel := context.WithCancel(context.Background())
+	
+	notifier := &TelegramNotifier{
+		bot:      bot,
+		chatID:   chatID,
+		queue:    make(chan queuedMessage, 100), // Buffer up to 100 messages
+		queueDone: make(chan struct{}),
+		ctx:      ctx,
+		cancel:   cancel,
+	}
+
+	// Start background worker for sending messages
+	notifier.wg.Add(1)
+	go notifier.messageSender()
+
 	slog.Info("Telegram notifier initialized", "chat_id", chatID)
 
-	return &TelegramNotifier{
-		bot:    bot,
-		chatID: chatID,
+	return notifier
+}
+
+// messageSender runs in background and sends queued messages with proper intervals
+func (n *TelegramNotifier) messageSender() {
+	defer n.wg.Done()
+	
+	for {
+		select {
+		case <-n.ctx.Done():
+			// Drain remaining messages before exit
+			for {
+				select {
+				case msg := <-n.queue:
+					n.sendQueuedMessage(msg)
+				default:
+					close(n.queueDone)
+					return
+				}
+			}
+		case msg := <-n.queue:
+			n.sendQueuedMessage(msg)
+		}
 	}
 }
 
-// waitSendInterval waits until at least telegramSendInterval has passed since lastSend. Holds n.mu for the whole wait so sends are serialized. Call with n.mu held.
-func (n *TelegramNotifier) waitSendInterval(ctx context.Context) error {
-	for {
-		elapsed := time.Since(n.lastSend)
-		if elapsed >= telegramSendInterval {
-			return nil
-		}
-		wait := telegramSendInterval - elapsed
-		if wait > 500*time.Millisecond {
-			wait = 500 * time.Millisecond
-		}
+// sendQueuedMessage sends a queued message with proper rate limiting
+func (n *TelegramNotifier) sendQueuedMessage(msg queuedMessage) {
+	var messageText string
+	
+	switch msg.msgType {
+	case messageTypeDiff:
+		messageText = n.formatDiffAlert(msg.diff, msg.threshold)
+	case messageTypeLineMovement:
+		messageText = n.formatLineMovementAlert(msg.lineMovement, msg.thresholdPercent, msg.now, msg.history)
+	default:
+		slog.Error("Unknown message type", "type", msg.msgType)
+		return
+	}
+	
+	tgMsg := tgbotapi.NewMessage(n.chatID, messageText)
+	tgMsg.ParseMode = tgbotapi.ModeMarkdown
+	
+	// Wait for proper interval
+	n.mu.Lock()
+	elapsed := time.Since(n.lastSend)
+	if elapsed < telegramSendInterval {
+		waitTime := telegramSendInterval - elapsed
 		n.mu.Unlock()
 		select {
-		case <-ctx.Done():
-			n.mu.Lock()
-			return ctx.Err()
-		case <-time.After(wait):
-			n.mu.Lock()
+		case <-n.ctx.Done():
+			return
+		case <-time.After(waitTime):
 		}
+		n.mu.Lock()
+	}
+	
+	n.lastSend = time.Now()
+	_, err := n.bot.Send(tgMsg)
+	n.mu.Unlock()
+	
+	if err != nil {
+		slog.Error("Failed to send telegram message", "error", err, "type", msg.msgType)
+	} else {
+		slog.Debug("Sent telegram message", "type", msg.msgType)
 	}
 }
 
-// SendDiffAlert sends an alert for a high-value diff
+// Stop stops the notifier and waits for all queued messages to be sent
+func (n *TelegramNotifier) Stop() {
+	if n == nil {
+		return
+	}
+	n.cancel()
+	<-n.queueDone
+	n.wg.Wait()
+}
+
+// SendDiffAlert queues an alert for a high-value diff (non-blocking)
 func (n *TelegramNotifier) SendDiffAlert(ctx context.Context, diff *DiffBet, threshold int) error {
 	if n == nil || n.bot == nil {
 		return fmt.Errorf("telegram notifier not initialized")
 	}
 
-	message := n.formatDiffAlert(diff, threshold)
-	msg := tgbotapi.NewMessage(n.chatID, message)
-	msg.ParseMode = tgbotapi.ModeMarkdown
-
-	n.mu.Lock()
-	if err := n.waitSendInterval(ctx); err != nil {
-		n.mu.Unlock()
-		return err
+	select {
+	case <-n.ctx.Done():
+		return fmt.Errorf("notifier stopped")
+	case <-ctx.Done():
+		return ctx.Err()
+	case n.queue <- queuedMessage{
+		msgType:   messageTypeDiff,
+		diff:      diff,
+		threshold: threshold,
+	}:
+		return nil
+	default:
+		// Queue is full, log warning but don't block
+		slog.Warn("Telegram message queue is full, dropping message", "match", diff.MatchName)
+		return fmt.Errorf("message queue is full")
 	}
-	n.lastSend = time.Now()
-	_, err := n.bot.Send(msg)
-	n.mu.Unlock()
-	return err
 }
 
-// SendLineMovementAlert sends an alert for a significant odds change in the same bookmaker.
+// SendLineMovementAlert queues an alert for a significant odds change in the same bookmaker (non-blocking).
 // history is used to show timeline (e.g. "6.70 (12 min ago) → 7.10 (now)").
 // thresholdPercent is the min change in % that triggered the alert (e.g. 5.0 for 5%).
 func (n *TelegramNotifier) SendLineMovementAlert(ctx context.Context, lm *LineMovement, thresholdPercent float64, now time.Time, history []storage.OddsHistoryPoint) error {
@@ -100,19 +195,28 @@ func (n *TelegramNotifier) SendLineMovementAlert(ctx context.Context, lm *LineMo
 		return fmt.Errorf("telegram notifier not initialized")
 	}
 
-	message := n.formatLineMovementAlert(lm, thresholdPercent, now, history)
-	msg := tgbotapi.NewMessage(n.chatID, message)
-	msg.ParseMode = tgbotapi.ModeMarkdown
+	// Copy history slice to avoid race conditions
+	historyCopy := make([]storage.OddsHistoryPoint, len(history))
+	copy(historyCopy, history)
 
-	n.mu.Lock()
-	if err := n.waitSendInterval(ctx); err != nil {
-		n.mu.Unlock()
-		return err
+	select {
+	case <-n.ctx.Done():
+		return fmt.Errorf("notifier stopped")
+	case <-ctx.Done():
+		return ctx.Err()
+	case n.queue <- queuedMessage{
+		msgType:         messageTypeLineMovement,
+		lineMovement:    lm,
+		thresholdPercent: thresholdPercent,
+		now:             now,
+		history:         historyCopy,
+	}:
+		return nil
+	default:
+		// Queue is full, log warning but don't block
+		slog.Warn("Telegram message queue is full, dropping line movement message", "match", lm.MatchName)
+		return fmt.Errorf("message queue is full")
 	}
-	n.lastSend = time.Now()
-	_, err := n.bot.Send(msg)
-	n.mu.Unlock()
-	return err
 }
 
 func (n *TelegramNotifier) formatLineMovementAlert(lm *LineMovement, thresholdPercent float64, now time.Time, history []storage.OddsHistoryPoint) string {

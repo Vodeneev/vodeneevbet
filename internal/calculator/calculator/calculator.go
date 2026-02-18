@@ -305,10 +305,10 @@ func (c *ValueCalculator) processMatchesAsync(ctx context.Context) {
 		if shouldSendAlert {
 			thresholdInt := int(math.Round(alertThreshold))
 			if err := c.notifier.SendDiffAlert(ctx, &diff, thresholdInt); err != nil {
-				slog.Error("Failed to send alert", "threshold", alertThreshold, "error", err.Error())
+				slog.Error("Failed to queue alert", "threshold", alertThreshold, "error", err.Error())
 			} else {
 				alertCount++
-				slog.Info("Sent alert", "threshold", alertThreshold, "match", diff.MatchName, "diff_percent", diff.DiffPercent)
+				slog.Info("Queued alert", "threshold", alertThreshold, "match", diff.MatchName, "diff_percent", diff.DiffPercent)
 			}
 		}
 	}
@@ -351,16 +351,8 @@ func (c *ValueCalculator) processLineMovementsAsync(ctx context.Context) {
 	alertCount := 0
 	// Only send line movement alerts to Telegram if enabled (avoids spam; Telegram ~30 msg/min limit per chat)
 	sendLineMovementToTelegram := c.cfg != nil && c.cfg.LineMovementTelegramAlerts
-	// Delay between alerts to avoid Telegram "Too Many Requests" and spread messages
-	const delayBetweenAlerts = 1100 * time.Millisecond
+	// Note: No delay needed here - messages are queued asynchronously and rate-limited in the background worker
 	for i := range movements {
-		if i > 0 {
-			select {
-			case <-ctx.Done():
-				break
-			case <-time.After(delayBetweenAlerts):
-			}
-		}
 		lm := &movements[i]
 		if sendLineMovementToTelegram && c.notifier != nil {
 			history, _ := c.oddsSnapshotStorage.GetOddsHistory(ctx, lm.MatchGroupKey, lm.BetKey, lm.Bookmaker, 30)
@@ -368,7 +360,7 @@ func (c *ValueCalculator) processLineMovementsAsync(ctx context.Context) {
 				slog.Error("Failed to send line movement alert", "error", err, "match", lm.MatchName)
 			} else {
 				alertCount++
-				slog.Info("Sent line movement alert", "match", lm.MatchName, "bookmaker", lm.Bookmaker, "change_percent", lm.ChangePercent)
+				slog.Info("Queued line movement alert", "match", lm.MatchName, "bookmaker", lm.Bookmaker, "change_percent", lm.ChangePercent)
 			}
 		}
 		// Reset extremes so we don't re-detect the same movement every cycle (whether or not we sent to Telegram)
@@ -391,6 +383,11 @@ func (c *ValueCalculator) StopAsync() {
 			c.asyncCancel()
 		}
 		slog.Info("Async processing stopped")
+	}
+	
+	// Stop telegram notifier to gracefully shutdown message queue
+	if c.notifier != nil {
+		c.notifier.Stop()
 	}
 }
 

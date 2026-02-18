@@ -105,15 +105,15 @@ func (c *ValueCalculator) StartAsync() error {
 	}
 	c.asyncTicker = time.NewTicker(interval)
 
-	// Start test alert ticker (every 5 minutes) if notifier is available
-	if c.notifier != nil {
-		if c.testAlertTicker != nil {
-			c.testAlertTicker.Stop()
-		}
-		c.testAlertTicker = time.NewTicker(5 * time.Minute)
-		go c.runTestAlerts(c.asyncCtx)
-		slog.Info("Started test alert ticker", "interval", 5*time.Minute)
-	}
+	// Test alert ticker disabled - was used for diagnostics
+	// if c.notifier != nil {
+	// 	if c.testAlertTicker != nil {
+	// 		c.testAlertTicker.Stop()
+	// 	}
+	// 	c.testAlertTicker = time.NewTicker(5 * time.Minute)
+	// 	go c.runTestAlerts(c.asyncCtx)
+	// 	slog.Info("Started test alert ticker", "interval", 5*time.Minute)
+	// }
 
 	slog.Info("Starting async processing", "interval", interval)
 	go c.runAsyncProcessing(c.asyncCtx)

@@ -21,7 +21,7 @@ func TestNormalizeTeamName(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		result := normalizeTeamName(tt.input)
+		result := normalizeTeamName(tt.input, "")
 		if result != tt.expected {
 			t.Errorf("normalizeTeamName(%q) = %q, want %q", tt.input, result, tt.expected)
 		}

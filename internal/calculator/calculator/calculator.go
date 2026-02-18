@@ -22,6 +22,7 @@ type ValueCalculator struct {
 	oddsSnapshotStorage storage.OddsSnapshotStorage
 	notifier           *TelegramNotifier
 	asyncTicker        *time.Ticker
+	testAlertTicker    *time.Ticker
 	asyncMu            sync.RWMutex
 	asyncStopped       bool
 	asyncCtx           context.Context
@@ -104,6 +105,16 @@ func (c *ValueCalculator) StartAsync() error {
 	}
 	c.asyncTicker = time.NewTicker(interval)
 
+	// Start test alert ticker (every 5 minutes) if notifier is available
+	if c.notifier != nil {
+		if c.testAlertTicker != nil {
+			c.testAlertTicker.Stop()
+		}
+		c.testAlertTicker = time.NewTicker(5 * time.Minute)
+		go c.runTestAlerts(c.asyncCtx)
+		slog.Info("Started test alert ticker", "interval", 5*time.Minute)
+	}
+
 	slog.Info("Starting async processing", "interval", interval)
 	go c.runAsyncProcessing(c.asyncCtx)
 
@@ -159,6 +170,40 @@ func (c *ValueCalculator) runAsyncIteration(ctx context.Context) {
 		}()
 	}
 	wg.Wait()
+}
+
+// runTestAlerts sends test alerts every 5 minutes to verify notification system
+func (c *ValueCalculator) runTestAlerts(ctx context.Context) {
+	// Send first test alert immediately
+	testMsg := fmt.Sprintf("Test alert #1 - System check at %s", time.Now().UTC().Format("15:04:05 UTC"))
+	if err := c.notifier.SendTestAlert(ctx, testMsg); err != nil {
+		slog.Error("Failed to send initial test alert", "error", err)
+	}
+
+	alertCounter := 1
+	for {
+		select {
+		case <-ctx.Done():
+			slog.Info("Test alert ticker stopped")
+			return
+		case <-c.testAlertTicker.C:
+			c.asyncMu.RLock()
+			stopped := c.asyncStopped
+			c.asyncMu.RUnlock()
+			
+			if stopped {
+				slog.Info("Test alert ticker stopped by user")
+				return
+			}
+
+			alertCounter++
+			testMsg := fmt.Sprintf("Test alert #%d - System check at %s", alertCounter, time.Now().UTC().Format("15:04:05 UTC"))
+			slog.Info("Sending test alert", "counter", alertCounter, "time", time.Now().UTC())
+			if err := c.notifier.SendTestAlert(ctx, testMsg); err != nil {
+				slog.Error("Failed to send test alert", "error", err, "counter", alertCounter)
+			}
+		}
+	}
 }
 
 // processMatchesAsync processes matches asynchronously and sends alerts for new high-value diffs
@@ -379,6 +424,9 @@ func (c *ValueCalculator) StopAsync() {
 	if !c.asyncStopped && c.asyncTicker != nil {
 		c.asyncStopped = true
 		c.asyncTicker.Stop()
+		if c.testAlertTicker != nil {
+			c.testAlertTicker.Stop()
+		}
 		if c.asyncCancel != nil {
 			c.asyncCancel()
 		}

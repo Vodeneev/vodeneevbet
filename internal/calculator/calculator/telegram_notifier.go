@@ -22,6 +22,7 @@ type messageType int
 const (
 	messageTypeDiff messageType = iota
 	messageTypeLineMovement
+	messageTypeTest
 )
 
 // queuedMessage represents a message queued for sending
@@ -34,6 +35,7 @@ type queuedMessage struct {
 	thresholdPercent float64
 	now             time.Time
 	history         []storage.OddsHistoryPoint
+	testMessage     string // For test alerts
 }
 
 // TelegramNotifier sends Telegram notifications for high-value diffs
@@ -120,6 +122,8 @@ func (n *TelegramNotifier) sendQueuedMessage(msg queuedMessage) {
 		messageText = n.formatDiffAlert(msg.diff, msg.threshold)
 	case messageTypeLineMovement:
 		messageText = n.formatLineMovementAlert(msg.lineMovement, msg.thresholdPercent, msg.now, msg.history)
+	case messageTypeTest:
+		messageText = msg.testMessage
 	default:
 		slog.Error("Unknown message type", "type", msg.msgType)
 		return
@@ -128,28 +132,92 @@ func (n *TelegramNotifier) sendQueuedMessage(msg queuedMessage) {
 	tgMsg := tgbotapi.NewMessage(n.chatID, messageText)
 	tgMsg.ParseMode = tgbotapi.ModeMarkdown
 	
+	// Log before waiting for interval
+	queueTime := time.Now()
+	slog.Info("Telegram send: preparing to send message", 
+		"type", msg.msgType, 
+		"queue_time", queueTime,
+		"message_preview", truncateString(messageText, 50))
+	
 	// Wait for proper interval
 	n.mu.Lock()
 	elapsed := time.Since(n.lastSend)
+	waitStart := time.Now()
 	if elapsed < telegramSendInterval {
 		waitTime := telegramSendInterval - elapsed
+		slog.Info("Telegram send: waiting for rate limit", 
+			"elapsed_since_last", elapsed,
+			"wait_time", waitTime,
+			"type", msg.msgType)
 		n.mu.Unlock()
 		select {
 		case <-n.ctx.Done():
+			slog.Warn("Telegram send: cancelled during wait", "type", msg.msgType)
 			return
 		case <-time.After(waitTime):
 		}
 		n.mu.Lock()
 	}
+	actualWait := time.Since(waitStart)
 	
+	sendStart := time.Now()
+	timeBeforeSend := n.lastSend
 	n.lastSend = time.Now()
 	_, err := n.bot.Send(tgMsg)
+	sendDuration := time.Since(sendStart)
+	totalDuration := time.Since(queueTime)
+	timeSinceLast := time.Since(timeBeforeSend)
 	n.mu.Unlock()
 	
 	if err != nil {
-		slog.Error("Failed to send telegram message", "error", err, "type", msg.msgType)
+		slog.Error("Telegram send: failed", 
+			"error", err, 
+			"type", msg.msgType,
+			"total_duration", totalDuration,
+			"wait_duration", actualWait,
+			"send_duration", sendDuration,
+			"time_since_last_send", timeSinceLast)
 	} else {
-		slog.Debug("Sent telegram message", "type", msg.msgType)
+		slog.Info("Telegram send: success", 
+			"type", msg.msgType,
+			"total_duration", totalDuration,
+			"wait_duration", actualWait,
+			"send_duration", sendDuration,
+			"time_since_last_send", timeSinceLast,
+			"queue_length", len(n.queue))
+	}
+}
+
+// truncateString truncates a string to maxLen characters
+func truncateString(s string, maxLen int) string {
+	if len(s) <= maxLen {
+		return s
+	}
+	return s[:maxLen] + "..."
+}
+
+// SendTestAlert sends a test alert message (non-blocking)
+func (n *TelegramNotifier) SendTestAlert(ctx context.Context, message string) error {
+	if n == nil || n.bot == nil {
+		return fmt.Errorf("telegram notifier not initialized")
+	}
+
+	testMsg := fmt.Sprintf("🧪 *Test Alert*\n\n%s\n\n_Time: %s_", message, time.Now().UTC().Format("2006-01-02 15:04:05 UTC"))
+
+	select {
+	case <-n.ctx.Done():
+		return fmt.Errorf("notifier stopped")
+	case <-ctx.Done():
+		return ctx.Err()
+	case n.queue <- queuedMessage{
+		msgType:     messageTypeTest,
+		testMessage: testMsg,
+	}:
+		slog.Info("Telegram test alert: queued", "message", message, "queue_len", len(n.queue))
+		return nil
+	default:
+		slog.Warn("Telegram test alert: queue full, dropping", "message", message)
+		return fmt.Errorf("message queue is full")
 	}
 }
 

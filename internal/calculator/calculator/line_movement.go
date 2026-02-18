@@ -2,6 +2,7 @@ package calculator
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"strings"
 	"time"
@@ -83,6 +84,20 @@ func computeAndStoreLineMovements(ctx context.Context, matches []models.Match, s
 		}
 	}
 
+	// Collect all keys for batch read (one query instead of N) - same approach as getLineMovementsForTop
+	keys := make([]storage.OddsSnapshotKey, 0, len(groups)*10)
+	for gk, bets := range groups {
+		for betKey, byBook := range bets {
+			for bookmaker := range byBook {
+				keys = append(keys, storage.OddsSnapshotKey{MatchGroupKey: gk, BetKey: betKey, Bookmaker: bookmaker})
+			}
+		}
+	}
+	snapshots, err := snapshotStorage.GetLastOddsSnapshotsBatch(ctx, keys)
+	if err != nil {
+		return nil, fmt.Errorf("GetLastOddsSnapshotsBatch failed: %w", err)
+	}
+
 	var movements []LineMovement
 	for gk, bets := range groups {
 		gm := meta[gk]
@@ -100,9 +115,11 @@ func computeAndStoreLineMovements(ctx context.Context, matches []models.Match, s
 			}
 
 			for bookmaker, currentOdd := range byBook {
-				_, maxOdd, _, _, err := snapshotStorage.GetLastOddsSnapshot(ctx, gk, betKey, bookmaker)
-				if err != nil {
-					slog.Debug("GetLastOddsSnapshot failed", "match", gk, "bet", betKey, "bookmaker", bookmaker, "error", err)
+				key := storage.OddsSnapshotKey{MatchGroupKey: gk, BetKey: betKey, Bookmaker: bookmaker}
+				row, ok := snapshots[key]
+				var maxOdd float64
+				if ok {
+					maxOdd = row.MaxOdd
 				}
 
 				// Compare with extremes in percent: (current - ref) / ref * 100
@@ -131,6 +148,7 @@ func computeAndStoreLineMovements(ctx context.Context, matches []models.Match, s
 					}
 				}
 
+				// Store snapshot and history (same as before)
 				err = snapshotStorage.StoreOddsSnapshot(ctx, gk, gm.name, gm.sport, evType, outType, param, betKey, bookmaker, gm.startTime, currentOdd, now)
 				if err != nil {
 					slog.Warn("StoreOddsSnapshot failed", "match", gk, "bet", betKey, "bookmaker", bookmaker, "error", err)

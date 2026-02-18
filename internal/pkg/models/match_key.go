@@ -86,9 +86,10 @@ func removePrepositions(s string) string {
 	return strings.Join(filtered, " ")
 }
 
-// normalizeTeamName normalizes team names by extracting key words and removing common suffixes
+// normalizeTeamName normalizes team names by extracting key words and removing common suffixes.
+// Pattern matching (team_patterns.json) is done twice: before and after dropping words.
 func normalizeTeamName(name string, bookmaker string) string {
-	// First, check for known full name variations (before processing)
+	// First pattern lookup: before dropping any words (full name or prefix match)
 	normalized := applyKnownFullNameVariations(name, bookmaker)
 	if normalized != name {
 		return normalized
@@ -201,6 +202,11 @@ func normalizeTeamName(name string, bookmaker string) string {
 	// Join words and apply known word-level normalizations
 	normalized = strings.Join(keyWords, " ")
 	normalized = applyKnownWordVariations(strings.ToLower(normalized))
+
+	// Second pattern lookup: after dropping words (e.g. "1. FSV Mainz 05" → "mainz 05" → pattern may map to "mainz")
+	if n := applyKnownFullNameVariations(normalized, bookmaker); n != normalized {
+		return n
+	}
 
 	return normalized
 }

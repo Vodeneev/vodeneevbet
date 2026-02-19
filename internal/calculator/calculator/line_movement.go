@@ -107,9 +107,10 @@ func computeAndStoreLineMovements(ctx context.Context, matches []models.Match, s
 		"matches_count", len(groups))
 
 	var movements []LineMovement
-	storeStart := time.Now()
-	totalSnapshots := 0
-	totalHistory := 0
+	var snapshotsToStore []storage.OddsSnapshotToStore
+	var historyToAppend []storage.OddsHistoryToAppend
+	
+	// First pass: detect movements and collect data for batch storage
 	for gk, bets := range groups {
 		gm := meta[gk]
 		for betKey, byBook := range bets {
@@ -159,28 +160,52 @@ func computeAndStoreLineMovements(ctx context.Context, matches []models.Match, s
 					}
 				}
 
-				// Store snapshot and history (same as before)
-				err = snapshotStorage.StoreOddsSnapshot(ctx, gk, gm.name, gm.sport, evType, outType, param, betKey, bookmaker, gm.startTime, currentOdd, now)
-				if err != nil {
-					slog.Warn("StoreOddsSnapshot failed", "match", gk, "bet", betKey, "bookmaker", bookmaker, "error", err)
-				} else {
-					totalSnapshots++
-				}
-				if err := snapshotStorage.AppendOddsHistory(ctx, gk, betKey, bookmaker, gm.startTime, currentOdd, now); err != nil {
-					slog.Debug("AppendOddsHistory failed", "match", gk, "bet", betKey, "bookmaker", bookmaker, "error", err)
-				} else {
-					totalHistory++
-				}
+				// Collect snapshots and history for batch storage
+				snapshotsToStore = append(snapshotsToStore, storage.OddsSnapshotToStore{
+					MatchGroupKey: gk,
+					MatchName:     gm.name,
+					Sport:         gm.sport,
+					EventType:     evType,
+					OutcomeType:   outType,
+					Parameter:     param,
+					BetKey:        betKey,
+					Bookmaker:     bookmaker,
+					StartTime:     gm.startTime,
+					Odd:           currentOdd,
+					RecordedAt:    now,
+				})
+				historyToAppend = append(historyToAppend, storage.OddsHistoryToAppend{
+					MatchGroupKey: gk,
+					BetKey:        betKey,
+					Bookmaker:     bookmaker,
+					StartTime:     gm.startTime,
+					Odd:           currentOdd,
+					RecordedAt:    now,
+				})
 			}
 		}
 	}
+	
+	// Batch store snapshots and history
+	storeStart := time.Now()
+	if len(snapshotsToStore) > 0 {
+		if err := snapshotStorage.StoreOddsSnapshotsBatch(ctx, snapshotsToStore); err != nil {
+			slog.Warn("StoreOddsSnapshotsBatch failed", "count", len(snapshotsToStore), "error", err)
+		}
+	}
+	if len(historyToAppend) > 0 {
+		if err := snapshotStorage.AppendOddsHistoryBatch(ctx, historyToAppend); err != nil {
+			slog.Warn("AppendOddsHistoryBatch failed", "count", len(historyToAppend), "error", err)
+		}
+	}
 	storeDuration := time.Since(storeStart)
-	if totalSnapshots > 0 || totalHistory > 0 {
-		slog.Info("Line movement: stored snapshots and history",
-			"snapshots_stored", totalSnapshots,
-			"history_appended", totalHistory,
+	if len(snapshotsToStore) > 0 || len(historyToAppend) > 0 {
+		totalRecords := len(snapshotsToStore) + len(historyToAppend)
+		slog.Info("Line movement: stored snapshots and history (batch)",
+			"snapshots_stored", len(snapshotsToStore),
+			"history_appended", len(historyToAppend),
 			"store_duration_sec", storeDuration.Seconds(),
-			"avg_time_per_record_ms", storeDuration.Milliseconds()/int64(totalSnapshots+totalHistory))
+			"avg_time_per_record_ms", storeDuration.Milliseconds()/int64(totalRecords))
 	}
 
 	totalDuration := time.Since(funcStart)

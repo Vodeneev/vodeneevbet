@@ -202,6 +202,103 @@ func (s *PostgresOddsSnapshotStorage) AppendOddsHistory(ctx context.Context, mat
 	return err
 }
 
+// StoreOddsSnapshotsBatch stores multiple snapshots in one batch operation using INSERT ... ON CONFLICT.
+func (s *PostgresOddsSnapshotStorage) StoreOddsSnapshotsBatch(ctx context.Context, snapshots []OddsSnapshotToStore) error {
+	if len(snapshots) == 0 {
+		return nil
+	}
+	
+	// Process in chunks to avoid parameter limit (PostgreSQL has ~65535 parameter limit)
+	const chunkSize = 1000 // ~13 params per row = ~13000 params per chunk (safe)
+	
+	for start := 0; start < len(snapshots); start += chunkSize {
+		end := start + chunkSize
+		if end > len(snapshots) {
+			end = len(snapshots)
+		}
+		chunk := snapshots[start:end]
+		
+		// Build VALUES ($1,$2,...,$13), ($14,$15,...,$26), ...
+		var placeholders []string
+		args := make([]interface{}, 0, len(chunk)*13)
+		for i, snap := range chunk {
+			baseIdx := i * 13
+			placeholders = append(placeholders, fmt.Sprintf(
+				"($%d,$%d,$%d,$%d,$%d,$%d,$%d,$%d,$%d,$%d,$%d,$%d,$%d)",
+				baseIdx+1, baseIdx+2, baseIdx+3, baseIdx+4, baseIdx+5, baseIdx+6, baseIdx+7,
+				baseIdx+8, baseIdx+9, baseIdx+10, baseIdx+11, baseIdx+12, baseIdx+13,
+			))
+			args = append(args,
+				snap.MatchGroupKey, snap.MatchName, snap.StartTime, snap.Sport,
+				snap.EventType, snap.OutcomeType, snap.Parameter, snap.BetKey,
+				snap.Bookmaker, snap.Odd, snap.Odd, snap.Odd, snap.RecordedAt,
+			)
+		}
+		
+		query := `
+		INSERT INTO odds_snapshots (
+			match_group_key, match_name, start_time, sport,
+			event_type, outcome_type, parameter, bet_key,
+			bookmaker, odd, max_odd, min_odd, recorded_at
+		) VALUES ` + strings.Join(placeholders, ",") + `
+		ON CONFLICT (match_group_key, bet_key, bookmaker) DO UPDATE SET
+			match_name = EXCLUDED.match_name,
+			start_time = EXCLUDED.start_time,
+			sport = EXCLUDED.sport,
+			event_type = EXCLUDED.event_type,
+			outcome_type = EXCLUDED.outcome_type,
+			parameter = EXCLUDED.parameter,
+			odd = EXCLUDED.odd,
+			max_odd = GREATEST(COALESCE(odds_snapshots.max_odd, odds_snapshots.odd), EXCLUDED.odd),
+			min_odd = LEAST(COALESCE(odds_snapshots.min_odd, odds_snapshots.odd), EXCLUDED.odd),
+			recorded_at = EXCLUDED.recorded_at
+		`
+		
+		if _, err := s.db.ExecContext(ctx, query, args...); err != nil {
+			return fmt.Errorf("StoreOddsSnapshotsBatch failed: %w", err)
+		}
+	}
+	
+	return nil
+}
+
+// AppendOddsHistoryBatch appends multiple history points in one batch operation.
+func (s *PostgresOddsSnapshotStorage) AppendOddsHistoryBatch(ctx context.Context, history []OddsHistoryToAppend) error {
+	if len(history) == 0 {
+		return nil
+	}
+	
+	// Process in chunks to avoid parameter limit
+	const chunkSize = 2000 // ~6 params per row = ~12000 params per chunk (safe)
+	
+	for start := 0; start < len(history); start += chunkSize {
+		end := start + chunkSize
+		if end > len(history) {
+			end = len(history)
+		}
+		chunk := history[start:end]
+		
+		// Build VALUES ($1,$2,...,$6), ($7,$8,...,$12), ...
+		var placeholders []string
+		args := make([]interface{}, 0, len(chunk)*6)
+		for i, h := range chunk {
+			baseIdx := i * 6
+			placeholders = append(placeholders, fmt.Sprintf("($%d,$%d,$%d,$%d,$%d,$%d)",
+				baseIdx+1, baseIdx+2, baseIdx+3, baseIdx+4, baseIdx+5, baseIdx+6))
+			args = append(args, h.MatchGroupKey, h.BetKey, h.Bookmaker, h.Odd, h.RecordedAt, h.StartTime)
+		}
+		
+		query := `INSERT INTO odds_snapshot_history (match_group_key, bet_key, bookmaker, odd, recorded_at, start_time) VALUES ` +
+			strings.Join(placeholders, ",")
+		
+		if _, err := s.db.ExecContext(ctx, query, args...); err != nil {
+			return fmt.Errorf("AppendOddsHistoryBatch failed: %w", err)
+		}
+	}
+	
+	return nil
+}
+
 // GetOddsHistory returns recent points in chronological order (oldest first), at most limit.
 func (s *PostgresOddsSnapshotStorage) GetOddsHistory(ctx context.Context, matchGroupKey, betKey, bookmaker string, limit int) ([]OddsHistoryPoint, error) {
 	if limit <= 0 {

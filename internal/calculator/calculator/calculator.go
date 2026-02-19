@@ -232,6 +232,9 @@ func (c *ValueCalculator) processMatchesAsync(ctx context.Context) {
 		}
 	}
 
+	iterationStartedAt := time.Now()
+	slog.Info("Async value iteration started", "started_at", iterationStartedAt.UTC().Format(time.RFC3339))
+
 	slog.Debug("Fetching matches for async processing...")
 
 	// Create context with timeout for the request
@@ -349,16 +352,26 @@ func (c *ValueCalculator) processMatchesAsync(ctx context.Context) {
 		// Send Telegram alert if needed
 		if shouldSendAlert {
 			thresholdInt := int(math.Round(alertThreshold))
+			queuedAt := time.Now()
 			if err := c.notifier.SendDiffAlert(ctx, &diff, thresholdInt); err != nil {
-				slog.Error("Failed to queue alert", "threshold", alertThreshold, "error", err.Error())
+				slog.Error("Failed to queue value alert", "match", diff.MatchName, "threshold", alertThreshold, "error", err.Error())
 			} else {
 				alertCount++
-				slog.Info("Queued alert", "threshold", alertThreshold, "match", diff.MatchName, "diff_percent", diff.DiffPercent)
+				delaySinceCalc := queuedAt.Sub(diff.CalculatedAt)
+				slog.Info("Value alert queued",
+					"match", diff.MatchName,
+					"diff_percent", diff.DiffPercent,
+					"threshold", alertThreshold,
+					"calculated_at", diff.CalculatedAt.UTC().Format(time.RFC3339),
+					"queued_at", queuedAt.UTC().Format(time.RFC3339),
+					"delay_since_calculation_sec", delaySinceCalc.Seconds(),
+					"queue_length", c.notifier.QueueLen())
 			}
 		}
 	}
 
-	slog.Info("Async processing complete", "alerts_sent", alertCount, "threshold", alertThreshold)
+	iterationDuration := time.Since(iterationStartedAt)
+	slog.Info("Async value iteration complete", "alerts_queued", alertCount, "threshold", alertThreshold, "duration_sec", iterationDuration.Seconds())
 }
 
 // processLineMovementsAsync tracks odds drops (прогрузы) in the same bookmaker, stores snapshots,
@@ -386,6 +399,9 @@ func (c *ValueCalculator) processLineMovementsAsync(ctx context.Context) {
 		return
 	}
 
+	lmIterationStartedAt := time.Now()
+	slog.Info("Line movement iteration started", "started_at", lmIterationStartedAt.UTC().Format(time.RFC3339), "matches_count", len(matches))
+
 	movements, err := computeAndStoreLineMovements(ctx, matches, c.oddsSnapshotStorage, threshold)
 	if err != nil {
 		slog.Error("computeAndStoreLineMovements failed", "error", err)
@@ -399,21 +415,29 @@ func (c *ValueCalculator) processLineMovementsAsync(ctx context.Context) {
 	// Note: No delay needed here - messages are queued asynchronously and rate-limited in the background worker
 	for i := range movements {
 		lm := &movements[i]
+		// Reset extremes first so we don't re-detect after restart and send a late duplicate (e.g. 105 min later).
+		_ = c.oddsSnapshotStorage.ResetExtremesAfterAlert(ctx, lm.MatchGroupKey, lm.BetKey, lm.Bookmaker)
 		if sendLineMovementToTelegram && c.notifier != nil {
 			history, _ := c.oddsSnapshotStorage.GetOddsHistory(ctx, lm.MatchGroupKey, lm.BetKey, lm.Bookmaker, 30)
+			queuedAt := time.Now()
 			if err := c.notifier.SendLineMovementAlert(ctx, lm, threshold, now, history); err != nil {
-				slog.Error("Failed to send line movement alert", "error", err, "match", lm.MatchName)
+				slog.Error("Failed to queue line movement alert", "match", lm.MatchName, "error", err)
 			} else {
 				alertCount++
-				slog.Info("Queued line movement alert", "match", lm.MatchName, "bookmaker", lm.Bookmaker, "change_percent", lm.ChangePercent)
+				delaySinceDetect := queuedAt.Sub(lm.RecordedAt)
+				slog.Info("Line movement alert queued",
+					"match", lm.MatchName,
+					"bookmaker", lm.Bookmaker,
+					"change_percent", lm.ChangePercent,
+					"detected_at", lm.RecordedAt.UTC().Format(time.RFC3339),
+					"queued_at", queuedAt.UTC().Format(time.RFC3339),
+					"delay_since_detection_sec", delaySinceDetect.Seconds(),
+					"queue_length", c.notifier.QueueLen())
 			}
 		}
-		// Reset extremes so we don't re-detect the same movement every cycle (whether or not we sent to Telegram)
-		_ = c.oddsSnapshotStorage.ResetExtremesAfterAlert(ctx, lm.MatchGroupKey, lm.BetKey, lm.Bookmaker)
 	}
-	if len(movements) > 0 {
-		slog.Info("Line movement processing complete", "movements_detected", len(movements), "alerts_sent", alertCount)
-	}
+	lmDuration := time.Since(lmIterationStartedAt)
+	slog.Info("Line movement iteration complete", "movements_detected", len(movements), "alerts_queued", alertCount, "duration_sec", lmDuration.Seconds())
 }
 
 // StopAsync stops the asynchronous processing

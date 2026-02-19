@@ -90,6 +90,14 @@ func NewTelegramNotifier(token string, chatID int64) *TelegramNotifier {
 	return notifier
 }
 
+// QueueLen returns current number of messages in the send queue (for logging).
+func (n *TelegramNotifier) QueueLen() int {
+	if n == nil || n.queue == nil {
+		return 0
+	}
+	return len(n.queue)
+}
+
 // messageSender runs in background and sends queued messages with proper intervals
 func (n *TelegramNotifier) messageSender() {
 	defer n.wg.Done()
@@ -134,10 +142,18 @@ func (n *TelegramNotifier) sendQueuedMessage(msg queuedMessage) {
 	
 	// Log before waiting for interval
 	queueTime := time.Now()
-	slog.Info("Telegram send: preparing to send message", 
-		"type", msg.msgType, 
-		"queue_time", queueTime,
-		"message_preview", truncateString(messageText, 50))
+	prepLogArgs := []interface{}{"type", msg.msgType, "queue_time", queueTime.UTC().Format(time.RFC3339), "message_preview", truncateString(messageText, 50)}
+	switch msg.msgType {
+	case messageTypeDiff:
+		if msg.diff != nil {
+			prepLogArgs = append(prepLogArgs, "match", msg.diff.MatchName, "calculated_at", msg.diff.CalculatedAt.UTC().Format(time.RFC3339), "diff_percent", msg.diff.DiffPercent)
+		}
+	case messageTypeLineMovement:
+		if msg.lineMovement != nil {
+			prepLogArgs = append(prepLogArgs, "match", msg.lineMovement.MatchName, "detected_at", msg.now.UTC().Format(time.RFC3339), "change_percent", msg.lineMovement.ChangePercent)
+		}
+	}
+	slog.Info("Telegram send: preparing to send message", prepLogArgs...)
 	
 	// Wait for proper interval
 	n.mu.Lock()
@@ -169,23 +185,56 @@ func (n *TelegramNotifier) sendQueuedMessage(msg queuedMessage) {
 	timeSinceLast := time.Since(timeBeforeSend)
 	n.mu.Unlock()
 	
+	sentAt := time.Now()
+	extra := n.logSentExtraFields(msg, sentAt)
 	if err != nil {
-		slog.Error("Telegram send: failed", 
-			"error", err, 
+		args := append([]interface{}{
+			"error", err,
 			"type", msg.msgType,
-			"total_duration", totalDuration,
-			"wait_duration", actualWait,
-			"send_duration", sendDuration,
-			"time_since_last_send", timeSinceLast)
-	} else {
-		slog.Info("Telegram send: success", 
-			"type", msg.msgType,
+			"sent_at", sentAt.UTC().Format(time.RFC3339),
 			"total_duration", totalDuration,
 			"wait_duration", actualWait,
 			"send_duration", sendDuration,
 			"time_since_last_send", timeSinceLast,
-			"queue_length", len(n.queue))
+		}, extra...)
+		slog.Error("Telegram send: failed", args...)
+	} else {
+		args := append([]interface{}{
+			"type", msg.msgType,
+			"sent_at", sentAt.UTC().Format(time.RFC3339),
+			"total_duration", totalDuration,
+			"wait_duration", actualWait,
+			"send_duration", sendDuration,
+			"time_since_last_send", timeSinceLast,
+			"queue_length", len(n.queue),
+		}, extra...)
+		slog.Info("Telegram send: success", args...)
 	}
+}
+
+// logSentExtraFields returns extra log fields for value/line-movement alerts (when the message was calculated/detected vs sent).
+func (n *TelegramNotifier) logSentExtraFields(msg queuedMessage, sentAt time.Time) []interface{} {
+	switch msg.msgType {
+	case messageTypeDiff:
+		if msg.diff != nil {
+			delay := sentAt.Sub(msg.diff.CalculatedAt)
+			return []interface{}{
+				"match", msg.diff.MatchName,
+				"calculated_at", msg.diff.CalculatedAt.UTC().Format(time.RFC3339),
+				"delay_since_calculation_sec", delay.Seconds(),
+			}
+		}
+	case messageTypeLineMovement:
+		if msg.lineMovement != nil {
+			delay := sentAt.Sub(msg.now)
+			return []interface{}{
+				"match", msg.lineMovement.MatchName,
+				"detected_at", msg.now.UTC().Format(time.RFC3339),
+				"delay_since_detection_sec", delay.Seconds(),
+			}
+		}
+	}
+	return nil
 }
 
 // truncateString truncates a string to maxLen characters
@@ -319,6 +368,12 @@ func (n *TelegramNotifier) formatLineMovementAlert(lm *LineMovement, thresholdPe
 			}
 		}
 		builder.WriteString("\n")
+		// Show when this movement was first recorded (last history point) so user sees data age
+		lastRecorded := history[len(history)-1].RecordedAt
+		dataMins := int(now.Sub(lastRecorded).Minutes())
+		if dataMins > 0 {
+			builder.WriteString(fmt.Sprintf("📅 _Movement first seen %d min ago_\n", dataMins))
+		}
 	}
 	if !lm.StartTime.IsZero() {
 		builder.WriteString(fmt.Sprintf("🕐 Kick-off: %s\n", formatTime(lm.StartTime)))

@@ -244,11 +244,10 @@ parser:
     x_app_data: "directusToken=TwEdnphtyxsfMpXoJkCkWaPsL2KJJ3lo;BrowserSessionId=b553b87d-9ce5-4e17-b375-745db116bf37;PCTR=1928506612714;_og=QQ%3D%3D;_ulp=TDV6YVJod0xqREFDUVBXc05McXBSb2k0dDRVbXdvcm04aUxHOFlUcEZ6ZEN5M2xRWUtFeHo2TW5LUHR5MDNPZWVqa041Nk1ySFlyWG1DaXVXRjY5REE9PXxmNjY4NjBmODNiZTJmMzYyMmYzMjEzYzhhNGMxMWQyYg%3D%3D;custid=id%3DVODENEEVM%26login%3D202602101216%26roundTrip%3D202602101216%26hash%3DB3F2F5AF8A4520AD4E3B474AA3567BD9;_userDefaultView=FUTURE;__prefs=W251bGwsMSwxLDAsMCxudWxsLGZhbHNlLDAuMDAwMCxmYWxzZSx0cnVlLCJfMUxJTkUiLDAsbnVsbCx0cnVlLHRydWUsZmFsc2UsZmFsc2UsbnVsbCxudWxsLHRydWUsIlNNQUxMIiwwXQ%3D%3D;pctag=889057e0-5962-4db2-b975-2acc20c61336;lang=en_US;dpLk3=E_MA3"
     x_custid: "id=VODENEEVM&login=202602101216&roundTrip=202602101216&hash=B3F2F5AF8A4520AD4E3B474AA3567BD9"  # User ID - more stable
 
-  # 1xbet API settings (mirror resolution like pinnacle888). Same LineFeed API used by Betwinner.
+  # 1xbet API settings (mirror resolution like pinnacle888)
   xbet1:
-    # Test: use Betwinner host to compare 429 rate vs 1xbet mirror. Rollback: set base_url to "" and use mirror_url below.
-    base_url: "https://betwinner-17253.bar"
-    # base_url: ""  # Empty = resolve via mirror_url at runtime
+    # base_url: "https://1xlite-6173396.bar"  # Optional: set for fixed host; leave empty to use mirror
+    base_url: ""  # Empty = resolve via mirror_url at runtime
     mirror_url: "https://1xbet-skwu.top/link"
     include_prematch: true  # Include pre-match matches (default: true)
     sport_id: 1        # Sport ID (1 = Football, default: 1); используется если sport_ids не задан
@@ -256,8 +255,8 @@ parser:
     country_id: 1      # Country ID (1 = All countries, default: 1)
     virtual_sports: true  # Include virtual sports (default: true)
     # Concurrency for faster full cycle (default 1 = sequential). Increase if no 429 in logs.
-    max_concurrent_championships: 5   # championships in parallel
-    max_concurrent_games_per_champ: 3 # GetGame requests in parallel per championship
+    max_concurrent_championships: 2   # championships in parallel (reduced from 5 due to 429)
+    max_concurrent_games_per_champ: 2 # GetGame requests in parallel per championship (reduced from 3)
     # Proxy list for bypassing blocking (timeout/connection errors)
     # Client will try proxies in order until one works, falls back to direct connection if all fail
     # Format: http://user:pass@ip:port or http://ip:port

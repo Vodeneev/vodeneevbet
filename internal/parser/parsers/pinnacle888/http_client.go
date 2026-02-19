@@ -1112,7 +1112,6 @@ func (c *Client) getJSONWithProxyRetry(path string, out any) error {
 
 		proxyURL, err := url.Parse(proxyURLStr)
 		if err != nil {
-			slog.Debug("Pinnacle888: Invalid proxy URL %s: %v\n", maskProxyURL(proxyURLStr), err)
 			continue
 		}
 
@@ -1133,7 +1132,6 @@ func (c *Client) getJSONWithProxyRetry(path string, out any) error {
 
 		req, err := http.NewRequest(http.MethodGet, requestURL, nil)
 		if err != nil {
-			slog.Debug("Pinnacle888: Failed to create request: %v, trying next proxy...\n", err)
 			continue
 		}
 
@@ -1141,7 +1139,6 @@ func (c *Client) getJSONWithProxyRetry(path string, out any) error {
 
 		resp, err := client.Do(req)
 		if err != nil {
-			slog.Debug("Pinnacle888: Proxy %s failed: %v, trying next...\n", maskProxyURL(proxyURLStr), err)
 			continue
 		}
 
@@ -1174,16 +1171,9 @@ func (c *Client) getJSONWithProxyRetry(path string, out any) error {
 			return err
 		}
 
-		// Not JSON - read body to check what we got before closing
-		body, _ := io.ReadAll(resp.Body)
+		// Not JSON - read and close body
+		io.ReadAll(resp.Body)
 		resp.Body.Close()
-		preview := string(body)
-		if len(preview) > 200 {
-			preview = preview[:200] + "..."
-		}
-		cfRay := resp.Header.Get("Cf-Ray")
-		slog.Debug("Pinnacle888: Proxy %s returned status=%d, content-type=%s, cf-ray=%s, body_preview=%s (blocked/invalid), trying next...\n",
-			maskProxyURL(proxyURLStr), resp.StatusCode, contentType, cfRay, preview)
 	}
 
 	// All proxies failed, try direct connection as last resort

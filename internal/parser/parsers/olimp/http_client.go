@@ -157,12 +157,8 @@ func (c *Client) doWithProxyRetry(ctx context.Context, rawURL, referer string) (
 
 		proxyURL, err := url.Parse(proxyURLStr)
 		if err != nil {
-			slog.Warn("Olimp: Invalid proxy URL", "proxy", maskProxyURL(proxyURLStr), "error", err)
 			continue
 		}
-
-		// Log proxy attempt
-		slog.Info("Olimp: Trying proxy", "proxy_index", proxyIndex+1, "total_proxies", len(c.proxyList), "proxy", maskProxyURL(proxyURLStr), "url", rawURL)
 
 		// Create transport with this proxy
 		transport := http.DefaultTransport.(*http.Transport).Clone()
@@ -181,7 +177,6 @@ func (c *Client) doWithProxyRetry(ctx context.Context, rawURL, referer string) (
 
 		req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
 		if err != nil {
-			slog.Warn("Olimp: Failed to create request, trying next proxy", "proxy", maskProxyURL(proxyURLStr), "error", err)
 			continue
 		}
 
@@ -189,7 +184,6 @@ func (c *Client) doWithProxyRetry(ctx context.Context, rawURL, referer string) (
 
 		resp, err := client.Do(req)
 		if err != nil {
-			slog.Warn("Olimp: Proxy failed, trying next", "proxy", maskProxyURL(proxyURLStr), "error", err)
 			continue
 		}
 
@@ -220,14 +214,9 @@ func (c *Client) doWithProxyRetry(ctx context.Context, rawURL, referer string) (
 			return body, err
 		}
 
-		// Not JSON - read body to check what we got before closing
-		body, _ := io.ReadAll(resp.Body)
+		// Not JSON - read and close body
+		io.ReadAll(resp.Body)
 		resp.Body.Close()
-		preview := string(body)
-		if len(preview) > 200 {
-			preview = preview[:200] + "..."
-		}
-		slog.Warn("Olimp: Proxy returned blocked/invalid response, trying next", "proxy", maskProxyURL(proxyURLStr), "status", resp.StatusCode, "content_type", contentType, "body_preview", preview)
 	}
 
 	// All proxies failed, try direct connection as last resort

@@ -600,7 +600,6 @@ func (c *Client) doRequestWithProxyRetry(urlStr string) ([]byte, error) {
 
 		proxyURL, err := url.Parse(proxyURLStr)
 		if err != nil {
-			slog.Warn("1xbet: Invalid proxy URL", "proxy", maskProxyURL(proxyURLStr), "error", err)
 			continue
 		}
 
@@ -623,7 +622,6 @@ func (c *Client) doRequestWithProxyRetry(urlStr string) ([]byte, error) {
 
 		req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, urlStr, nil)
 		if err != nil {
-			slog.Warn("1xbet: Failed to create request, trying next proxy", "proxy", maskProxyURL(proxyURLStr), "error", err)
 			continue
 		}
 
@@ -631,13 +629,6 @@ func (c *Client) doRequestWithProxyRetry(urlStr string) ([]byte, error) {
 
 		resp, err := client.Do(req)
 		if err != nil {
-			errStr := err.Error()
-			if strings.Contains(errStr, "timeout") || strings.Contains(errStr, "connection refused") ||
-				strings.Contains(errStr, "no such host") || strings.Contains(errStr, "network is unreachable") {
-				slog.Warn("1xbet: Proxy failed (timeout/connection error), trying next", "proxy", maskProxyURL(proxyURLStr), "error", err)
-				continue
-			}
-			slog.Warn("1xbet: Proxy failed, trying next", "proxy", maskProxyURL(proxyURLStr), "error", err)
 			continue
 		}
 
@@ -670,18 +661,9 @@ func (c *Client) doRequestWithProxyRetry(urlStr string) ([]byte, error) {
 			return body, nil
 		}
 
-		// Not valid JSON or error status - read body to check what we got before closing
-		body, _ := io.ReadAll(resp.Body)
+		// Not valid JSON or error status - read and close body
+		io.ReadAll(resp.Body)
 		resp.Body.Close()
-		preview := string(body)
-		if len(preview) > 200 {
-			preview = preview[:200] + "..."
-		}
-		slog.Warn("1xbet: Proxy returned blocked/invalid response, trying next", 
-			"proxy", maskProxyURL(proxyURLStr), 
-			"status", resp.StatusCode, 
-			"content_type", contentType, 
-			"body_preview", preview)
 
 		// If status indicates server error, try next proxy
 		if resp.StatusCode == 502 || resp.StatusCode == 503 {

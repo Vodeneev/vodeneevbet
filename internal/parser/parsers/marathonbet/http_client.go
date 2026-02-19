@@ -158,7 +158,6 @@ func (c *Client) getWithProxyRetry(ctx context.Context, path string) ([]byte, er
 
 		proxyURL, err := url.Parse(proxyURLStr)
 		if err != nil {
-			slog.Warn("Marathonbet: Invalid proxy URL", "proxy", maskProxyURL(proxyURLStr), "error", err)
 			continue
 		}
 
@@ -179,7 +178,6 @@ func (c *Client) getWithProxyRetry(ctx context.Context, path string) ([]byte, er
 
 		req, err := http.NewRequestWithContext(ctx, http.MethodGet, requestURL, nil)
 		if err != nil {
-			slog.Warn("Marathonbet: Failed to create request, trying next proxy", "error", err)
 			continue
 		}
 
@@ -187,14 +185,12 @@ func (c *Client) getWithProxyRetry(ctx context.Context, path string) ([]byte, er
 
 		resp, err := client.Do(req)
 		if err != nil {
-			slog.Info("Marathonbet: Proxy failed, trying next", "proxy", maskProxyURL(proxyURLStr), "error", err)
 			continue
 		}
 
 		body, err := io.ReadAll(resp.Body)
 		resp.Body.Close()
 		if err != nil {
-			slog.Warn("Marathonbet: Failed to read response body, trying next proxy", "proxy", maskProxyURL(proxyURLStr), "error", err)
 			continue
 		}
 
@@ -218,15 +214,7 @@ func (c *Client) getWithProxyRetry(ctx context.Context, path string) ([]byte, er
 			return body, nil
 		}
 
-		// Not valid HTML or blocked - log and try next proxy
-		bodyStr := string(body)
-		if len(bodyStr) > 200 {
-			bodyStr = bodyStr[:200] + "..."
-		}
-		slog.Info("Marathonbet: Proxy returned blocked/invalid response, trying next", 
-			"proxy", maskProxyURL(proxyURLStr), 
-			"status", resp.StatusCode,
-			"body_preview", bodyStr)
+		// Not valid HTML or blocked - try next proxy
 	}
 
 	// All proxies failed, try direct connection as last resort

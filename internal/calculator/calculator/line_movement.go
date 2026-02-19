@@ -20,6 +20,7 @@ func computeAndStoreLineMovements(ctx context.Context, matches []models.Match, s
 		return nil, nil
 	}
 
+	funcStart := time.Now()
 	now := time.Now()
 
 	// matchGroupKey -> betKey -> bookmaker -> odd
@@ -93,12 +94,22 @@ func computeAndStoreLineMovements(ctx context.Context, matches []models.Match, s
 			}
 		}
 	}
+	readStart := time.Now()
 	snapshots, err := snapshotStorage.GetLastOddsSnapshotsBatch(ctx, keys)
+	readDuration := time.Since(readStart)
 	if err != nil {
 		return nil, fmt.Errorf("GetLastOddsSnapshotsBatch failed: %w", err)
 	}
+	slog.Info("Line movement: read snapshots batch",
+		"keys_count", len(keys),
+		"snapshots_found", len(snapshots),
+		"read_duration_sec", readDuration.Seconds(),
+		"matches_count", len(groups))
 
 	var movements []LineMovement
+	storeStart := time.Now()
+	totalSnapshots := 0
+	totalHistory := 0
 	for gk, bets := range groups {
 		gm := meta[gk]
 		for betKey, byBook := range bets {
@@ -152,13 +163,32 @@ func computeAndStoreLineMovements(ctx context.Context, matches []models.Match, s
 				err = snapshotStorage.StoreOddsSnapshot(ctx, gk, gm.name, gm.sport, evType, outType, param, betKey, bookmaker, gm.startTime, currentOdd, now)
 				if err != nil {
 					slog.Warn("StoreOddsSnapshot failed", "match", gk, "bet", betKey, "bookmaker", bookmaker, "error", err)
+				} else {
+					totalSnapshots++
 				}
 				if err := snapshotStorage.AppendOddsHistory(ctx, gk, betKey, bookmaker, gm.startTime, currentOdd, now); err != nil {
 					slog.Debug("AppendOddsHistory failed", "match", gk, "bet", betKey, "bookmaker", bookmaker, "error", err)
+				} else {
+					totalHistory++
 				}
 			}
 		}
 	}
+	storeDuration := time.Since(storeStart)
+	if totalSnapshots > 0 || totalHistory > 0 {
+		slog.Info("Line movement: stored snapshots and history",
+			"snapshots_stored", totalSnapshots,
+			"history_appended", totalHistory,
+			"store_duration_sec", storeDuration.Seconds(),
+			"avg_time_per_record_ms", storeDuration.Milliseconds()/int64(totalSnapshots+totalHistory))
+	}
+
+	totalDuration := time.Since(funcStart)
+	slog.Info("Line movement: computeAndStoreLineMovements complete",
+		"movements_detected", len(movements),
+		"total_duration_sec", totalDuration.Seconds(),
+		"read_duration_sec", readDuration.Seconds(),
+		"store_duration_sec", storeDuration.Seconds())
 
 	return movements, nil
 }

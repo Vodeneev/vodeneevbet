@@ -121,6 +121,9 @@ type Xbet1Config struct {
 	SportIDs        []int    `yaml:"sport_ids"`  // Если задан — парсим все указанные виды (например 1=футбол, 40=киберспорт)
 	CountryID       int      `yaml:"country_id"` // Country ID (1 = all countries, default: 1)
 	VirtualSports   bool     `yaml:"virtual_sports"` // Include virtual sports (default: true)
+	// Concurrency: 1 = sequential (safe for rate limits). Increase to speed up full cycle (risk of 429).
+	MaxConcurrentChampionships int `yaml:"max_concurrent_championships"` // Max championships processed in parallel (default: 1)
+	MaxConcurrentGamesPerChamp int `yaml:"max_concurrent_games_per_champ"` // Max GetGame requests in parallel per championship (default: 1)
 }
 
 type ValueCalculatorConfig struct {

@@ -254,6 +254,9 @@ parser:
     sport_ids: [1, 40] # Футбол + киберспорт (40)
     country_id: 1      # Country ID (1 = All countries, default: 1)
     virtual_sports: true  # Include virtual sports (default: true)
+    # Concurrency for faster full cycle (default 1 = sequential). Increase if no 429 in logs.
+    max_concurrent_championships: 5   # championships in parallel
+    max_concurrent_games_per_champ: 3 # GetGame requests in parallel per championship
     # Proxy list for bypassing blocking (timeout/connection errors)
     # Client will try proxies in order until one works, falls back to direct connection if all fail
     # Format: http://user:pass@ip:port or http://ip:port

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/Vodeneev/vodeneevbet/internal/pkg/config"
@@ -298,39 +299,84 @@ func (p *Parser) processLeaguesFlowIncremental(ctx context.Context) {
 		slog.Info("1xbet: filtering championships with matches", "sport_id", sportID, "total", len(champs), "with_matches", len(champsWithMatches))
 
 		totalChamps := len(champsWithMatches)
-		matchesTotal := 0
+		maxConcurrentChamps := p.cfg.Parser.Xbet1.MaxConcurrentChampionships
+		if maxConcurrentChamps <= 0 {
+			maxConcurrentChamps = 1
+		}
 
-		for idx, champ := range champsWithMatches {
-			select {
-			case <-ctx.Done():
-				slog.Warn("1xbet: incremental processing interrupted", "champs_processed", idx, "champs_total", totalChamps)
-				return
-			default:
+		var matchesTotal int64
+		if maxConcurrentChamps == 1 {
+			// Sequential (original behaviour)
+			for idx, champ := range champsWithMatches {
+				select {
+				case <-ctx.Done():
+					slog.Warn("1xbet: incremental processing interrupted", "champs_processed", idx, "champs_total", totalChamps)
+					return
+				default:
+				}
+				champIdx := idx + 1
+				champStart := time.Now()
+				slog.Info("1xbet: processing championship incrementally",
+					"championship", champ.LE,
+					"championship_id", champ.LI,
+					"progress", fmt.Sprintf("%d/%d", champIdx, totalChamps),
+					"percent", fmt.Sprintf("%.1f%%", float64(champIdx)/float64(totalChamps)*100))
+				matches := p.processSingleChampionship(ctx, champ)
+				for _, match := range matches {
+					health.AddMatch(match)
+				}
+				slog.Debug("1xbet: matches saved to store", "championship", champ.LE, "matches_count", len(matches))
+				matchesTotal += int64(len(matches))
+				champDuration := time.Since(champStart)
+				slog.Info("1xbet: championship processed incrementally",
+					"championship", champ.LE,
+					"matches", len(matches),
+					"matches_total", matchesTotal,
+					"duration", champDuration,
+					"progress", fmt.Sprintf("%d/%d", champIdx, totalChamps),
+					"percent", fmt.Sprintf("%.1f%%", float64(champIdx)/float64(totalChamps)*100))
 			}
-
-			champIdx := idx + 1
-			champStart := time.Now()
-			slog.Info("1xbet: processing championship incrementally",
-				"championship", champ.LE,
-				"championship_id", champ.LI,
-				"progress", fmt.Sprintf("%d/%d", champIdx, totalChamps),
-				"percent", fmt.Sprintf("%.1f%%", float64(champIdx)/float64(totalChamps)*100))
-
-			matches := p.processSingleChampionship(ctx, champ)
-			for _, match := range matches {
-				health.AddMatch(match)
+		} else {
+			// Parallel: worker pool of championships
+			ch := make(chan ChampItem, totalChamps)
+			for _, c := range champsWithMatches {
+				ch <- c
 			}
-			slog.Debug("1xbet: matches saved to store", "championship", champ.LE, "matches_count", len(matches))
-
-			matchesTotal += len(matches)
-			champDuration := time.Since(champStart)
-			slog.Info("1xbet: championship processed incrementally",
-				"championship", champ.LE,
-				"matches", len(matches),
-				"matches_total", matchesTotal,
-				"duration", champDuration,
-				"progress", fmt.Sprintf("%d/%d", champIdx, totalChamps),
-				"percent", fmt.Sprintf("%.1f%%", float64(champIdx)/float64(totalChamps)*100))
+			close(ch)
+			var completed atomic.Int64
+			var wg sync.WaitGroup
+			for w := 0; w < maxConcurrentChamps; w++ {
+				wg.Add(1)
+				go func() {
+					defer wg.Done()
+					for champ := range ch {
+						if ctx.Err() != nil {
+							return
+						}
+						champStart := time.Now()
+						slog.Info("1xbet: processing championship incrementally",
+							"championship", champ.LE,
+							"championship_id", champ.LI,
+							"progress", fmt.Sprintf("…/%d", totalChamps))
+						matches := p.processSingleChampionship(ctx, champ)
+						for _, match := range matches {
+							health.AddMatch(match)
+						}
+						slog.Debug("1xbet: matches saved to store", "championship", champ.LE, "matches_count", len(matches))
+						done := completed.Add(1)
+						total := atomic.AddInt64(&matchesTotal, int64(len(matches)))
+						champDuration := time.Since(champStart)
+						slog.Info("1xbet: championship processed incrementally",
+							"championship", champ.LE,
+							"matches", len(matches),
+							"matches_total", total,
+							"duration", champDuration,
+							"progress", fmt.Sprintf("%d/%d", done, totalChamps),
+							"percent", fmt.Sprintf("%.1f%%", float64(done)/float64(totalChamps)*100))
+					}
+				}()
+			}
+			wg.Wait()
 		}
 
 		slog.Info("1xbet: incremental leagues flow finished for sport",
@@ -376,54 +422,106 @@ func (p *Parser) processSingleChampionship(ctx context.Context, champ ChampItem)
 
 	slog.Info("1xbet: fetched championship matches", "championship", champ.LE, "sport_id", sportID, "matches_count", len(matchList))
 
-	// Process each match
+	maxConcurrentGames := p.cfg.Parser.Xbet1.MaxConcurrentGamesPerChamp
+	if maxConcurrentGames <= 0 {
+		maxConcurrentGames = 1
+	}
+
+	// Process each match (sequential or parallel GetGame)
 	var esportsAdded int
-	for idx, matchData := range matchList {
-		select {
-		case <-ctx.Done():
-			slog.Warn("1xbet: championship processing interrupted", "championship", champ.LE)
-			return matches
-		default:
-		}
-
-		// Log match processing start (skip per-match Info for non-esports to reduce noise; esports log below)
-		if sportID != 40 {
-			slog.Info("1xbet: processing match from championship", "championship", champ.LE, "championship_id", champ.LI, "match_index", idx+1, "total_matches", len(matchList), "match_id", matchData.I)
-		}
-
-		// Get detailed game information
-		gameDetails, err := p.client.GetGame(matchData.I, true, true, 250, 4, "", countryID, 1, true)
-		if err != nil {
-			if sportID == 40 {
-				slog.Info("1xbet: esports GetGame failed (first failures logged)", "match_id", matchData.I, "champ", champ.LE, "error", err)
-			} else {
-				slog.Debug("1xbet: failed to get game details", "championship", champ.LE, "match_id", matchData.I, "error", err)
+	if maxConcurrentGames == 1 {
+		for idx, matchData := range matchList {
+			select {
+			case <-ctx.Done():
+				slog.Warn("1xbet: championship processing interrupted", "championship", champ.LE)
+				return matches
+			default:
 			}
-			continue
-		}
-
-		// Киберспорт (sport_id=40) → отдельная модель EsportsMatch
-		if sportID == 40 {
-			lineMatch := BuildLineMatchFromGameDetails(gameDetails, champ.LE, "esports", "1xbet")
-			if lineMatch != nil {
-				em := lineMatch.ToEsportsMatch()
-				if em != nil {
-					health.AddEsportsMatch(em)
-					esportsAdded++
+			if sportID != 40 {
+				slog.Info("1xbet: processing match from championship", "championship", champ.LE, "championship_id", champ.LI, "match_index", idx+1, "total_matches", len(matchList), "match_id", matchData.I)
+			}
+			gameDetails, err := p.client.GetGame(matchData.I, true, true, 250, 4, "", countryID, 1, true)
+			if err != nil {
+				if sportID == 40 {
+					slog.Info("1xbet: esports GetGame failed (first failures logged)", "match_id", matchData.I, "champ", champ.LE, "error", err)
 				} else {
-					slog.Debug("1xbet: esports ToEsportsMatch returned nil", "match_id", matchData.I)
+					slog.Debug("1xbet: failed to get game details", "championship", champ.LE, "match_id", matchData.I, "error", err)
 				}
-			} else {
-				slog.Debug("1xbet: esports BuildLineMatchFromGameDetails returned nil", "match_id", matchData.I)
+				continue
 			}
-			continue
+			if sportID == 40 {
+				lineMatch := BuildLineMatchFromGameDetails(gameDetails, champ.LE, "esports", "1xbet")
+				if lineMatch != nil {
+					em := lineMatch.ToEsportsMatch()
+					if em != nil {
+						health.AddEsportsMatch(em)
+						esportsAdded++
+					} else {
+						slog.Debug("1xbet: esports ToEsportsMatch returned nil", "match_id", matchData.I)
+					}
+				} else {
+					slog.Debug("1xbet: esports BuildLineMatchFromGameDetails returned nil", "match_id", matchData.I)
+				}
+				continue
+			}
+			match := ParseGameDetailsWithClient(gameDetails, champ.LE, p.client)
+			if match != nil {
+				matches = append(matches, match)
+			}
 		}
-
-		// Футбол: текущий путь
-		match := ParseGameDetailsWithClient(gameDetails, champ.LE, p.client)
-		if match != nil {
-			matches = append(matches, match)
+	} else {
+		// Parallel GetGame with semaphore
+		sem := make(chan struct{}, maxConcurrentGames)
+		var mu sync.Mutex
+		var wg sync.WaitGroup
+		for idx, matchData := range matchList {
+			if ctx.Err() != nil {
+				break
+			}
+			idx, matchData := idx, matchData
+			sem <- struct{}{}
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				defer func() { <-sem }()
+				if sportID != 40 {
+					slog.Info("1xbet: processing match from championship", "championship", champ.LE, "championship_id", champ.LI, "match_index", idx+1, "total_matches", len(matchList), "match_id", matchData.I)
+				}
+				gameDetails, err := p.client.GetGame(matchData.I, true, true, 250, 4, "", countryID, 1, true)
+				if err != nil {
+					if sportID == 40 {
+						slog.Info("1xbet: esports GetGame failed (first failures logged)", "match_id", matchData.I, "champ", champ.LE, "error", err)
+					} else {
+						slog.Debug("1xbet: failed to get game details", "championship", champ.LE, "match_id", matchData.I, "error", err)
+					}
+					return
+				}
+				if sportID == 40 {
+					lineMatch := BuildLineMatchFromGameDetails(gameDetails, champ.LE, "esports", "1xbet")
+					if lineMatch != nil {
+						em := lineMatch.ToEsportsMatch()
+						if em != nil {
+							health.AddEsportsMatch(em)
+							mu.Lock()
+							esportsAdded++
+							mu.Unlock()
+						} else {
+							slog.Debug("1xbet: esports ToEsportsMatch returned nil", "match_id", matchData.I)
+						}
+					} else {
+						slog.Debug("1xbet: esports BuildLineMatchFromGameDetails returned nil", "match_id", matchData.I)
+					}
+					return
+				}
+				match := ParseGameDetailsWithClient(gameDetails, champ.LE, p.client)
+				if match != nil {
+					mu.Lock()
+					matches = append(matches, match)
+					mu.Unlock()
+				}
+			}()
 		}
+		wg.Wait()
 	}
 
 	champDuration := time.Since(champStart)

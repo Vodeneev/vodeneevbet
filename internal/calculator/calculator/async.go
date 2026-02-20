@@ -38,6 +38,48 @@ func (c *ValueCalculator) handleStopAsync(w http.ResponseWriter, r *http.Request
 	})
 }
 
+// handleStopAsyncValues disables only value (валуй) alerts; async keeps running.
+func (c *ValueCalculator) handleStopAsyncValues(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		_ = json.NewEncoder(w).Encode(map[string]string{"error": "method not allowed, use POST"})
+		return
+	}
+
+	c.asyncMu.Lock()
+	c.alertsValueEnabled = false
+	c.asyncMu.Unlock()
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	_ = json.NewEncoder(w).Encode(map[string]string{
+		"status":  "ok",
+		"message": "Алерты по валуям отключены. Прогрузы продолжают отправляться.",
+	})
+}
+
+// handleStopAsyncLineMovements disables only line movement (прогрузы) alerts; async keeps running.
+func (c *ValueCalculator) handleStopAsyncLineMovements(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		_ = json.NewEncoder(w).Encode(map[string]string{"error": "method not allowed, use POST"})
+		return
+	}
+
+	c.asyncMu.Lock()
+	c.alertsLineMovementEnabled = false
+	c.asyncMu.Unlock()
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	_ = json.NewEncoder(w).Encode(map[string]string{
+		"status":  "ok",
+		"message": "Алерты по прогрузам отключены. Валуи продолжают отправляться.",
+	})
+}
+
 // handleStartAsync starts asynchronous processing
 func (c *ValueCalculator) handleStartAsync(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {

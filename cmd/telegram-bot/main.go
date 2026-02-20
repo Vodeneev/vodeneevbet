@@ -233,6 +233,10 @@ func handleMessage(bot *tgbotapi.BotAPI, message *tgbotapi.Message, config BotCo
 			fetchAndSendLineMovements(bot, message.Chat.ID, config, limit)
 		case "/stop":
 			stopAsyncProcessing(bot, message.Chat.ID, config)
+		case "/stop_values":
+			stopAlertType(bot, message.Chat.ID, config, "values", "Алерты по валуям отключены.")
+		case "/stop_overlays":
+			stopAlertType(bot, message.Chat.ID, config, "overlays", "Алерты по прогрузам отключены.")
 		default:
 			msg := tgbotapi.NewMessage(message.Chat.ID, "Unknown command. Use /help to see available commands.")
 			if _, err := bot.Send(msg); err != nil {
@@ -291,7 +295,11 @@ func sendHelpMessage(bot *tgbotapi.BotAPI, chatID int64) {
 
 /start - Start/resume asynchronous diff processing
 
-/stop - Stop calculator async processing (parser continues running)
+/stop - Остановить всё (и валуи, и прогрузы)
+
+/stop\_values - Отключить только алерты по валуям (прогрузы продолжают приходить)
+
+/stop\_overlays - Отключить только алерты по прогрузам (валуи продолжают приходить)
 
 /top [limit] - Get top value bet differences
   Example: /top 10
@@ -833,6 +841,74 @@ func stopAsyncProcessing(bot *tgbotapi.BotAPI, chatID int64, config BotConfig) {
 		slog.Error("Failed to send stop confirmation", "chat_id", chatID, "error", err)
 	} else {
 		slog.Info("Successfully stopped async processing via bot")
+	}
+}
+
+// stopAlertType disables only one type of alerts (values or overlays) via calculator API.
+func stopAlertType(bot *tgbotapi.BotAPI, chatID int64, config BotConfig, alertType string, defaultMsg string) {
+	typing := tgbotapi.NewChatAction(chatID, tgbotapi.ChatTyping)
+	if _, err := bot.Request(typing); err != nil {
+		slog.Debug("Failed to send typing indicator", "chat_id", chatID, "error", err)
+	}
+
+	var path string
+	switch alertType {
+	case "values":
+		path = "/async/stop_values"
+	case "overlays":
+		path = "/async/stop_overlays"
+	default:
+		msg := tgbotapi.NewMessage(chatID, "❌ Unknown alert type.")
+		_, _ = bot.Send(msg)
+		return
+	}
+
+	url := config.CalculatorURL + path
+	client := &http.Client{Timeout: 10 * time.Second}
+	req, err := http.NewRequest("POST", url, nil)
+	if err != nil {
+		slog.Error("Failed to create request", "error", err)
+		msg := tgbotapi.NewMessage(chatID, fmt.Sprintf("❌ Error: %v", err))
+		_, _ = bot.Send(msg)
+		return
+	}
+
+	resp, err := client.Do(req)
+	if err != nil {
+		slog.Error("Failed to stop alert type", "type", alertType, "error", err)
+		msg := tgbotapi.NewMessage(chatID, fmt.Sprintf("❌ Не удалось связаться с калькулятором: %v", err))
+		_, _ = bot.Send(msg)
+		return
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		bodyBytes, _ := io.ReadAll(resp.Body)
+		var errorResp map[string]string
+		if err := json.NewDecoder(bytes.NewReader(bodyBytes)).Decode(&errorResp); err == nil {
+			msg := tgbotapi.NewMessage(chatID, "❌ "+errorResp["error"])
+			_, _ = bot.Send(msg)
+		} else {
+			msg := tgbotapi.NewMessage(chatID, fmt.Sprintf("❌ Calculator вернул статус %d", resp.StatusCode))
+			_, _ = bot.Send(msg)
+		}
+		return
+	}
+
+	var result map[string]string
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		slog.Error("Failed to parse response", "error", err)
+		msg := tgbotapi.NewMessage(chatID, "✅ "+defaultMsg)
+		_, _ = bot.Send(msg)
+		return
+	}
+
+	statusMsg := "✅ " + result["message"]
+	msg := tgbotapi.NewMessage(chatID, statusMsg)
+	if _, err := bot.Send(msg); err != nil {
+		slog.Error("Failed to send stop alert type confirmation", "chat_id", chatID, "error", err)
+	} else {
+		slog.Info("Stopped alert type via bot", "type", alertType)
 	}
 }
 

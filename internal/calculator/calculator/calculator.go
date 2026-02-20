@@ -21,12 +21,14 @@ type ValueCalculator struct {
 	diffStorage        storage.DiffBetStorage
 	oddsSnapshotStorage storage.OddsSnapshotStorage
 	notifier           *TelegramNotifier
-	asyncTicker        *time.Ticker
-	testAlertTicker    *time.Ticker
-	asyncMu            sync.RWMutex
-	asyncStopped       bool
-	asyncCtx           context.Context
-	asyncCancel        context.CancelFunc
+	asyncTicker              *time.Ticker
+	testAlertTicker          *time.Ticker
+	asyncMu                  sync.RWMutex
+	asyncStopped             bool
+	alertsValueEnabled       bool // алерты по валуям
+	alertsLineMovementEnabled bool // алерты по прогрузам
+	asyncCtx                 context.Context
+	asyncCancel              context.CancelFunc
 }
 
 func NewValueCalculator(cfg *config.ValueCalculatorConfig, diffStorage storage.DiffBetStorage, oddsSnapshotStorage storage.OddsSnapshotStorage) *ValueCalculator {
@@ -98,8 +100,10 @@ func (c *ValueCalculator) StartAsync() error {
 		slog.Warn("Invalid async_interval, using default 30s")
 	}
 
-	// Reset stopped flag and create new ticker
+	// Reset stopped flag and alert flags, create new ticker
 	c.asyncStopped = false
+	c.alertsValueEnabled = true
+	c.alertsLineMovementEnabled = true
 	if c.asyncTicker != nil {
 		c.asyncTicker.Stop()
 	}
@@ -349,8 +353,11 @@ func (c *ValueCalculator) processMatchesAsync(ctx context.Context) {
 			// Continue even if storage fails
 		}
 
-		// Send Telegram alert if needed
-		if shouldSendAlert {
+		// Send Telegram alert if needed (and value alerts are enabled)
+		c.asyncMu.RLock()
+		valueAlertsOn := c.alertsValueEnabled
+		c.asyncMu.RUnlock()
+		if shouldSendAlert && valueAlertsOn {
 			thresholdInt := int(math.Round(alertThreshold))
 			queuedAt := time.Now()
 			if err := c.notifier.SendDiffAlert(ctx, &diff, thresholdInt); err != nil {
@@ -410,8 +417,11 @@ func (c *ValueCalculator) processLineMovementsAsync(ctx context.Context) {
 
 	now := time.Now()
 	alertCount := 0
-	// Only send line movement alerts to Telegram if enabled (avoids spam; Telegram ~30 msg/min limit per chat)
-	sendLineMovementToTelegram := c.cfg != nil && c.cfg.LineMovementTelegramAlerts
+	// Only send line movement alerts to Telegram if enabled in config and not disabled by user
+	c.asyncMu.RLock()
+	lineMovementAlertsOn := c.alertsLineMovementEnabled
+	c.asyncMu.RUnlock()
+	sendLineMovementToTelegram := c.cfg != nil && c.cfg.LineMovementTelegramAlerts && lineMovementAlertsOn
 	// Note: No delay needed here - messages are queued asynchronously and rate-limited in the background worker
 	for i := range movements {
 		lm := &movements[i]
@@ -447,6 +457,8 @@ func (c *ValueCalculator) StopAsync() {
 
 	if !c.asyncStopped && c.asyncTicker != nil {
 		c.asyncStopped = true
+		c.alertsValueEnabled = false
+		c.alertsLineMovementEnabled = false
 		c.asyncTicker.Stop()
 		if c.testAlertTicker != nil {
 			c.testAlertTicker.Stop()

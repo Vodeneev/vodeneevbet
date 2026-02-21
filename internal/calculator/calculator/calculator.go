@@ -66,7 +66,7 @@ func (c *ValueCalculator) Start(ctx context.Context) error {
 	// Wait for context cancellation
 	<-ctx.Done()
 
-	c.StopAsync()
+	c.StopAsync(true) // true = shutdown, stop notifier too
 
 	return nil
 }
@@ -450,8 +450,10 @@ func (c *ValueCalculator) processLineMovementsAsync(ctx context.Context) {
 	slog.Info("Line movement iteration complete", "movements_detected", len(movements), "alerts_queued", alertCount, "duration_sec", lmDuration.Seconds())
 }
 
-// StopAsync stops the asynchronous processing
-func (c *ValueCalculator) StopAsync() {
+// StopAsync stops the asynchronous processing.
+// shutdown: if true, also stops the Telegram notifier (use on app exit);
+// if false, only stops the ticker so /start can resume alerts.
+func (c *ValueCalculator) StopAsync(shutdown bool) {
 	c.asyncMu.Lock()
 	defer c.asyncMu.Unlock()
 
@@ -468,9 +470,8 @@ func (c *ValueCalculator) StopAsync() {
 		}
 		slog.Info("Async processing stopped")
 	}
-	
-	// Stop telegram notifier to gracefully shutdown message queue
-	if c.notifier != nil {
+
+	if shutdown && c.notifier != nil {
 		c.notifier.Stop()
 	}
 }

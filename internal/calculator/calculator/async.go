@@ -28,7 +28,7 @@ func (c *ValueCalculator) handleStopAsync(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	c.StopAsync()
+	c.StopAsync(false) // false = user /stop, keep notifier for resume on /start
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)

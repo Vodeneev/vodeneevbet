@@ -74,7 +74,10 @@ func main() {
 		UpdateTimeout: 60,
 	}
 
-	// Parse allowed users if provided
+	// Parse allowed users from flag or env (env used if flag empty)
+	if allowedUsers == "" {
+		allowedUsers = os.Getenv("ALLOWED_USERS")
+	}
 	if allowedUsers != "" {
 		userIDs := strings.Split(allowedUsers, ",")
 		for _, idStr := range userIDs {
@@ -83,6 +86,7 @@ func main() {
 				botConfig.AllowedUserIDs = append(botConfig.AllowedUserIDs, id)
 			}
 		}
+		slog.Info("Bot is private: only allowed users can use it", "allowed_count", len(botConfig.AllowedUserIDs))
 	}
 
 	slog.Info("Starting Telegram bot...")
@@ -164,6 +168,11 @@ func main() {
 							}
 						}
 						if !allowed {
+							// In groups: do not reply at all, so only the owner sees their own replies
+							if upd.Message.Chat.IsGroup() || upd.Message.Chat.IsSuperGroup() {
+								slog.Debug("Ignoring message from non-allowed user in group", "user_id", upd.Message.From.ID, "chat_id", upd.Message.Chat.ID)
+								return
+							}
 							msg := tgbotapi.NewMessage(upd.Message.Chat.ID, "Access denied. You are not authorized to use this bot.")
 							if _, err := bot.Send(msg); err != nil {
 								slog.Error("Failed to send access denied message", "user_id", upd.Message.From.ID, "error", err)

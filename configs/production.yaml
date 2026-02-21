@@ -57,56 +57,86 @@ parser:
     # Client will try proxies in order until one works
     # Format: http://user:pass@ip:port or http://ip:port
     proxy_list:
-      - "http://agebhfci:o2vnwvw1phvh@31.59.20.176:6754"     # UK, London
-      - "http://agebhfci:o2vnwvw1phvh@23.95.150.145:6114"   # USA, Buffalo
-      - "http://agebhfci:o2vnwvw1phvh@198.23.239.134:6540"  # USA, Buffalo
-      - "http://agebhfci:o2vnwvw1phvh@45.38.107.97:6014"    # UK, London
-      - "http://agebhfci:o2vnwvw1phvh@107.172.163.27:6543"  # USA, Bloomingdale
-      - "http://agebhfci:o2vnwvw1phvh@198.105.121.200:6462" # UK, City Of London
-      - "http://agebhfci:o2vnwvw1phvh@64.137.96.74:6641"    # Spain, Madrid
-      - "http://agebhfci:o2vnwvw1phvh@216.10.27.159:6837"   # USA, Dallas
-      - "http://agebhfci:o2vnwvw1phvh@142.111.67.146:5611"  # Japan, Tokyo
-      - "http://agebhfci:o2vnwvw1phvh@23.229.19.94:8689"   # USA, Los Angeles
-      - "http://iyyvinsd:pw7cvj04jb5y@31.59.20.176:6754"     # UK, London
-      - "http://iyyvinsd:pw7cvj04jb5y@23.95.150.145:6114"   # USA, Buffalo
-      - "http://iyyvinsd:pw7cvj04jb5y@198.23.239.134:6540"  # USA, Buffalo
-      - "http://iyyvinsd:pw7cvj04jb5y@45.38.107.97:6014"    # UK, London
-      - "http://iyyvinsd:pw7cvj04jb5y@107.172.163.27:6543"  # USA, Bloomingdale
-      - "http://iyyvinsd:pw7cvj04jb5y@198.105.121.200:6462" # UK, City Of London
-      - "http://iyyvinsd:pw7cvj04jb5y@64.137.96.74:6641"    # Spain, Madrid
-      - "http://iyyvinsd:pw7cvj04jb5y@216.10.27.159:6837"   # USA, Dallas
-      - "http://iyyvinsd:pw7cvj04jb5y@142.111.67.146:5611"  # Japan, Tokyo
-      - "http://iyyvinsd:pw7cvj04jb5y@23.229.19.94:8689"   # USA, Los Angeles
-      - "http://mynpsowi:udo0opsm8nns@31.59.20.176:6754"     # UK, London
-      - "http://mynpsowi:udo0opsm8nns@23.95.150.145:6114"   # USA, Buffalo
-      - "http://mynpsowi:udo0opsm8nns@198.23.239.134:6540"  # USA, Buffalo
-      - "http://mynpsowi:udo0opsm8nns@45.38.107.97:6014"    # UK, London
-      - "http://mynpsowi:udo0opsm8nns@107.172.163.27:6543"  # USA, Bloomingdale
-      - "http://mynpsowi:udo0opsm8nns@198.105.121.200:6462" # UK, City Of London
-      - "http://mynpsowi:udo0opsm8nns@64.137.96.74:6641"    # Spain, Madrid
-      - "http://mynpsowi:udo0opsm8nns@216.10.27.159:6837"   # USA, Dallas
-      - "http://mynpsowi:udo0opsm8nns@142.111.67.146:5611"  # Japan, Tokyo
-      - "http://mynpsowi:udo0opsm8nns@23.229.19.94:8689"   # USA, Los Angeles
-      - "http://jxmhpefg:5vvmlgiyysoe@31.59.20.176:6754"     # UK, London
-      - "http://jxmhpefg:5vvmlgiyysoe@23.95.150.145:6114"   # USA, Buffalo
-      - "http://jxmhpefg:5vvmlgiyysoe@198.23.239.134:6540"  # USA, Buffalo
-      - "http://jxmhpefg:5vvmlgiyysoe@45.38.107.97:6014"    # UK, London
-      - "http://jxmhpefg:5vvmlgiyysoe@107.172.163.27:6543"  # USA, Bloomingdale
-      - "http://jxmhpefg:5vvmlgiyysoe@198.105.121.200:6462" # UK, City Of London
-      - "http://jxmhpefg:5vvmlgiyysoe@64.137.96.74:6641"    # Spain, Madrid
-      - "http://jxmhpefg:5vvmlgiyysoe@216.10.27.159:6837"   # USA, Dallas
-      - "http://jxmhpefg:5vvmlgiyysoe@142.111.67.146:5611"  # Japan, Tokyo
-      - "http://jxmhpefg:5vvmlgiyysoe@23.229.19.94:8689"   # USA, Los Angeles
-      - "http://iksvayqz:jpv44vn6mavo@31.59.20.176:6754"     # UK, London
-      - "http://iksvayqz:jpv44vn6mavo@23.95.150.145:6114"   # USA, Buffalo
-      - "http://iksvayqz:jpv44vn6mavo@198.23.239.134:6540"  # USA, Buffalo
-      - "http://iksvayqz:jpv44vn6mavo@45.38.107.97:6014"    # UK, London
-      - "http://iksvayqz:jpv44vn6mavo@107.172.163.27:6543"  # USA, Bloomingdale
-      - "http://iksvayqz:jpv44vn6mavo@198.105.121.200:6462" # UK, City Of London
-      - "http://iksvayqz:jpv44vn6mavo@64.137.96.74:6641"    # Spain, Madrid
-      - "http://iksvayqz:jpv44vn6mavo@216.10.27.159:6837"   # USA, Dallas
-      - "http://iksvayqz:jpv44vn6mavo@142.111.67.146:5611"  # Japan, Tokyo
-      - "http://iksvayqz:jpv44vn6mavo@23.229.19.94:8689"   # USA, Los Angeles
+      - "http://tqgraarj:bqb0e1ka8roi@31.59.20.176:6754"     # UK, London
+      - "http://tqgraarj:bqb0e1ka8roi@23.95.150.145:6114"   # USA, Buffalo
+      - "http://tqgraarj:bqb0e1ka8roi@198.23.239.134:6540"  # USA, Buffalo
+      - "http://tqgraarj:bqb0e1ka8roi@45.38.107.97:6014"    # UK, London
+      - "http://tqgraarj:bqb0e1ka8roi@107.172.163.27:6543"  # USA, Bloomingdale
+      - "http://tqgraarj:bqb0e1ka8roi@198.105.121.200:6462" # UK, City Of London
+      - "http://tqgraarj:bqb0e1ka8roi@64.137.96.74:6641"    # Spain, Madrid
+      - "http://tqgraarj:bqb0e1ka8roi@216.10.27.159:6837"   # USA, Dallas
+      - "http://tqgraarj:bqb0e1ka8roi@142.111.67.146:5611"  # Japan, Tokyo
+      - "http://tqgraarj:bqb0e1ka8roi@23.26.53.37:6003"     # Japan, Tokyo
+      - "http://qsqvqfqj:fsdt1fhss7wh@31.59.20.176:6754"     # UK, London
+      - "http://qsqvqfqj:fsdt1fhss7wh@23.95.150.145:6114"   # USA, Buffalo
+      - "http://qsqvqfqj:fsdt1fhss7wh@198.23.239.134:6540"  # USA, Buffalo
+      - "http://qsqvqfqj:fsdt1fhss7wh@45.38.107.97:6014"    # UK, London
+      - "http://qsqvqfqj:fsdt1fhss7wh@107.172.163.27:6543"  # USA, Bloomingdale
+      - "http://qsqvqfqj:fsdt1fhss7wh@198.105.121.200:6462" # UK, City Of London
+      - "http://qsqvqfqj:fsdt1fhss7wh@64.137.96.74:6641"    # Spain, Madrid
+      - "http://qsqvqfqj:fsdt1fhss7wh@216.10.27.159:6837"   # USA, Dallas
+      - "http://qsqvqfqj:fsdt1fhss7wh@142.111.67.146:5611"  # Japan, Tokyo
+      - "http://qsqvqfqj:fsdt1fhss7wh@23.26.53.37:6003"     # Japan, Tokyo
+      - "http://hytyooqz:8oocf7phimo0@31.59.20.176:6754"     # UK, London
+      - "http://hytyooqz:8oocf7phimo0@23.95.150.145:6114"   # USA, Buffalo
+      - "http://hytyooqz:8oocf7phimo0@198.23.239.134:6540"  # USA, Buffalo
+      - "http://hytyooqz:8oocf7phimo0@45.38.107.97:6014"    # UK, London
+      - "http://hytyooqz:8oocf7phimo0@107.172.163.27:6543"  # USA, Bloomingdale
+      - "http://hytyooqz:8oocf7phimo0@198.105.121.200:6462" # UK, City Of London
+      - "http://hytyooqz:8oocf7phimo0@64.137.96.74:6641"    # Spain, Madrid
+      - "http://hytyooqz:8oocf7phimo0@216.10.27.159:6837"   # USA, Dallas
+      - "http://hytyooqz:8oocf7phimo0@142.111.67.146:5611"  # Japan, Tokyo
+      - "http://hytyooqz:8oocf7phimo0@23.26.53.37:6003"     # Japan, Tokyo
+      - "http://bxgyvhws:s5zl3osx5x0h@31.59.20.176:6754"     # UK, London
+      - "http://bxgyvhws:s5zl3osx5x0h@23.95.150.145:6114"   # USA, Buffalo
+      - "http://bxgyvhws:s5zl3osx5x0h@198.23.239.134:6540"  # USA, Buffalo
+      - "http://bxgyvhws:s5zl3osx5x0h@45.38.107.97:6014"    # UK, London
+      - "http://bxgyvhws:s5zl3osx5x0h@107.172.163.27:6543"  # USA, Bloomingdale
+      - "http://bxgyvhws:s5zl3osx5x0h@198.105.121.200:6462" # UK, City Of London
+      - "http://bxgyvhws:s5zl3osx5x0h@64.137.96.74:6641"    # Spain, Madrid
+      - "http://bxgyvhws:s5zl3osx5x0h@216.10.27.159:6837"   # USA, Dallas
+      - "http://bxgyvhws:s5zl3osx5x0h@142.111.67.146:5611"  # Japan, Tokyo
+      - "http://bxgyvhws:s5zl3osx5x0h@23.26.53.37:6003"     # Japan, Tokyo
+      - "http://xylhhpxt:qglsonken9nd@31.59.20.176:6754"     # UK, London
+      - "http://xylhhpxt:qglsonken9nd@23.95.150.145:6114"   # USA, Buffalo
+      - "http://xylhhpxt:qglsonken9nd@198.23.239.134:6540"  # USA, Buffalo
+      - "http://xylhhpxt:qglsonken9nd@45.38.107.97:6014"    # UK, London
+      - "http://xylhhpxt:qglsonken9nd@107.172.163.27:6543"  # USA, Bloomingdale
+      - "http://xylhhpxt:qglsonken9nd@198.105.121.200:6462" # UK, City Of London
+      - "http://xylhhpxt:qglsonken9nd@64.137.96.74:6641"    # Spain, Madrid
+      - "http://xylhhpxt:qglsonken9nd@216.10.27.159:6837"   # USA, Dallas
+      - "http://xylhhpxt:qglsonken9nd@142.111.67.146:5611"  # Japan, Tokyo
+      - "http://xylhhpxt:qglsonken9nd@23.26.53.37:6003"     # Japan, Tokyo
+      - "http://qrcsdgzf:2xed09nyocm7@31.59.20.176:6754"     # UK, London
+      - "http://qrcsdgzf:2xed09nyocm7@23.95.150.145:6114"   # USA, Buffalo
+      - "http://qrcsdgzf:2xed09nyocm7@198.23.239.134:6540"  # USA, Buffalo
+      - "http://qrcsdgzf:2xed09nyocm7@45.38.107.97:6014"    # UK, London
+      - "http://qrcsdgzf:2xed09nyocm7@107.172.163.27:6543"  # USA, Bloomingdale
+      - "http://qrcsdgzf:2xed09nyocm7@198.105.121.200:6462" # UK, City Of London
+      - "http://qrcsdgzf:2xed09nyocm7@64.137.96.74:6641"    # Spain, Madrid
+      - "http://qrcsdgzf:2xed09nyocm7@216.10.27.159:6837"   # USA, Dallas
+      - "http://qrcsdgzf:2xed09nyocm7@142.111.67.146:5611"  # Japan, Tokyo
+      - "http://qrcsdgzf:2xed09nyocm7@23.26.53.37:6003"     # Japan, Tokyo
+      - "http://dcbqeegx:2i4rojbgunid@31.59.20.176:6754"     # UK, London
+      - "http://dcbqeegx:2i4rojbgunid@23.95.150.145:6114"   # USA, Buffalo
+      - "http://dcbqeegx:2i4rojbgunid@198.23.239.134:6540"  # USA, Buffalo
+      - "http://dcbqeegx:2i4rojbgunid@45.38.107.97:6014"    # UK, London
+      - "http://dcbqeegx:2i4rojbgunid@107.172.163.27:6543"  # USA, Bloomingdale
+      - "http://dcbqeegx:2i4rojbgunid@198.105.121.200:6462" # UK, City Of London
+      - "http://dcbqeegx:2i4rojbgunid@64.137.96.74:6641"    # Spain, Madrid
+      - "http://dcbqeegx:2i4rojbgunid@216.10.27.159:6837"   # USA, Dallas
+      - "http://dcbqeegx:2i4rojbgunid@142.111.67.146:5611"  # Japan, Tokyo
+      - "http://dcbqeegx:2i4rojbgunid@23.26.53.37:6003"     # Japan, Tokyo
+      - "http://xnrxzhyo:ri4w7kx38cn0@31.59.20.176:6754"     # UK, London
+      - "http://xnrxzhyo:ri4w7kx38cn0@23.95.150.145:6114"   # USA, Buffalo
+      - "http://xnrxzhyo:ri4w7kx38cn0@198.23.239.134:6540"  # USA, Buffalo
+      - "http://xnrxzhyo:ri4w7kx38cn0@45.38.107.97:6014"    # UK, London
+      - "http://xnrxzhyo:ri4w7kx38cn0@107.172.163.27:6543"  # USA, Bloomingdale
+      - "http://xnrxzhyo:ri4w7kx38cn0@198.105.121.200:6462" # UK, City Of London
+      - "http://xnrxzhyo:ri4w7kx38cn0@64.137.96.74:6641"    # Spain, Madrid
+      - "http://xnrxzhyo:ri4w7kx38cn0@216.10.27.159:6837"   # USA, Dallas
+      - "http://xnrxzhyo:ri4w7kx38cn0@142.111.67.146:5611"  # Japan, Tokyo
+      - "http://xnrxzhyo:ri4w7kx38cn0@23.26.53.37:6003"     # Japan, Tokyo
 
   # Pinnacle888 guest API with mirror URL support
   # Marathonbet HTML parser (all-events → leagues → full event page per match)
@@ -119,56 +149,86 @@ parser:
     # Client will try proxies in order until one works
     # Format: http://user:pass@ip:port or http://ip:port
     proxy_list:
-      - "http://agebhfci:o2vnwvw1phvh@31.59.20.176:6754"     # UK, London
-      - "http://agebhfci:o2vnwvw1phvh@23.95.150.145:6114"   # USA, Buffalo
-      - "http://agebhfci:o2vnwvw1phvh@198.23.239.134:6540"  # USA, Buffalo
-      - "http://agebhfci:o2vnwvw1phvh@45.38.107.97:6014"    # UK, London
-      - "http://agebhfci:o2vnwvw1phvh@107.172.163.27:6543"  # USA, Bloomingdale
-      - "http://agebhfci:o2vnwvw1phvh@198.105.121.200:6462" # UK, City Of London
-      - "http://agebhfci:o2vnwvw1phvh@64.137.96.74:6641"    # Spain, Madrid
-      - "http://agebhfci:o2vnwvw1phvh@216.10.27.159:6837"   # USA, Dallas
-      - "http://agebhfci:o2vnwvw1phvh@142.111.67.146:5611"  # Japan, Tokyo
-      - "http://agebhfci:o2vnwvw1phvh@23.229.19.94:8689"   # USA, Los Angeles
-      - "http://iyyvinsd:pw7cvj04jb5y@31.59.20.176:6754"     # UK, London
-      - "http://iyyvinsd:pw7cvj04jb5y@23.95.150.145:6114"   # USA, Buffalo
-      - "http://iyyvinsd:pw7cvj04jb5y@198.23.239.134:6540"  # USA, Buffalo
-      - "http://iyyvinsd:pw7cvj04jb5y@45.38.107.97:6014"    # UK, London
-      - "http://iyyvinsd:pw7cvj04jb5y@107.172.163.27:6543"  # USA, Bloomingdale
-      - "http://iyyvinsd:pw7cvj04jb5y@198.105.121.200:6462" # UK, City Of London
-      - "http://iyyvinsd:pw7cvj04jb5y@64.137.96.74:6641"    # Spain, Madrid
-      - "http://iyyvinsd:pw7cvj04jb5y@216.10.27.159:6837"   # USA, Dallas
-      - "http://iyyvinsd:pw7cvj04jb5y@142.111.67.146:5611"  # Japan, Tokyo
-      - "http://iyyvinsd:pw7cvj04jb5y@23.229.19.94:8689"   # USA, Los Angeles
-      - "http://mynpsowi:udo0opsm8nns@31.59.20.176:6754"     # UK, London
-      - "http://mynpsowi:udo0opsm8nns@23.95.150.145:6114"   # USA, Buffalo
-      - "http://mynpsowi:udo0opsm8nns@198.23.239.134:6540"  # USA, Buffalo
-      - "http://mynpsowi:udo0opsm8nns@45.38.107.97:6014"    # UK, London
-      - "http://mynpsowi:udo0opsm8nns@107.172.163.27:6543"  # USA, Bloomingdale
-      - "http://mynpsowi:udo0opsm8nns@198.105.121.200:6462" # UK, City Of London
-      - "http://mynpsowi:udo0opsm8nns@64.137.96.74:6641"    # Spain, Madrid
-      - "http://mynpsowi:udo0opsm8nns@216.10.27.159:6837"   # USA, Dallas
-      - "http://mynpsowi:udo0opsm8nns@142.111.67.146:5611"  # Japan, Tokyo
-      - "http://mynpsowi:udo0opsm8nns@23.229.19.94:8689"   # USA, Los Angeles
-      - "http://jxmhpefg:5vvmlgiyysoe@31.59.20.176:6754"     # UK, London
-      - "http://jxmhpefg:5vvmlgiyysoe@23.95.150.145:6114"   # USA, Buffalo
-      - "http://jxmhpefg:5vvmlgiyysoe@198.23.239.134:6540"  # USA, Buffalo
-      - "http://jxmhpefg:5vvmlgiyysoe@45.38.107.97:6014"    # UK, London
-      - "http://jxmhpefg:5vvmlgiyysoe@107.172.163.27:6543"  # USA, Bloomingdale
-      - "http://jxmhpefg:5vvmlgiyysoe@198.105.121.200:6462" # UK, City Of London
-      - "http://jxmhpefg:5vvmlgiyysoe@64.137.96.74:6641"    # Spain, Madrid
-      - "http://jxmhpefg:5vvmlgiyysoe@216.10.27.159:6837"   # USA, Dallas
-      - "http://jxmhpefg:5vvmlgiyysoe@142.111.67.146:5611"  # Japan, Tokyo
-      - "http://jxmhpefg:5vvmlgiyysoe@23.229.19.94:8689"   # USA, Los Angeles
-      - "http://iksvayqz:jpv44vn6mavo@31.59.20.176:6754"     # UK, London
-      - "http://iksvayqz:jpv44vn6mavo@23.95.150.145:6114"   # USA, Buffalo
-      - "http://iksvayqz:jpv44vn6mavo@198.23.239.134:6540"  # USA, Buffalo
-      - "http://iksvayqz:jpv44vn6mavo@45.38.107.97:6014"    # UK, London
-      - "http://iksvayqz:jpv44vn6mavo@107.172.163.27:6543"  # USA, Bloomingdale
-      - "http://iksvayqz:jpv44vn6mavo@198.105.121.200:6462" # UK, City Of London
-      - "http://iksvayqz:jpv44vn6mavo@64.137.96.74:6641"    # Spain, Madrid
-      - "http://iksvayqz:jpv44vn6mavo@216.10.27.159:6837"   # USA, Dallas
-      - "http://iksvayqz:jpv44vn6mavo@142.111.67.146:5611"  # Japan, Tokyo
-      - "http://iksvayqz:jpv44vn6mavo@23.229.19.94:8689"   # USA, Los Angeles
+      - "http://tqgraarj:bqb0e1ka8roi@31.59.20.176:6754"     # UK, London
+      - "http://tqgraarj:bqb0e1ka8roi@23.95.150.145:6114"   # USA, Buffalo
+      - "http://tqgraarj:bqb0e1ka8roi@198.23.239.134:6540"  # USA, Buffalo
+      - "http://tqgraarj:bqb0e1ka8roi@45.38.107.97:6014"    # UK, London
+      - "http://tqgraarj:bqb0e1ka8roi@107.172.163.27:6543"  # USA, Bloomingdale
+      - "http://tqgraarj:bqb0e1ka8roi@198.105.121.200:6462" # UK, City Of London
+      - "http://tqgraarj:bqb0e1ka8roi@64.137.96.74:6641"    # Spain, Madrid
+      - "http://tqgraarj:bqb0e1ka8roi@216.10.27.159:6837"   # USA, Dallas
+      - "http://tqgraarj:bqb0e1ka8roi@142.111.67.146:5611"  # Japan, Tokyo
+      - "http://tqgraarj:bqb0e1ka8roi@23.26.53.37:6003"     # Japan, Tokyo
+      - "http://qsqvqfqj:fsdt1fhss7wh@31.59.20.176:6754"     # UK, London
+      - "http://qsqvqfqj:fsdt1fhss7wh@23.95.150.145:6114"   # USA, Buffalo
+      - "http://qsqvqfqj:fsdt1fhss7wh@198.23.239.134:6540"  # USA, Buffalo
+      - "http://qsqvqfqj:fsdt1fhss7wh@45.38.107.97:6014"    # UK, London
+      - "http://qsqvqfqj:fsdt1fhss7wh@107.172.163.27:6543"  # USA, Bloomingdale
+      - "http://qsqvqfqj:fsdt1fhss7wh@198.105.121.200:6462" # UK, City Of London
+      - "http://qsqvqfqj:fsdt1fhss7wh@64.137.96.74:6641"    # Spain, Madrid
+      - "http://qsqvqfqj:fsdt1fhss7wh@216.10.27.159:6837"   # USA, Dallas
+      - "http://qsqvqfqj:fsdt1fhss7wh@142.111.67.146:5611"  # Japan, Tokyo
+      - "http://qsqvqfqj:fsdt1fhss7wh@23.26.53.37:6003"     # Japan, Tokyo
+      - "http://hytyooqz:8oocf7phimo0@31.59.20.176:6754"     # UK, London
+      - "http://hytyooqz:8oocf7phimo0@23.95.150.145:6114"   # USA, Buffalo
+      - "http://hytyooqz:8oocf7phimo0@198.23.239.134:6540"  # USA, Buffalo
+      - "http://hytyooqz:8oocf7phimo0@45.38.107.97:6014"    # UK, London
+      - "http://hytyooqz:8oocf7phimo0@107.172.163.27:6543"  # USA, Bloomingdale
+      - "http://hytyooqz:8oocf7phimo0@198.105.121.200:6462" # UK, City Of London
+      - "http://hytyooqz:8oocf7phimo0@64.137.96.74:6641"    # Spain, Madrid
+      - "http://hytyooqz:8oocf7phimo0@216.10.27.159:6837"   # USA, Dallas
+      - "http://hytyooqz:8oocf7phimo0@142.111.67.146:5611"  # Japan, Tokyo
+      - "http://hytyooqz:8oocf7phimo0@23.26.53.37:6003"     # Japan, Tokyo
+      - "http://bxgyvhws:s5zl3osx5x0h@31.59.20.176:6754"     # UK, London
+      - "http://bxgyvhws:s5zl3osx5x0h@23.95.150.145:6114"   # USA, Buffalo
+      - "http://bxgyvhws:s5zl3osx5x0h@198.23.239.134:6540"  # USA, Buffalo
+      - "http://bxgyvhws:s5zl3osx5x0h@45.38.107.97:6014"    # UK, London
+      - "http://bxgyvhws:s5zl3osx5x0h@107.172.163.27:6543"  # USA, Bloomingdale
+      - "http://bxgyvhws:s5zl3osx5x0h@198.105.121.200:6462" # UK, City Of London
+      - "http://bxgyvhws:s5zl3osx5x0h@64.137.96.74:6641"    # Spain, Madrid
+      - "http://bxgyvhws:s5zl3osx5x0h@216.10.27.159:6837"   # USA, Dallas
+      - "http://bxgyvhws:s5zl3osx5x0h@142.111.67.146:5611"  # Japan, Tokyo
+      - "http://bxgyvhws:s5zl3osx5x0h@23.26.53.37:6003"     # Japan, Tokyo
+      - "http://xylhhpxt:qglsonken9nd@31.59.20.176:6754"     # UK, London
+      - "http://xylhhpxt:qglsonken9nd@23.95.150.145:6114"   # USA, Buffalo
+      - "http://xylhhpxt:qglsonken9nd@198.23.239.134:6540"  # USA, Buffalo
+      - "http://xylhhpxt:qglsonken9nd@45.38.107.97:6014"    # UK, London
+      - "http://xylhhpxt:qglsonken9nd@107.172.163.27:6543"  # USA, Bloomingdale
+      - "http://xylhhpxt:qglsonken9nd@198.105.121.200:6462" # UK, City Of London
+      - "http://xylhhpxt:qglsonken9nd@64.137.96.74:6641"    # Spain, Madrid
+      - "http://xylhhpxt:qglsonken9nd@216.10.27.159:6837"   # USA, Dallas
+      - "http://xylhhpxt:qglsonken9nd@142.111.67.146:5611"  # Japan, Tokyo
+      - "http://xylhhpxt:qglsonken9nd@23.26.53.37:6003"     # Japan, Tokyo
+      - "http://qrcsdgzf:2xed09nyocm7@31.59.20.176:6754"     # UK, London
+      - "http://qrcsdgzf:2xed09nyocm7@23.95.150.145:6114"   # USA, Buffalo
+      - "http://qrcsdgzf:2xed09nyocm7@198.23.239.134:6540"  # USA, Buffalo
+      - "http://qrcsdgzf:2xed09nyocm7@45.38.107.97:6014"    # UK, London
+      - "http://qrcsdgzf:2xed09nyocm7@107.172.163.27:6543"  # USA, Bloomingdale
+      - "http://qrcsdgzf:2xed09nyocm7@198.105.121.200:6462" # UK, City Of London
+      - "http://qrcsdgzf:2xed09nyocm7@64.137.96.74:6641"    # Spain, Madrid
+      - "http://qrcsdgzf:2xed09nyocm7@216.10.27.159:6837"   # USA, Dallas
+      - "http://qrcsdgzf:2xed09nyocm7@142.111.67.146:5611"  # Japan, Tokyo
+      - "http://qrcsdgzf:2xed09nyocm7@23.26.53.37:6003"     # Japan, Tokyo
+      - "http://dcbqeegx:2i4rojbgunid@31.59.20.176:6754"     # UK, London
+      - "http://dcbqeegx:2i4rojbgunid@23.95.150.145:6114"   # USA, Buffalo
+      - "http://dcbqeegx:2i4rojbgunid@198.23.239.134:6540"  # USA, Buffalo
+      - "http://dcbqeegx:2i4rojbgunid@45.38.107.97:6014"    # UK, London
+      - "http://dcbqeegx:2i4rojbgunid@107.172.163.27:6543"  # USA, Bloomingdale
+      - "http://dcbqeegx:2i4rojbgunid@198.105.121.200:6462" # UK, City Of London
+      - "http://dcbqeegx:2i4rojbgunid@64.137.96.74:6641"    # Spain, Madrid
+      - "http://dcbqeegx:2i4rojbgunid@216.10.27.159:6837"   # USA, Dallas
+      - "http://dcbqeegx:2i4rojbgunid@142.111.67.146:5611"  # Japan, Tokyo
+      - "http://dcbqeegx:2i4rojbgunid@23.26.53.37:6003"     # Japan, Tokyo
+      - "http://xnrxzhyo:ri4w7kx38cn0@31.59.20.176:6754"     # UK, London
+      - "http://xnrxzhyo:ri4w7kx38cn0@23.95.150.145:6114"   # USA, Buffalo
+      - "http://xnrxzhyo:ri4w7kx38cn0@198.23.239.134:6540"  # USA, Buffalo
+      - "http://xnrxzhyo:ri4w7kx38cn0@45.38.107.97:6014"    # UK, London
+      - "http://xnrxzhyo:ri4w7kx38cn0@107.172.163.27:6543"  # USA, Bloomingdale
+      - "http://xnrxzhyo:ri4w7kx38cn0@198.105.121.200:6462" # UK, City Of London
+      - "http://xnrxzhyo:ri4w7kx38cn0@64.137.96.74:6641"    # Spain, Madrid
+      - "http://xnrxzhyo:ri4w7kx38cn0@216.10.27.159:6837"   # USA, Dallas
+      - "http://xnrxzhyo:ri4w7kx38cn0@142.111.67.146:5611"  # Japan, Tokyo
+      - "http://xnrxzhyo:ri4w7kx38cn0@23.26.53.37:6003"     # Japan, Tokyo
 
   pinnacle888:
     base_url: ""       # Optional: direct base URL (if mirror_url is not provided)
@@ -183,56 +243,86 @@ parser:
     # Client will try proxies in order until one works
     # Format: http://user:pass@ip:port or http://ip:port
     proxy_list:
-      - "http://agebhfci:o2vnwvw1phvh@31.59.20.176:6754"     # UK, London
-      - "http://agebhfci:o2vnwvw1phvh@23.95.150.145:6114"   # USA, Buffalo
-      - "http://agebhfci:o2vnwvw1phvh@198.23.239.134:6540"  # USA, Buffalo
-      - "http://agebhfci:o2vnwvw1phvh@45.38.107.97:6014"    # UK, London
-      - "http://agebhfci:o2vnwvw1phvh@107.172.163.27:6543"  # USA, Bloomingdale
-      - "http://agebhfci:o2vnwvw1phvh@198.105.121.200:6462" # UK, City Of London
-      - "http://agebhfci:o2vnwvw1phvh@64.137.96.74:6641"    # Spain, Madrid
-      - "http://agebhfci:o2vnwvw1phvh@216.10.27.159:6837"   # USA, Dallas
-      - "http://agebhfci:o2vnwvw1phvh@142.111.67.146:5611"  # Japan, Tokyo
-      - "http://agebhfci:o2vnwvw1phvh@23.229.19.94:8689"   # USA, Los Angeles
-      - "http://iyyvinsd:pw7cvj04jb5y@31.59.20.176:6754"     # UK, London
-      - "http://iyyvinsd:pw7cvj04jb5y@23.95.150.145:6114"   # USA, Buffalo
-      - "http://iyyvinsd:pw7cvj04jb5y@198.23.239.134:6540"  # USA, Buffalo
-      - "http://iyyvinsd:pw7cvj04jb5y@45.38.107.97:6014"    # UK, London
-      - "http://iyyvinsd:pw7cvj04jb5y@107.172.163.27:6543"  # USA, Bloomingdale
-      - "http://iyyvinsd:pw7cvj04jb5y@198.105.121.200:6462" # UK, City Of London
-      - "http://iyyvinsd:pw7cvj04jb5y@64.137.96.74:6641"    # Spain, Madrid
-      - "http://iyyvinsd:pw7cvj04jb5y@216.10.27.159:6837"   # USA, Dallas
-      - "http://iyyvinsd:pw7cvj04jb5y@142.111.67.146:5611"  # Japan, Tokyo
-      - "http://iyyvinsd:pw7cvj04jb5y@23.229.19.94:8689"   # USA, Los Angeles
-      - "http://mynpsowi:udo0opsm8nns@31.59.20.176:6754"     # UK, London
-      - "http://mynpsowi:udo0opsm8nns@23.95.150.145:6114"   # USA, Buffalo
-      - "http://mynpsowi:udo0opsm8nns@198.23.239.134:6540"  # USA, Buffalo
-      - "http://mynpsowi:udo0opsm8nns@45.38.107.97:6014"    # UK, London
-      - "http://mynpsowi:udo0opsm8nns@107.172.163.27:6543"  # USA, Bloomingdale
-      - "http://mynpsowi:udo0opsm8nns@198.105.121.200:6462" # UK, City Of London
-      - "http://mynpsowi:udo0opsm8nns@64.137.96.74:6641"    # Spain, Madrid
-      - "http://mynpsowi:udo0opsm8nns@216.10.27.159:6837"   # USA, Dallas
-      - "http://mynpsowi:udo0opsm8nns@142.111.67.146:5611"  # Japan, Tokyo
-      - "http://mynpsowi:udo0opsm8nns@23.229.19.94:8689"   # USA, Los Angeles
-      - "http://jxmhpefg:5vvmlgiyysoe@31.59.20.176:6754"     # UK, London
-      - "http://jxmhpefg:5vvmlgiyysoe@23.95.150.145:6114"   # USA, Buffalo
-      - "http://jxmhpefg:5vvmlgiyysoe@198.23.239.134:6540"  # USA, Buffalo
-      - "http://jxmhpefg:5vvmlgiyysoe@45.38.107.97:6014"    # UK, London
-      - "http://jxmhpefg:5vvmlgiyysoe@107.172.163.27:6543"  # USA, Bloomingdale
-      - "http://jxmhpefg:5vvmlgiyysoe@198.105.121.200:6462" # UK, City Of London
-      - "http://jxmhpefg:5vvmlgiyysoe@64.137.96.74:6641"    # Spain, Madrid
-      - "http://jxmhpefg:5vvmlgiyysoe@216.10.27.159:6837"   # USA, Dallas
-      - "http://jxmhpefg:5vvmlgiyysoe@142.111.67.146:5611"  # Japan, Tokyo
-      - "http://jxmhpefg:5vvmlgiyysoe@23.229.19.94:8689"   # USA, Los Angeles
-      - "http://iksvayqz:jpv44vn6mavo@31.59.20.176:6754"     # UK, London
-      - "http://iksvayqz:jpv44vn6mavo@23.95.150.145:6114"   # USA, Buffalo
-      - "http://iksvayqz:jpv44vn6mavo@198.23.239.134:6540"  # USA, Buffalo
-      - "http://iksvayqz:jpv44vn6mavo@45.38.107.97:6014"    # UK, London
-      - "http://iksvayqz:jpv44vn6mavo@107.172.163.27:6543"  # USA, Bloomingdale
-      - "http://iksvayqz:jpv44vn6mavo@198.105.121.200:6462" # UK, City Of London
-      - "http://iksvayqz:jpv44vn6mavo@64.137.96.74:6641"    # Spain, Madrid
-      - "http://iksvayqz:jpv44vn6mavo@216.10.27.159:6837"   # USA, Dallas
-      - "http://iksvayqz:jpv44vn6mavo@142.111.67.146:5611"  # Japan, Tokyo
-      - "http://iksvayqz:jpv44vn6mavo@23.229.19.94:8689"   # USA, Los Angeles
+      - "http://tqgraarj:bqb0e1ka8roi@31.59.20.176:6754"     # UK, London
+      - "http://tqgraarj:bqb0e1ka8roi@23.95.150.145:6114"   # USA, Buffalo
+      - "http://tqgraarj:bqb0e1ka8roi@198.23.239.134:6540"  # USA, Buffalo
+      - "http://tqgraarj:bqb0e1ka8roi@45.38.107.97:6014"    # UK, London
+      - "http://tqgraarj:bqb0e1ka8roi@107.172.163.27:6543"  # USA, Bloomingdale
+      - "http://tqgraarj:bqb0e1ka8roi@198.105.121.200:6462" # UK, City Of London
+      - "http://tqgraarj:bqb0e1ka8roi@64.137.96.74:6641"    # Spain, Madrid
+      - "http://tqgraarj:bqb0e1ka8roi@216.10.27.159:6837"   # USA, Dallas
+      - "http://tqgraarj:bqb0e1ka8roi@142.111.67.146:5611"  # Japan, Tokyo
+      - "http://tqgraarj:bqb0e1ka8roi@23.26.53.37:6003"     # Japan, Tokyo
+      - "http://qsqvqfqj:fsdt1fhss7wh@31.59.20.176:6754"     # UK, London
+      - "http://qsqvqfqj:fsdt1fhss7wh@23.95.150.145:6114"   # USA, Buffalo
+      - "http://qsqvqfqj:fsdt1fhss7wh@198.23.239.134:6540"  # USA, Buffalo
+      - "http://qsqvqfqj:fsdt1fhss7wh@45.38.107.97:6014"    # UK, London
+      - "http://qsqvqfqj:fsdt1fhss7wh@107.172.163.27:6543"  # USA, Bloomingdale
+      - "http://qsqvqfqj:fsdt1fhss7wh@198.105.121.200:6462" # UK, City Of London
+      - "http://qsqvqfqj:fsdt1fhss7wh@64.137.96.74:6641"    # Spain, Madrid
+      - "http://qsqvqfqj:fsdt1fhss7wh@216.10.27.159:6837"   # USA, Dallas
+      - "http://qsqvqfqj:fsdt1fhss7wh@142.111.67.146:5611"  # Japan, Tokyo
+      - "http://qsqvqfqj:fsdt1fhss7wh@23.26.53.37:6003"     # Japan, Tokyo
+      - "http://hytyooqz:8oocf7phimo0@31.59.20.176:6754"     # UK, London
+      - "http://hytyooqz:8oocf7phimo0@23.95.150.145:6114"   # USA, Buffalo
+      - "http://hytyooqz:8oocf7phimo0@198.23.239.134:6540"  # USA, Buffalo
+      - "http://hytyooqz:8oocf7phimo0@45.38.107.97:6014"    # UK, London
+      - "http://hytyooqz:8oocf7phimo0@107.172.163.27:6543"  # USA, Bloomingdale
+      - "http://hytyooqz:8oocf7phimo0@198.105.121.200:6462" # UK, City Of London
+      - "http://hytyooqz:8oocf7phimo0@64.137.96.74:6641"    # Spain, Madrid
+      - "http://hytyooqz:8oocf7phimo0@216.10.27.159:6837"   # USA, Dallas
+      - "http://hytyooqz:8oocf7phimo0@142.111.67.146:5611"  # Japan, Tokyo
+      - "http://hytyooqz:8oocf7phimo0@23.26.53.37:6003"     # Japan, Tokyo
+      - "http://bxgyvhws:s5zl3osx5x0h@31.59.20.176:6754"     # UK, London
+      - "http://bxgyvhws:s5zl3osx5x0h@23.95.150.145:6114"   # USA, Buffalo
+      - "http://bxgyvhws:s5zl3osx5x0h@198.23.239.134:6540"  # USA, Buffalo
+      - "http://bxgyvhws:s5zl3osx5x0h@45.38.107.97:6014"    # UK, London
+      - "http://bxgyvhws:s5zl3osx5x0h@107.172.163.27:6543"  # USA, Bloomingdale
+      - "http://bxgyvhws:s5zl3osx5x0h@198.105.121.200:6462" # UK, City Of London
+      - "http://bxgyvhws:s5zl3osx5x0h@64.137.96.74:6641"    # Spain, Madrid
+      - "http://bxgyvhws:s5zl3osx5x0h@216.10.27.159:6837"   # USA, Dallas
+      - "http://bxgyvhws:s5zl3osx5x0h@142.111.67.146:5611"  # Japan, Tokyo
+      - "http://bxgyvhws:s5zl3osx5x0h@23.26.53.37:6003"     # Japan, Tokyo
+      - "http://xylhhpxt:qglsonken9nd@31.59.20.176:6754"     # UK, London
+      - "http://xylhhpxt:qglsonken9nd@23.95.150.145:6114"   # USA, Buffalo
+      - "http://xylhhpxt:qglsonken9nd@198.23.239.134:6540"  # USA, Buffalo
+      - "http://xylhhpxt:qglsonken9nd@45.38.107.97:6014"    # UK, London
+      - "http://xylhhpxt:qglsonken9nd@107.172.163.27:6543"  # USA, Bloomingdale
+      - "http://xylhhpxt:qglsonken9nd@198.105.121.200:6462" # UK, City Of London
+      - "http://xylhhpxt:qglsonken9nd@64.137.96.74:6641"    # Spain, Madrid
+      - "http://xylhhpxt:qglsonken9nd@216.10.27.159:6837"   # USA, Dallas
+      - "http://xylhhpxt:qglsonken9nd@142.111.67.146:5611"  # Japan, Tokyo
+      - "http://xylhhpxt:qglsonken9nd@23.26.53.37:6003"     # Japan, Tokyo
+      - "http://qrcsdgzf:2xed09nyocm7@31.59.20.176:6754"     # UK, London
+      - "http://qrcsdgzf:2xed09nyocm7@23.95.150.145:6114"   # USA, Buffalo
+      - "http://qrcsdgzf:2xed09nyocm7@198.23.239.134:6540"  # USA, Buffalo
+      - "http://qrcsdgzf:2xed09nyocm7@45.38.107.97:6014"    # UK, London
+      - "http://qrcsdgzf:2xed09nyocm7@107.172.163.27:6543"  # USA, Bloomingdale
+      - "http://qrcsdgzf:2xed09nyocm7@198.105.121.200:6462" # UK, City Of London
+      - "http://qrcsdgzf:2xed09nyocm7@64.137.96.74:6641"    # Spain, Madrid
+      - "http://qrcsdgzf:2xed09nyocm7@216.10.27.159:6837"   # USA, Dallas
+      - "http://qrcsdgzf:2xed09nyocm7@142.111.67.146:5611"  # Japan, Tokyo
+      - "http://qrcsdgzf:2xed09nyocm7@23.26.53.37:6003"     # Japan, Tokyo
+      - "http://dcbqeegx:2i4rojbgunid@31.59.20.176:6754"     # UK, London
+      - "http://dcbqeegx:2i4rojbgunid@23.95.150.145:6114"   # USA, Buffalo
+      - "http://dcbqeegx:2i4rojbgunid@198.23.239.134:6540"  # USA, Buffalo
+      - "http://dcbqeegx:2i4rojbgunid@45.38.107.97:6014"    # UK, London
+      - "http://dcbqeegx:2i4rojbgunid@107.172.163.27:6543"  # USA, Bloomingdale
+      - "http://dcbqeegx:2i4rojbgunid@198.105.121.200:6462" # UK, City Of London
+      - "http://dcbqeegx:2i4rojbgunid@64.137.96.74:6641"    # Spain, Madrid
+      - "http://dcbqeegx:2i4rojbgunid@216.10.27.159:6837"   # USA, Dallas
+      - "http://dcbqeegx:2i4rojbgunid@142.111.67.146:5611"  # Japan, Tokyo
+      - "http://dcbqeegx:2i4rojbgunid@23.26.53.37:6003"     # Japan, Tokyo
+      - "http://xnrxzhyo:ri4w7kx38cn0@31.59.20.176:6754"     # UK, London
+      - "http://xnrxzhyo:ri4w7kx38cn0@23.95.150.145:6114"   # USA, Buffalo
+      - "http://xnrxzhyo:ri4w7kx38cn0@198.23.239.134:6540"  # USA, Buffalo
+      - "http://xnrxzhyo:ri4w7kx38cn0@45.38.107.97:6014"    # UK, London
+      - "http://xnrxzhyo:ri4w7kx38cn0@107.172.163.27:6543"  # USA, Bloomingdale
+      - "http://xnrxzhyo:ri4w7kx38cn0@198.105.121.200:6462" # UK, City Of London
+      - "http://xnrxzhyo:ri4w7kx38cn0@64.137.96.74:6641"    # Spain, Madrid
+      - "http://xnrxzhyo:ri4w7kx38cn0@216.10.27.159:6837"   # USA, Dallas
+      - "http://xnrxzhyo:ri4w7kx38cn0@142.111.67.146:5611"  # Japan, Tokyo
+      - "http://xnrxzhyo:ri4w7kx38cn0@23.26.53.37:6003"     # Japan, Tokyo
     # Authentication headers for logged-in user (for live matches with actual odds)
     # Extract these from browser DevTools Network tab when making authenticated requests
     # Note: Cookies and x-app-data contain session values that may need periodic updates
@@ -261,56 +351,86 @@ parser:
     # Client will try proxies in order until one works, falls back to direct connection if all fail
     # Format: http://user:pass@ip:port or http://ip:port
     proxy_list:
-      - "http://agebhfci:o2vnwvw1phvh@31.59.20.176:6754"     # UK, London
-      - "http://agebhfci:o2vnwvw1phvh@23.95.150.145:6114"   # USA, Buffalo
-      - "http://agebhfci:o2vnwvw1phvh@198.23.239.134:6540"  # USA, Buffalo
-      - "http://agebhfci:o2vnwvw1phvh@45.38.107.97:6014"    # UK, London
-      - "http://agebhfci:o2vnwvw1phvh@107.172.163.27:6543"  # USA, Bloomingdale
-      - "http://agebhfci:o2vnwvw1phvh@198.105.121.200:6462" # UK, City Of London
-      - "http://agebhfci:o2vnwvw1phvh@64.137.96.74:6641"    # Spain, Madrid
-      - "http://agebhfci:o2vnwvw1phvh@216.10.27.159:6837"   # USA, Dallas
-      - "http://agebhfci:o2vnwvw1phvh@142.111.67.146:5611"  # Japan, Tokyo
-      - "http://agebhfci:o2vnwvw1phvh@23.229.19.94:8689"   # USA, Los Angeles
-      - "http://iyyvinsd:pw7cvj04jb5y@31.59.20.176:6754"     # UK, London
-      - "http://iyyvinsd:pw7cvj04jb5y@23.95.150.145:6114"   # USA, Buffalo
-      - "http://iyyvinsd:pw7cvj04jb5y@198.23.239.134:6540"  # USA, Buffalo
-      - "http://iyyvinsd:pw7cvj04jb5y@45.38.107.97:6014"    # UK, London
-      - "http://iyyvinsd:pw7cvj04jb5y@107.172.163.27:6543"  # USA, Bloomingdale
-      - "http://iyyvinsd:pw7cvj04jb5y@198.105.121.200:6462" # UK, City Of London
-      - "http://iyyvinsd:pw7cvj04jb5y@64.137.96.74:6641"    # Spain, Madrid
-      - "http://iyyvinsd:pw7cvj04jb5y@216.10.27.159:6837"   # USA, Dallas
-      - "http://iyyvinsd:pw7cvj04jb5y@142.111.67.146:5611"  # Japan, Tokyo
-      - "http://iyyvinsd:pw7cvj04jb5y@23.229.19.94:8689"   # USA, Los Angeles
-      - "http://mynpsowi:udo0opsm8nns@31.59.20.176:6754"     # UK, London
-      - "http://mynpsowi:udo0opsm8nns@23.95.150.145:6114"   # USA, Buffalo
-      - "http://mynpsowi:udo0opsm8nns@198.23.239.134:6540"  # USA, Buffalo
-      - "http://mynpsowi:udo0opsm8nns@45.38.107.97:6014"    # UK, London
-      - "http://mynpsowi:udo0opsm8nns@107.172.163.27:6543"  # USA, Bloomingdale
-      - "http://mynpsowi:udo0opsm8nns@198.105.121.200:6462" # UK, City Of London
-      - "http://mynpsowi:udo0opsm8nns@64.137.96.74:6641"    # Spain, Madrid
-      - "http://mynpsowi:udo0opsm8nns@216.10.27.159:6837"   # USA, Dallas
-      - "http://mynpsowi:udo0opsm8nns@142.111.67.146:5611"  # Japan, Tokyo
-      - "http://mynpsowi:udo0opsm8nns@23.229.19.94:8689"   # USA, Los Angeles
-      - "http://jxmhpefg:5vvmlgiyysoe@31.59.20.176:6754"     # UK, London
-      - "http://jxmhpefg:5vvmlgiyysoe@23.95.150.145:6114"   # USA, Buffalo
-      - "http://jxmhpefg:5vvmlgiyysoe@198.23.239.134:6540"  # USA, Buffalo
-      - "http://jxmhpefg:5vvmlgiyysoe@45.38.107.97:6014"    # UK, London
-      - "http://jxmhpefg:5vvmlgiyysoe@107.172.163.27:6543"  # USA, Bloomingdale
-      - "http://jxmhpefg:5vvmlgiyysoe@198.105.121.200:6462" # UK, City Of London
-      - "http://jxmhpefg:5vvmlgiyysoe@64.137.96.74:6641"    # Spain, Madrid
-      - "http://jxmhpefg:5vvmlgiyysoe@216.10.27.159:6837"   # USA, Dallas
-      - "http://jxmhpefg:5vvmlgiyysoe@142.111.67.146:5611"  # Japan, Tokyo
-      - "http://jxmhpefg:5vvmlgiyysoe@23.229.19.94:8689"   # USA, Los Angeles
-      - "http://iksvayqz:jpv44vn6mavo@31.59.20.176:6754"     # UK, London
-      - "http://iksvayqz:jpv44vn6mavo@23.95.150.145:6114"   # USA, Buffalo
-      - "http://iksvayqz:jpv44vn6mavo@198.23.239.134:6540"  # USA, Buffalo
-      - "http://iksvayqz:jpv44vn6mavo@45.38.107.97:6014"    # UK, London
-      - "http://iksvayqz:jpv44vn6mavo@107.172.163.27:6543"  # USA, Bloomingdale
-      - "http://iksvayqz:jpv44vn6mavo@198.105.121.200:6462" # UK, City Of London
-      - "http://iksvayqz:jpv44vn6mavo@64.137.96.74:6641"    # Spain, Madrid
-      - "http://iksvayqz:jpv44vn6mavo@216.10.27.159:6837"   # USA, Dallas
-      - "http://iksvayqz:jpv44vn6mavo@142.111.67.146:5611"  # Japan, Tokyo
-      - "http://iksvayqz:jpv44vn6mavo@23.229.19.94:8689"   # USA, Los Angeles
+      - "http://tqgraarj:bqb0e1ka8roi@31.59.20.176:6754"     # UK, London
+      - "http://tqgraarj:bqb0e1ka8roi@23.95.150.145:6114"   # USA, Buffalo
+      - "http://tqgraarj:bqb0e1ka8roi@198.23.239.134:6540"  # USA, Buffalo
+      - "http://tqgraarj:bqb0e1ka8roi@45.38.107.97:6014"    # UK, London
+      - "http://tqgraarj:bqb0e1ka8roi@107.172.163.27:6543"  # USA, Bloomingdale
+      - "http://tqgraarj:bqb0e1ka8roi@198.105.121.200:6462" # UK, City Of London
+      - "http://tqgraarj:bqb0e1ka8roi@64.137.96.74:6641"    # Spain, Madrid
+      - "http://tqgraarj:bqb0e1ka8roi@216.10.27.159:6837"   # USA, Dallas
+      - "http://tqgraarj:bqb0e1ka8roi@142.111.67.146:5611"  # Japan, Tokyo
+      - "http://tqgraarj:bqb0e1ka8roi@23.26.53.37:6003"     # Japan, Tokyo
+      - "http://qsqvqfqj:fsdt1fhss7wh@31.59.20.176:6754"     # UK, London
+      - "http://qsqvqfqj:fsdt1fhss7wh@23.95.150.145:6114"   # USA, Buffalo
+      - "http://qsqvqfqj:fsdt1fhss7wh@198.23.239.134:6540"  # USA, Buffalo
+      - "http://qsqvqfqj:fsdt1fhss7wh@45.38.107.97:6014"    # UK, London
+      - "http://qsqvqfqj:fsdt1fhss7wh@107.172.163.27:6543"  # USA, Bloomingdale
+      - "http://qsqvqfqj:fsdt1fhss7wh@198.105.121.200:6462" # UK, City Of London
+      - "http://qsqvqfqj:fsdt1fhss7wh@64.137.96.74:6641"    # Spain, Madrid
+      - "http://qsqvqfqj:fsdt1fhss7wh@216.10.27.159:6837"   # USA, Dallas
+      - "http://qsqvqfqj:fsdt1fhss7wh@142.111.67.146:5611"  # Japan, Tokyo
+      - "http://qsqvqfqj:fsdt1fhss7wh@23.26.53.37:6003"     # Japan, Tokyo
+      - "http://hytyooqz:8oocf7phimo0@31.59.20.176:6754"     # UK, London
+      - "http://hytyooqz:8oocf7phimo0@23.95.150.145:6114"   # USA, Buffalo
+      - "http://hytyooqz:8oocf7phimo0@198.23.239.134:6540"  # USA, Buffalo
+      - "http://hytyooqz:8oocf7phimo0@45.38.107.97:6014"    # UK, London
+      - "http://hytyooqz:8oocf7phimo0@107.172.163.27:6543"  # USA, Bloomingdale
+      - "http://hytyooqz:8oocf7phimo0@198.105.121.200:6462" # UK, City Of London
+      - "http://hytyooqz:8oocf7phimo0@64.137.96.74:6641"    # Spain, Madrid
+      - "http://hytyooqz:8oocf7phimo0@216.10.27.159:6837"   # USA, Dallas
+      - "http://hytyooqz:8oocf7phimo0@142.111.67.146:5611"  # Japan, Tokyo
+      - "http://hytyooqz:8oocf7phimo0@23.26.53.37:6003"     # Japan, Tokyo
+      - "http://bxgyvhws:s5zl3osx5x0h@31.59.20.176:6754"     # UK, London
+      - "http://bxgyvhws:s5zl3osx5x0h@23.95.150.145:6114"   # USA, Buffalo
+      - "http://bxgyvhws:s5zl3osx5x0h@198.23.239.134:6540"  # USA, Buffalo
+      - "http://bxgyvhws:s5zl3osx5x0h@45.38.107.97:6014"    # UK, London
+      - "http://bxgyvhws:s5zl3osx5x0h@107.172.163.27:6543"  # USA, Bloomingdale
+      - "http://bxgyvhws:s5zl3osx5x0h@198.105.121.200:6462" # UK, City Of London
+      - "http://bxgyvhws:s5zl3osx5x0h@64.137.96.74:6641"    # Spain, Madrid
+      - "http://bxgyvhws:s5zl3osx5x0h@216.10.27.159:6837"   # USA, Dallas
+      - "http://bxgyvhws:s5zl3osx5x0h@142.111.67.146:5611"  # Japan, Tokyo
+      - "http://bxgyvhws:s5zl3osx5x0h@23.26.53.37:6003"     # Japan, Tokyo
+      - "http://xylhhpxt:qglsonken9nd@31.59.20.176:6754"     # UK, London
+      - "http://xylhhpxt:qglsonken9nd@23.95.150.145:6114"   # USA, Buffalo
+      - "http://xylhhpxt:qglsonken9nd@198.23.239.134:6540"  # USA, Buffalo
+      - "http://xylhhpxt:qglsonken9nd@45.38.107.97:6014"    # UK, London
+      - "http://xylhhpxt:qglsonken9nd@107.172.163.27:6543"  # USA, Bloomingdale
+      - "http://xylhhpxt:qglsonken9nd@198.105.121.200:6462" # UK, City Of London
+      - "http://xylhhpxt:qglsonken9nd@64.137.96.74:6641"    # Spain, Madrid
+      - "http://xylhhpxt:qglsonken9nd@216.10.27.159:6837"   # USA, Dallas
+      - "http://xylhhpxt:qglsonken9nd@142.111.67.146:5611"  # Japan, Tokyo
+      - "http://xylhhpxt:qglsonken9nd@23.26.53.37:6003"     # Japan, Tokyo
+      - "http://qrcsdgzf:2xed09nyocm7@31.59.20.176:6754"     # UK, London
+      - "http://qrcsdgzf:2xed09nyocm7@23.95.150.145:6114"   # USA, Buffalo
+      - "http://qrcsdgzf:2xed09nyocm7@198.23.239.134:6540"  # USA, Buffalo
+      - "http://qrcsdgzf:2xed09nyocm7@45.38.107.97:6014"    # UK, London
+      - "http://qrcsdgzf:2xed09nyocm7@107.172.163.27:6543"  # USA, Bloomingdale
+      - "http://qrcsdgzf:2xed09nyocm7@198.105.121.200:6462" # UK, City Of London
+      - "http://qrcsdgzf:2xed09nyocm7@64.137.96.74:6641"    # Spain, Madrid
+      - "http://qrcsdgzf:2xed09nyocm7@216.10.27.159:6837"   # USA, Dallas
+      - "http://qrcsdgzf:2xed09nyocm7@142.111.67.146:5611"  # Japan, Tokyo
+      - "http://qrcsdgzf:2xed09nyocm7@23.26.53.37:6003"     # Japan, Tokyo
+      - "http://dcbqeegx:2i4rojbgunid@31.59.20.176:6754"     # UK, London
+      - "http://dcbqeegx:2i4rojbgunid@23.95.150.145:6114"   # USA, Buffalo
+      - "http://dcbqeegx:2i4rojbgunid@198.23.239.134:6540"  # USA, Buffalo
+      - "http://dcbqeegx:2i4rojbgunid@45.38.107.97:6014"    # UK, London
+      - "http://dcbqeegx:2i4rojbgunid@107.172.163.27:6543"  # USA, Bloomingdale
+      - "http://dcbqeegx:2i4rojbgunid@198.105.121.200:6462" # UK, City Of London
+      - "http://dcbqeegx:2i4rojbgunid@64.137.96.74:6641"    # Spain, Madrid
+      - "http://dcbqeegx:2i4rojbgunid@216.10.27.159:6837"   # USA, Dallas
+      - "http://dcbqeegx:2i4rojbgunid@142.111.67.146:5611"  # Japan, Tokyo
+      - "http://dcbqeegx:2i4rojbgunid@23.26.53.37:6003"     # Japan, Tokyo
+      - "http://xnrxzhyo:ri4w7kx38cn0@31.59.20.176:6754"     # UK, London
+      - "http://xnrxzhyo:ri4w7kx38cn0@23.95.150.145:6114"   # USA, Buffalo
+      - "http://xnrxzhyo:ri4w7kx38cn0@198.23.239.134:6540"  # USA, Buffalo
+      - "http://xnrxzhyo:ri4w7kx38cn0@45.38.107.97:6014"    # UK, London
+      - "http://xnrxzhyo:ri4w7kx38cn0@107.172.163.27:6543"  # USA, Bloomingdale
+      - "http://xnrxzhyo:ri4w7kx38cn0@198.105.121.200:6462" # UK, City Of London
+      - "http://xnrxzhyo:ri4w7kx38cn0@64.137.96.74:6641"    # Spain, Madrid
+      - "http://xnrxzhyo:ri4w7kx38cn0@216.10.27.159:6837"   # USA, Dallas
+      - "http://xnrxzhyo:ri4w7kx38cn0@142.111.67.146:5611"  # Japan, Tokyo
+      - "http://xnrxzhyo:ri4w7kx38cn0@23.26.53.37:6003"     # Japan, Tokyo
 
   # Zenit (zenitnow549.top) line API — основная линия + расширенная (угловые, фолы, карточки) по запросу на матч
   zenit:
@@ -332,56 +452,86 @@ parser:
     # Client will try proxies in order until one works, falls back to direct connection if all fail
     # Format: http://user:pass@ip:port or http://ip:port
     proxy_list:
-      - "http://agebhfci:o2vnwvw1phvh@31.59.20.176:6754"     # UK, London
-      - "http://agebhfci:o2vnwvw1phvh@23.95.150.145:6114"   # USA, Buffalo
-      - "http://agebhfci:o2vnwvw1phvh@198.23.239.134:6540"  # USA, Buffalo
-      - "http://agebhfci:o2vnwvw1phvh@45.38.107.97:6014"    # UK, London
-      - "http://agebhfci:o2vnwvw1phvh@107.172.163.27:6543"  # USA, Bloomingdale
-      - "http://agebhfci:o2vnwvw1phvh@198.105.121.200:6462" # UK, City Of London
-      - "http://agebhfci:o2vnwvw1phvh@64.137.96.74:6641"    # Spain, Madrid
-      - "http://agebhfci:o2vnwvw1phvh@216.10.27.159:6837"   # USA, Dallas
-      - "http://agebhfci:o2vnwvw1phvh@142.111.67.146:5611"  # Japan, Tokyo
-      - "http://agebhfci:o2vnwvw1phvh@23.229.19.94:8689"   # USA, Los Angeles
-      - "http://iyyvinsd:pw7cvj04jb5y@31.59.20.176:6754"     # UK, London
-      - "http://iyyvinsd:pw7cvj04jb5y@23.95.150.145:6114"   # USA, Buffalo
-      - "http://iyyvinsd:pw7cvj04jb5y@198.23.239.134:6540"  # USA, Buffalo
-      - "http://iyyvinsd:pw7cvj04jb5y@45.38.107.97:6014"    # UK, London
-      - "http://iyyvinsd:pw7cvj04jb5y@107.172.163.27:6543"  # USA, Bloomingdale
-      - "http://iyyvinsd:pw7cvj04jb5y@198.105.121.200:6462" # UK, City Of London
-      - "http://iyyvinsd:pw7cvj04jb5y@64.137.96.74:6641"    # Spain, Madrid
-      - "http://iyyvinsd:pw7cvj04jb5y@216.10.27.159:6837"   # USA, Dallas
-      - "http://iyyvinsd:pw7cvj04jb5y@142.111.67.146:5611"  # Japan, Tokyo
-      - "http://iyyvinsd:pw7cvj04jb5y@23.229.19.94:8689"   # USA, Los Angeles
-      - "http://mynpsowi:udo0opsm8nns@31.59.20.176:6754"     # UK, London
-      - "http://mynpsowi:udo0opsm8nns@23.95.150.145:6114"   # USA, Buffalo
-      - "http://mynpsowi:udo0opsm8nns@198.23.239.134:6540"  # USA, Buffalo
-      - "http://mynpsowi:udo0opsm8nns@45.38.107.97:6014"    # UK, London
-      - "http://mynpsowi:udo0opsm8nns@107.172.163.27:6543"  # USA, Bloomingdale
-      - "http://mynpsowi:udo0opsm8nns@198.105.121.200:6462" # UK, City Of London
-      - "http://mynpsowi:udo0opsm8nns@64.137.96.74:6641"    # Spain, Madrid
-      - "http://mynpsowi:udo0opsm8nns@216.10.27.159:6837"   # USA, Dallas
-      - "http://mynpsowi:udo0opsm8nns@142.111.67.146:5611"  # Japan, Tokyo
-      - "http://mynpsowi:udo0opsm8nns@23.229.19.94:8689"   # USA, Los Angeles
-      - "http://jxmhpefg:5vvmlgiyysoe@31.59.20.176:6754"     # UK, London
-      - "http://jxmhpefg:5vvmlgiyysoe@23.95.150.145:6114"   # USA, Buffalo
-      - "http://jxmhpefg:5vvmlgiyysoe@198.23.239.134:6540"  # USA, Buffalo
-      - "http://jxmhpefg:5vvmlgiyysoe@45.38.107.97:6014"    # UK, London
-      - "http://jxmhpefg:5vvmlgiyysoe@107.172.163.27:6543"  # USA, Bloomingdale
-      - "http://jxmhpefg:5vvmlgiyysoe@198.105.121.200:6462" # UK, City Of London
-      - "http://jxmhpefg:5vvmlgiyysoe@64.137.96.74:6641"    # Spain, Madrid
-      - "http://jxmhpefg:5vvmlgiyysoe@216.10.27.159:6837"   # USA, Dallas
-      - "http://jxmhpefg:5vvmlgiyysoe@142.111.67.146:5611"  # Japan, Tokyo
-      - "http://jxmhpefg:5vvmlgiyysoe@23.229.19.94:8689"   # USA, Los Angeles
-      - "http://iksvayqz:jpv44vn6mavo@31.59.20.176:6754"     # UK, London
-      - "http://iksvayqz:jpv44vn6mavo@23.95.150.145:6114"   # USA, Buffalo
-      - "http://iksvayqz:jpv44vn6mavo@198.23.239.134:6540"  # USA, Buffalo
-      - "http://iksvayqz:jpv44vn6mavo@45.38.107.97:6014"    # UK, London
-      - "http://iksvayqz:jpv44vn6mavo@107.172.163.27:6543"  # USA, Bloomingdale
-      - "http://iksvayqz:jpv44vn6mavo@198.105.121.200:6462" # UK, City Of London
-      - "http://iksvayqz:jpv44vn6mavo@64.137.96.74:6641"    # Spain, Madrid
-      - "http://iksvayqz:jpv44vn6mavo@216.10.27.159:6837"   # USA, Dallas
-      - "http://iksvayqz:jpv44vn6mavo@142.111.67.146:5611"  # Japan, Tokyo
-      - "http://iksvayqz:jpv44vn6mavo@23.229.19.94:8689"   # USA, Los Angeles
+      - "http://tqgraarj:bqb0e1ka8roi@31.59.20.176:6754"     # UK, London
+      - "http://tqgraarj:bqb0e1ka8roi@23.95.150.145:6114"   # USA, Buffalo
+      - "http://tqgraarj:bqb0e1ka8roi@198.23.239.134:6540"  # USA, Buffalo
+      - "http://tqgraarj:bqb0e1ka8roi@45.38.107.97:6014"    # UK, London
+      - "http://tqgraarj:bqb0e1ka8roi@107.172.163.27:6543"  # USA, Bloomingdale
+      - "http://tqgraarj:bqb0e1ka8roi@198.105.121.200:6462" # UK, City Of London
+      - "http://tqgraarj:bqb0e1ka8roi@64.137.96.74:6641"    # Spain, Madrid
+      - "http://tqgraarj:bqb0e1ka8roi@216.10.27.159:6837"   # USA, Dallas
+      - "http://tqgraarj:bqb0e1ka8roi@142.111.67.146:5611"  # Japan, Tokyo
+      - "http://tqgraarj:bqb0e1ka8roi@23.26.53.37:6003"     # Japan, Tokyo
+      - "http://qsqvqfqj:fsdt1fhss7wh@31.59.20.176:6754"     # UK, London
+      - "http://qsqvqfqj:fsdt1fhss7wh@23.95.150.145:6114"   # USA, Buffalo
+      - "http://qsqvqfqj:fsdt1fhss7wh@198.23.239.134:6540"  # USA, Buffalo
+      - "http://qsqvqfqj:fsdt1fhss7wh@45.38.107.97:6014"    # UK, London
+      - "http://qsqvqfqj:fsdt1fhss7wh@107.172.163.27:6543"  # USA, Bloomingdale
+      - "http://qsqvqfqj:fsdt1fhss7wh@198.105.121.200:6462" # UK, City Of London
+      - "http://qsqvqfqj:fsdt1fhss7wh@64.137.96.74:6641"    # Spain, Madrid
+      - "http://qsqvqfqj:fsdt1fhss7wh@216.10.27.159:6837"   # USA, Dallas
+      - "http://qsqvqfqj:fsdt1fhss7wh@142.111.67.146:5611"  # Japan, Tokyo
+      - "http://qsqvqfqj:fsdt1fhss7wh@23.26.53.37:6003"     # Japan, Tokyo
+      - "http://hytyooqz:8oocf7phimo0@31.59.20.176:6754"     # UK, London
+      - "http://hytyooqz:8oocf7phimo0@23.95.150.145:6114"   # USA, Buffalo
+      - "http://hytyooqz:8oocf7phimo0@198.23.239.134:6540"  # USA, Buffalo
+      - "http://hytyooqz:8oocf7phimo0@45.38.107.97:6014"    # UK, London
+      - "http://hytyooqz:8oocf7phimo0@107.172.163.27:6543"  # USA, Bloomingdale
+      - "http://hytyooqz:8oocf7phimo0@198.105.121.200:6462" # UK, City Of London
+      - "http://hytyooqz:8oocf7phimo0@64.137.96.74:6641"    # Spain, Madrid
+      - "http://hytyooqz:8oocf7phimo0@216.10.27.159:6837"   # USA, Dallas
+      - "http://hytyooqz:8oocf7phimo0@142.111.67.146:5611"  # Japan, Tokyo
+      - "http://hytyooqz:8oocf7phimo0@23.26.53.37:6003"     # Japan, Tokyo
+      - "http://bxgyvhws:s5zl3osx5x0h@31.59.20.176:6754"     # UK, London
+      - "http://bxgyvhws:s5zl3osx5x0h@23.95.150.145:6114"   # USA, Buffalo
+      - "http://bxgyvhws:s5zl3osx5x0h@198.23.239.134:6540"  # USA, Buffalo
+      - "http://bxgyvhws:s5zl3osx5x0h@45.38.107.97:6014"    # UK, London
+      - "http://bxgyvhws:s5zl3osx5x0h@107.172.163.27:6543"  # USA, Bloomingdale
+      - "http://bxgyvhws:s5zl3osx5x0h@198.105.121.200:6462" # UK, City Of London
+      - "http://bxgyvhws:s5zl3osx5x0h@64.137.96.74:6641"    # Spain, Madrid
+      - "http://bxgyvhws:s5zl3osx5x0h@216.10.27.159:6837"   # USA, Dallas
+      - "http://bxgyvhws:s5zl3osx5x0h@142.111.67.146:5611"  # Japan, Tokyo
+      - "http://bxgyvhws:s5zl3osx5x0h@23.26.53.37:6003"     # Japan, Tokyo
+      - "http://xylhhpxt:qglsonken9nd@31.59.20.176:6754"     # UK, London
+      - "http://xylhhpxt:qglsonken9nd@23.95.150.145:6114"   # USA, Buffalo
+      - "http://xylhhpxt:qglsonken9nd@198.23.239.134:6540"  # USA, Buffalo
+      - "http://xylhhpxt:qglsonken9nd@45.38.107.97:6014"    # UK, London
+      - "http://xylhhpxt:qglsonken9nd@107.172.163.27:6543"  # USA, Bloomingdale
+      - "http://xylhhpxt:qglsonken9nd@198.105.121.200:6462" # UK, City Of London
+      - "http://xylhhpxt:qglsonken9nd@64.137.96.74:6641"    # Spain, Madrid
+      - "http://xylhhpxt:qglsonken9nd@216.10.27.159:6837"   # USA, Dallas
+      - "http://xylhhpxt:qglsonken9nd@142.111.67.146:5611"  # Japan, Tokyo
+      - "http://xylhhpxt:qglsonken9nd@23.26.53.37:6003"     # Japan, Tokyo
+      - "http://qrcsdgzf:2xed09nyocm7@31.59.20.176:6754"     # UK, London
+      - "http://qrcsdgzf:2xed09nyocm7@23.95.150.145:6114"   # USA, Buffalo
+      - "http://qrcsdgzf:2xed09nyocm7@198.23.239.134:6540"  # USA, Buffalo
+      - "http://qrcsdgzf:2xed09nyocm7@45.38.107.97:6014"    # UK, London
+      - "http://qrcsdgzf:2xed09nyocm7@107.172.163.27:6543"  # USA, Bloomingdale
+      - "http://qrcsdgzf:2xed09nyocm7@198.105.121.200:6462" # UK, City Of London
+      - "http://qrcsdgzf:2xed09nyocm7@64.137.96.74:6641"    # Spain, Madrid
+      - "http://qrcsdgzf:2xed09nyocm7@216.10.27.159:6837"   # USA, Dallas
+      - "http://qrcsdgzf:2xed09nyocm7@142.111.67.146:5611"  # Japan, Tokyo
+      - "http://qrcsdgzf:2xed09nyocm7@23.26.53.37:6003"     # Japan, Tokyo
+      - "http://dcbqeegx:2i4rojbgunid@31.59.20.176:6754"     # UK, London
+      - "http://dcbqeegx:2i4rojbgunid@23.95.150.145:6114"   # USA, Buffalo
+      - "http://dcbqeegx:2i4rojbgunid@198.23.239.134:6540"  # USA, Buffalo
+      - "http://dcbqeegx:2i4rojbgunid@45.38.107.97:6014"    # UK, London
+      - "http://dcbqeegx:2i4rojbgunid@107.172.163.27:6543"  # USA, Bloomingdale
+      - "http://dcbqeegx:2i4rojbgunid@198.105.121.200:6462" # UK, City Of London
+      - "http://dcbqeegx:2i4rojbgunid@64.137.96.74:6641"    # Spain, Madrid
+      - "http://dcbqeegx:2i4rojbgunid@216.10.27.159:6837"   # USA, Dallas
+      - "http://dcbqeegx:2i4rojbgunid@142.111.67.146:5611"  # Japan, Tokyo
+      - "http://dcbqeegx:2i4rojbgunid@23.26.53.37:6003"     # Japan, Tokyo
+      - "http://xnrxzhyo:ri4w7kx38cn0@31.59.20.176:6754"     # UK, London
+      - "http://xnrxzhyo:ri4w7kx38cn0@23.95.150.145:6114"   # USA, Buffalo
+      - "http://xnrxzhyo:ri4w7kx38cn0@198.23.239.134:6540"  # USA, Buffalo
+      - "http://xnrxzhyo:ri4w7kx38cn0@45.38.107.97:6014"    # UK, London
+      - "http://xnrxzhyo:ri4w7kx38cn0@107.172.163.27:6543"  # USA, Bloomingdale
+      - "http://xnrxzhyo:ri4w7kx38cn0@198.105.121.200:6462" # UK, City Of London
+      - "http://xnrxzhyo:ri4w7kx38cn0@64.137.96.74:6641"    # Spain, Madrid
+      - "http://xnrxzhyo:ri4w7kx38cn0@216.10.27.159:6837"   # USA, Dallas
+      - "http://xnrxzhyo:ri4w7kx38cn0@142.111.67.146:5611"  # Japan, Tokyo
+      - "http://xnrxzhyo:ri4w7kx38cn0@23.26.53.37:6003"     # Japan, Tokyo
 
 health:
   # HTTP server settings

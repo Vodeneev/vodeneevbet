@@ -1,5 +1,9 @@
 # vm-core-services: Calculator + nginx reverse proxy (public :80)
 
+networks:
+  default:
+    name: vodeneevbet-core
+
 services:
   calculator:
     image: ghcr.io/${IMAGE_OWNER}/vodeneevbet-calculator:${IMAGE_TAG}
@@ -47,8 +51,9 @@ services:
     restart: unless-stopped
     depends_on:
       - calculator
+      - nginx
     environment:
       - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
-      - CALCULATOR_URL=http://calculator:8080
+      - CALCULATOR_URL=http://nginx
     # Optional: restrict access to specific users
     # command: ["-allowed-users", "123456789,987654321"]

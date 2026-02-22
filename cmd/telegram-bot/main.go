@@ -246,6 +246,8 @@ func handleMessage(bot *tgbotapi.BotAPI, message *tgbotapi.Message, config BotCo
 			stopAlertType(bot, message.Chat.ID, config, "values", "Алерты по валуям отключены.")
 		case "/stop_overlays":
 			stopAlertType(bot, message.Chat.ID, config, "overlays", "Алерты по прогрузам отключены.")
+		case "/cleardb":
+			clearDBAndSendResult(bot, message.Chat.ID, config)
 		default:
 			msg := tgbotapi.NewMessage(message.Chat.ID, "Unknown command. Use /help to see available commands.")
 			if _, err := bot.Send(msg); err != nil {
@@ -322,6 +324,8 @@ func sendHelpMessage(bot *tgbotapi.BotAPI, chatID int64) {
 /overlays [limit] - Get top line movements (прогрузы)
   Example: /overlays 10
 
+/cleardb - Очистить таблицы БД (diff\_bets, odds\_snapshots, odds\_snapshot\_history)
+
 /help - Show this help message
 
 *Usage:*
@@ -337,6 +341,42 @@ You can also send messages like:
 	msg.ParseMode = tgbotapi.ModeMarkdown
 	if _, err := bot.Send(msg); err != nil {
 		slog.Error("Failed to send help message", "chat_id", chatID, "error", err)
+	}
+}
+
+func clearDBAndSendResult(bot *tgbotapi.BotAPI, chatID int64, config BotConfig) {
+	typing := tgbotapi.NewChatAction(chatID, tgbotapi.ChatTyping)
+	_, _ = bot.Request(typing)
+
+	url := strings.TrimSuffix(config.CalculatorURL, "/") + "/db/clear"
+	client := &http.Client{Timeout: 65 * time.Second}
+	resp, err := client.Post(url, "application/json", nil)
+	if err != nil {
+		msg := tgbotapi.NewMessage(chatID, "❌ Ошибка: не удалось подключиться к калькулятору: "+err.Error())
+		_, _ = bot.Send(msg)
+		return
+	}
+	defer resp.Body.Close()
+
+	body, _ := io.ReadAll(resp.Body)
+	var result map[string]interface{}
+	_ = json.Unmarshal(body, &result)
+
+	if resp.StatusCode == http.StatusOK {
+		m, _ := result["message"].(string)
+		if m == "" {
+			m = "Таблицы БД очищены."
+		}
+		msg := tgbotapi.NewMessage(chatID, "✅ "+m)
+		_, _ = bot.Send(msg)
+	} else {
+		errStr, _ := result["error"].(string)
+		msgStr, _ := result["message"].(string)
+		if errStr == "" {
+			errStr = string(body)
+		}
+		msg := tgbotapi.NewMessage(chatID, "❌ Ошибка: "+msgStr+" — "+errStr)
+		_, _ = bot.Send(msg)
 	}
 }
 

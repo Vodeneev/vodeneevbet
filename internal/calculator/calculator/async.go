@@ -1,8 +1,10 @@
 package calculator
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
+	"time"
 )
 
 // handleStopAsync stops asynchronous processing
@@ -148,5 +150,51 @@ func (c *ValueCalculator) handleClearNotificationQueue(w http.ResponseWriter, r 
 		"status":  "ok",
 		"cleared": dropped,
 		"message": "Notification queue cleared",
+	})
+}
+
+// handleClearDB truncates diff_bets, odds_snapshots, odds_snapshot_history (full DB cleanup).
+func (c *ValueCalculator) handleClearDB(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		_ = json.NewEncoder(w).Encode(map[string]string{"error": "method not allowed, use POST"})
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), 60*time.Second)
+	defer cancel()
+
+	if c.diffStorage == nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"status": "ok",
+			"message": "Diff storage not configured (nothing to clear)",
+		})
+		return
+	}
+
+	if err := c.diffStorage.CleanDiffBets(ctx); err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		_ = json.NewEncoder(w).Encode(map[string]any{"error": err.Error(), "message": "Failed to clear diff_bets"})
+		return
+	}
+
+	if c.oddsSnapshotStorage != nil {
+		if err := c.oddsSnapshotStorage.CleanAll(ctx); err != nil {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusInternalServerError)
+			_ = json.NewEncoder(w).Encode(map[string]any{"error": err.Error(), "message": "Failed to clear odds tables"})
+			return
+		}
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	_ = json.NewEncoder(w).Encode(map[string]any{
+		"status":  "ok",
+		"message": "Database tables cleared (diff_bets, odds_snapshots, odds_snapshot_history)",
 	})
 }

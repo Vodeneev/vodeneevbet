@@ -13,4 +13,5 @@ func (c *ValueCalculator) RegisterHTTP(mux *http.ServeMux) {
 	mux.HandleFunc("/async/stop_overlays", c.handleStopAsyncLineMovements)
 	mux.HandleFunc("/async/start", c.handleStartAsync)
 	mux.HandleFunc("/notifications/clear", c.handleClearNotificationQueue)
+	mux.HandleFunc("/db/clear", c.handleClearDB)
 }

@@ -353,6 +353,17 @@ func (s *PostgresOddsSnapshotStorage) CleanSnapshotsForStartedMatches(ctx contex
 	return nil
 }
 
+// CleanAll truncates odds_snapshots and odds_snapshot_history (full clear for periodic DB cleanup).
+func (s *PostgresOddsSnapshotStorage) CleanAll(ctx context.Context) error {
+	for _, table := range []string{"odds_snapshots", "odds_snapshot_history"} {
+		if _, err := s.db.ExecContext(ctx, "TRUNCATE TABLE "+table+" RESTART IDENTITY"); err != nil {
+			return fmt.Errorf("failed to truncate %s: %w", table, err)
+		}
+		slog.Info("Truncated table", "table", table)
+	}
+	return nil
+}
+
 // Close closes the database connection.
 func (s *PostgresOddsSnapshotStorage) Close() error {
 	return s.db.Close()

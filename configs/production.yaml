@@ -576,6 +576,9 @@ value_calculator:
   line_movement_alert_threshold: 20.0   # Min change in % to alert (e.g. 5 = 5%; 1.9->1.5 ~21% vs 9.5->9.1 ~4%)
   line_movement_telegram_alerts: true   # Send line movement alerts to Telegram (прогрузы)
 
+  # Full DB cleanup: truncate diff_bets, odds_snapshots, odds_snapshot_history (only actual data needed)
+  db_full_cleanup_interval: 2h     # e.g. "2h", "1h30m"; empty = use default 2h; set to very large to disable
+
 logging:
   # Yandex Cloud Logging settings
   enabled: true                    # Enable sending logs to Yandex Cloud Logging

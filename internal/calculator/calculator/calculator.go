@@ -59,6 +59,14 @@ func (c *ValueCalculator) Start(ctx context.Context) error {
 		c.asyncMu.Unlock()
 
 		c.StartAsync()
+
+		// Periodic full DB cleanup (interval from config; default 2h; empty = disabled)
+		if c.diffStorage != nil {
+			interval := parseDBFullCleanupInterval(c.cfg)
+			if interval > 0 {
+				go c.runPeriodicDBCleanup(ctx, interval)
+			}
+		}
 	} else {
 		slog.Info("Async processing disabled, running in on-demand mode")
 	}
@@ -69,6 +77,51 @@ func (c *ValueCalculator) Start(ctx context.Context) error {
 	c.StopAsync(true) // true = shutdown, stop notifier too
 
 	return nil
+}
+
+func parseDBFullCleanupInterval(cfg *config.ValueCalculatorConfig) time.Duration {
+	if cfg == nil {
+		return 2 * time.Hour
+	}
+	s := cfg.DBFullCleanupInterval
+	if s == "" {
+		return 2 * time.Hour
+	}
+	d, err := time.ParseDuration(s)
+	if err != nil || d <= 0 {
+		slog.Warn("Invalid db_full_cleanup_interval, using default 2h", "value", s, "error", err)
+		return 2 * time.Hour
+	}
+	return d
+}
+
+// runPeriodicDBCleanup runs full cleanup of diff_bets and odds tables at the given interval.
+func (c *ValueCalculator) runPeriodicDBCleanup(ctx context.Context, interval time.Duration) {
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+	slog.Info("Periodic DB cleanup started", "interval", interval)
+	for {
+		select {
+		case <-ctx.Done():
+			slog.Info("Periodic DB cleanup stopped")
+			return
+		case <-ticker.C:
+			cleanCtx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+			if err := c.diffStorage.CleanDiffBets(cleanCtx); err != nil {
+				slog.Error("Periodic cleanup: CleanDiffBets failed", "error", err)
+			} else {
+				slog.Info("Periodic cleanup: diff_bets cleared")
+			}
+			if c.oddsSnapshotStorage != nil {
+				if err := c.oddsSnapshotStorage.CleanAll(cleanCtx); err != nil {
+					slog.Error("Periodic cleanup: odds CleanAll failed", "error", err)
+				} else {
+					slog.Info("Periodic cleanup: odds_snapshots and odds_snapshot_history cleared")
+				}
+			}
+			cancel()
+		}
+	}
 }
 
 // StartAsync starts or restarts the asynchronous processing

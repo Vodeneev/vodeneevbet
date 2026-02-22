@@ -140,5 +140,7 @@ type OddsSnapshotStorage interface {
 	ResetExtremesAfterAlert(ctx context.Context, matchGroupKey, betKey, bookmaker string) error
 	// CleanSnapshotsForStartedMatches deletes snapshots and history for matches that have already started (start_time < now)
 	CleanSnapshotsForStartedMatches(ctx context.Context) error
+	// CleanAll truncates odds_snapshots and odds_snapshot_history (full clear for periodic DB cleanup).
+	CleanAll(ctx context.Context) error
 	Close() error
 }

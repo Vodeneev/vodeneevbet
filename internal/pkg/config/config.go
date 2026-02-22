@@ -148,6 +148,9 @@ type ValueCalculatorConfig struct {
 	LineMovementEnabled           bool    `yaml:"line_movement_enabled"`             // Enable tracking of odds changes in same bookmaker
 	LineMovementAlertThreshold    float64 `yaml:"line_movement_alert_threshold"`     // Min change in % to alert, e.g. 5.0 for 5%
 	LineMovementTelegramAlerts    bool    `yaml:"line_movement_telegram_alerts"`     // Send line movement alerts to Telegram (default: false to avoid spam; tracking still runs if line_movement_enabled)
+
+	// DB full cleanup: truncate diff_bets, odds_snapshots, odds_snapshot_history periodically (only actual data needed)
+	DBFullCleanupInterval string `yaml:"db_full_cleanup_interval"` // e.g. "2h"; default: "2h"; empty = disabled
 }
 
 type HealthConfig struct {

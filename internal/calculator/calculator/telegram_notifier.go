@@ -44,13 +44,16 @@ type TelegramNotifier struct {
 	chatID   int64
 	mu       sync.Mutex
 	lastSend time.Time
-	
+
 	// Async queue for sending messages
 	queue     chan queuedMessage
 	queueDone chan struct{}
 	wg        sync.WaitGroup
 	ctx       context.Context
 	cancel    context.CancelFunc
+
+	// clearCh: send a channel here; messageSender drains queue then sends dropped count and closes
+	clearCh chan chan int
 }
 
 // NewTelegramNotifier creates a new Telegram notifier
@@ -73,12 +76,13 @@ func NewTelegramNotifier(token string, chatID int64) *TelegramNotifier {
 	ctx, cancel := context.WithCancel(context.Background())
 	
 	notifier := &TelegramNotifier{
-		bot:      bot,
-		chatID:   chatID,
-		queue:    make(chan queuedMessage, 100), // Buffer up to 100 messages
+		bot:       bot,
+		chatID:    chatID,
+		queue:     make(chan queuedMessage, 100), // Buffer up to 100 messages
 		queueDone: make(chan struct{}),
-		ctx:      ctx,
-		cancel:   cancel,
+		ctx:       ctx,
+		cancel:    cancel,
+		clearCh:   make(chan chan int),
 	}
 
 	// Start background worker for sending messages
@@ -98,10 +102,31 @@ func (n *TelegramNotifier) QueueLen() int {
 	return len(n.queue)
 }
 
+// ClearQueue drains the notification queue without sending. Pending alerts are dropped.
+// Returns the number of messages that were dropped. Safe to call if notifier is nil.
+func (n *TelegramNotifier) ClearQueue() int {
+	if n == nil || n.clearCh == nil {
+		return 0
+	}
+	select {
+	case <-n.ctx.Done():
+		return 0
+	default:
+	}
+	respCh := make(chan int)
+	select {
+	case n.clearCh <- respCh:
+		return <-respCh
+	default:
+		return 0
+	}
+}
+
 // messageSender runs in background and sends queued messages with proper intervals
 func (n *TelegramNotifier) messageSender() {
 	defer n.wg.Done()
-	
+
+outer:
 	for {
 		select {
 		case <-n.ctx.Done():
@@ -113,6 +138,22 @@ func (n *TelegramNotifier) messageSender() {
 				default:
 					close(n.queueDone)
 					return
+				}
+			}
+		case respCh := <-n.clearCh:
+			// Clear queue: drain without sending
+			drained := 0
+			for {
+				select {
+				case <-n.queue:
+					drained++
+				default:
+					if drained > 0 {
+						slog.Info("Telegram notifier: queue cleared", "dropped_messages", drained)
+					}
+					respCh <- drained
+					close(respCh)
+					continue outer
 				}
 			}
 		case msg := <-n.queue:

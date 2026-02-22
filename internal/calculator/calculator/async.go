@@ -120,3 +120,33 @@ func (c *ValueCalculator) handleStartAsync(w http.ResponseWriter, r *http.Reques
 		"message": "Async processing started successfully",
 	})
 }
+
+// handleClearNotificationQueue drains the Telegram notification queue (pending alerts are dropped).
+func (c *ValueCalculator) handleClearNotificationQueue(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		_ = json.NewEncoder(w).Encode(map[string]string{"error": "method not allowed, use POST"})
+		return
+	}
+
+	if c.notifier == nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"status": "ok",
+			"cleared": 0,
+			"message": "Telegram notifier is not configured",
+		})
+		return
+	}
+
+	dropped := c.notifier.ClearQueue()
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	_ = json.NewEncoder(w).Encode(map[string]any{
+		"status":  "ok",
+		"cleared": dropped,
+		"message": "Notification queue cleared",
+	})
+}

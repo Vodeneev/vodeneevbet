@@ -476,8 +476,12 @@ func (c *ValueCalculator) processLineMovementsAsync(ctx context.Context) {
 	c.asyncMu.RUnlock()
 	sendLineMovementToTelegram := c.cfg != nil && c.cfg.LineMovementTelegramAlerts && lineMovementAlertsOn
 	// Note: No delay needed here - messages are queued asynchronously and rate-limited in the background worker
+	const maxOddForLineMovementAlert = 5.0 // don't send line movement alerts when current odd > 5 (high odds = noisy)
 	for i := range movements {
 		lm := &movements[i]
+		if lm.CurrentOdd > maxOddForLineMovementAlert {
+			continue // skip alert for high odds
+		}
 		// Reset extremes first so we don't re-detect after restart and send a late duplicate (e.g. 105 min later).
 		_ = c.oddsSnapshotStorage.ResetExtremesAfterAlert(ctx, lm.MatchGroupKey, lm.BetKey, lm.Bookmaker)
 		if sendLineMovementToTelegram && c.notifier != nil {

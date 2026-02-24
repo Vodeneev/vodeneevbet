@@ -45,7 +45,7 @@ parser:
   fonbet:
     base_url: "https://line55w.bk6bba-resources.com/events/list"
     lang: "en"
-    version: "60312723953"
+    version: "71181399506"
 
   # Pinnacle guest API
   pinnacle:

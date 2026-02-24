@@ -28,7 +28,7 @@ import (
 const (
 	fonbetBaseURL = "https://line55w.bk6bba-resources.com/events/list"
 	fonbetLang    = "en"
-	fonbetVersion = "60312723953"
+	fonbetVersion = "71181399506"
 	scopeMarket   = "1600" // общий scope (футбол), для киберспорта тот же URL — фильтр по sportCategoryId в ответе
 	userAgent     = "ValueBetBot/1.0 (https://github.com/Vodeneev/vodeneevbet)"
 )

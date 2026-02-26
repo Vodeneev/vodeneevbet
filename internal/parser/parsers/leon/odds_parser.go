@@ -18,6 +18,39 @@ const (
 	main1X2MarketTypeIDSoccer     int64 = 1970324836974645 // "Победитель" (1X2)
 )
 
+// Угловые: только маркеты по общему тоталу матча (без таймов и без тоталов по командам). По marketTypeId из API.
+var cornersMainMarketTypeIDs = map[int64]bool{
+	1970324836975158: true, // Тотал угловых (2 исхода)
+	1970324836978008: true, // Тотал угловых (3 исхода)
+	1970324836975160: true, // Кто подаст больше угловых
+	1970324836978528: true, // Фора по угловым
+	1970324836978807: true, // Точное количество угловых (0-5, 6-8, …)
+	1970324836978517: true, // Двойной исход для угловых
+}
+
+const (
+	cornersWhoMoreMarketTypeID    int64 = 1970324836975160 // Кто подаст больше угловых
+	cornersExactCountMarketTypeID int64 = 1970324836978807 // Точное количество угловых
+)
+
+// Фолы: маркеты по матчу (тотал/кто больше/фора/количество по команде). По marketTypeId.
+var foulsMainMarketTypeIDs = map[int64]bool{
+	1970324837126390: true, // Количество фолов (по команде: Лидс, Манчестер Сити — exact_count)
+	1970324837126376: true, // Количество фолов (по игроку — exact_count)
+}
+
+const foulsWhoMoreMarketTypeID int64 = 0 // TODO: подставить ID маркета "Кто больше фолов", когда будет известен
+
+// Желтые карточки: только маркеты по матчу (без таймов, без тоталов по командам). По marketTypeId.
+var yellowCardsMainMarketTypeIDs = map[int64]bool{
+	1970324836978524: true, // Тотал желтых карточек
+	1970324836978515: true, // Кто получит больше желтых карточек
+	1970324836978523: true, // Фора по желтым карточкам
+	1970324836978520: true, // Двойной исход для желтых карточек
+}
+
+const yellowCardsWhoMoreMarketTypeID int64 = 1970324836978515 // Кто получит больше желтых карточек
+
 // LeonEventToMatch конвертирует LeonEvent (полный ответ event/all или элемент из events) в models.Match.
 // Включает: main_match (1X2, тотал, фора), corners (тотал угловых, фора, кто больше), fouls (тотал фолов, фора, кто больше, количество по команде).
 // Названия команд всегда берутся из ev.NameDefault (англ.) при наличии — для матчинга с другими конторами.
@@ -52,11 +85,14 @@ func LeonEventToMatch(ev *LeonEvent, leagueName string) *models.Match {
 	if len(mainEvent.Outcomes) > 0 {
 		match.Events = append(match.Events, mainEvent)
 	}
-	if cornersEvent := buildStatisticalEvent(matchID, ev, now, models.StandardEventCorners, isCornersMarket); len(cornersEvent.Outcomes) > 0 {
+	if cornersEvent := buildStatisticalEvent(matchID, ev, now, models.StandardEventCorners, cornersMainMarketTypeIDs); len(cornersEvent.Outcomes) > 0 {
 		match.Events = append(match.Events, cornersEvent)
 	}
-	if foulsEvent := buildStatisticalEvent(matchID, ev, now, models.StandardEventFouls, isFoulsMarket); len(foulsEvent.Outcomes) > 0 {
+	if foulsEvent := buildStatisticalEvent(matchID, ev, now, models.StandardEventFouls, foulsMainMarketTypeIDs); len(foulsEvent.Outcomes) > 0 {
 		match.Events = append(match.Events, foulsEvent)
+	}
+	if yellowCardsEvent := buildStatisticalEvent(matchID, ev, now, models.StandardEventYellowCards, yellowCardsMainMarketTypeIDs); len(yellowCardsEvent.Outcomes) > 0 {
+		match.Events = append(match.Events, yellowCardsEvent)
 	}
 	return match
 }
@@ -177,65 +213,15 @@ func buildMainEvent(matchID string, ev *LeonEvent, now time.Time) models.Event {
 }
 
 func isMainTotalMarket(m LeonMarket) bool {
-	// Надёжно: только тотал по голам (основное время) — по marketTypeId из API.
-	if m.MarketTypeID == mainTotalMarketTypeIDSoccer {
-		return true
-	}
-	// Fallback по имени.
-	lower := strings.ToLower(m.Name)
-	if strings.Contains(lower, "1-й тайм") || strings.Contains(lower, "2-й тайм") {
-		return false
-	}
-	if strings.Contains(lower, "хозяев") || strings.Contains(lower, "гостей") {
-		return false
-	}
-	if strings.Contains(lower, "карточ") || strings.Contains(lower, "углов") || strings.Contains(lower, "фол") {
-		return false
-	}
-	if strings.Contains(lower, "победитель и тотал") || strings.Contains(lower, "двойной исход и тотал") || strings.Contains(lower, "в каждом тайме") {
-		return false
-	}
-	if m.IsMainMarket && lower == "тотал" {
-		return true
-	}
-	if m.Primary && lower == "тотал" {
-		return true
-	}
-	return lower == "тотал"
+	return m.MarketTypeID == mainTotalMarketTypeIDSoccer
 }
 
 func isMainHandicapMarket(m LeonMarket) bool {
-	// Надёжно: только фора по голам (основное время) — по marketTypeId из API.
-	if m.MarketTypeID == mainHandicapMarketTypeIDSoccer {
-		return true
-	}
-	// Fallback по имени (если API без marketTypeId или другой спорт).
-	lower := strings.ToLower(m.Name)
-	if strings.Contains(lower, "углов") || strings.Contains(lower, "corner") {
-		return false
-	}
-	if strings.Contains(lower, "карточ") || strings.Contains(lower, "фол") {
-		return false
-	}
-	if strings.Contains(lower, "тайм") || strings.Contains(lower, "хозяев") || strings.Contains(lower, "гостей") {
-		return false
-	}
-	if m.IsMainMarket {
-		return true
-	}
-	if m.Primary {
-		return true
-	}
-	return lower == "фора" || strings.HasPrefix(lower, "фора ")
+	return m.MarketTypeID == mainHandicapMarketTypeIDSoccer
 }
 
 func is1X2Market(m LeonMarket) bool {
-	// Надёжно: только исход по голам (основное время) — по marketTypeId из API.
-	if m.MarketTypeID == main1X2MarketTypeIDSoccer {
-		return true
-	}
-	lower := strings.ToLower(m.Name)
-	return strings.Contains(lower, "исход") && (strings.Contains(lower, "1х2") || strings.Contains(lower, "1x2"))
+	return m.MarketTypeID == main1X2MarketTypeIDSoccer
 }
 
 func leonTagToOutcomeType(tags []string) string {
@@ -318,38 +304,8 @@ func ParseFloat(s string) float64 {
 	return f
 }
 
-// marketFilter возвращает true, если маркет относится к нужному статистическому типу (угловые/фолы).
-type marketFilter func(LeonMarket) bool
-
-func isCornersMarket(m LeonMarket) bool {
-	lower := strings.ToLower(m.Name)
-	return strings.Contains(lower, "углов") || strings.Contains(lower, "corner")
-}
-
-func isFoulsMarket(m LeonMarket) bool {
-	lower := strings.ToLower(m.Name)
-	return strings.Contains(lower, "фол") || strings.Contains(lower, "foul")
-}
-
-// isMainWhoMoreMarket — только основной маркет "кто больше" (угловых/фолов).
-// Исключаем "кто первым подаст N угловых" (другие коэфы) и "двойной исход".
-func isMainWhoMoreMarket(m LeonMarket, eventType models.StandardEventType) bool {
-	lower := strings.ToLower(m.Name)
-	if strings.Contains(lower, "первым") || strings.Contains(lower, "первый") || strings.Contains(lower, "двойной") {
-		return false
-	}
-	switch eventType {
-	case models.StandardEventCorners:
-		return strings.Contains(lower, "больше") && (strings.Contains(lower, "углов") || strings.Contains(lower, "corner"))
-	case models.StandardEventFouls:
-		return strings.Contains(lower, "больше") && (strings.Contains(lower, "фол") || strings.Contains(lower, "foul"))
-	default:
-		return false
-	}
-}
-
-// buildStatisticalEvent собирает одно событие (corners или fouls) из всех подходящих маркетов.
-func buildStatisticalEvent(matchID string, ev *LeonEvent, now time.Time, eventType models.StandardEventType, filter marketFilter) models.Event {
+// buildStatisticalEvent собирает одно событие (corners, fouls, yellow_cards) по allowList marketTypeId.
+func buildStatisticalEvent(matchID string, ev *LeonEvent, now time.Time, eventType models.StandardEventType, allowList map[int64]bool) models.Event {
 	eventID := matchID + "_leon_" + string(eventType)
 	e := models.Event{
 		ID:         eventID,
@@ -362,18 +318,16 @@ func buildStatisticalEvent(matchID string, ev *LeonEvent, now time.Time, eventTy
 		UpdatedAt:  now,
 	}
 	for _, m := range ev.Markets {
-		if !m.Open || !filter(m) {
-			continue
-		}
-		// Исключаем маркеты 1-го/2-го тайма для единообразия (основной матч)
-		lower := strings.ToLower(m.Name)
-		if strings.Contains(lower, "1-й тайм") || strings.Contains(lower, "2-й тайм") {
+		if !m.Open || !allowList[m.MarketTypeID] {
 			continue
 		}
 		switch m.TypeTag {
 		case "REGULAR":
-			// Только основной маркет "кто больше" даёт home_win/away_win/draw, иначе путаем с "кто первым N" (другие коэфы).
-			if isMainWhoMoreMarket(m, eventType) {
+			// «Кто больше» и «точное количество» только по marketTypeId.
+			isWhoMore := (eventType == models.StandardEventCorners && m.MarketTypeID == cornersWhoMoreMarketTypeID) ||
+				(eventType == models.StandardEventFouls && foulsWhoMoreMarketTypeID != 0 && m.MarketTypeID == foulsWhoMoreMarketTypeID) ||
+				(eventType == models.StandardEventYellowCards && m.MarketTypeID == yellowCardsWhoMoreMarketTypeID)
+			if isWhoMore {
 				for _, r := range m.Runners {
 					if !r.Open {
 						continue
@@ -384,8 +338,9 @@ func buildStatisticalEvent(matchID string, ev *LeonEvent, now time.Time, eventTy
 					}
 				}
 			}
-			// "Количество фолов" / "Количество угловых" по команде (14+, 15+ ...) -> exact_count
-			if strings.Contains(lower, "количество") {
+			isExactCount := (eventType == models.StandardEventCorners && m.MarketTypeID == cornersExactCountMarketTypeID) ||
+				(eventType == models.StandardEventFouls && foulsMainMarketTypeIDs[m.MarketTypeID]) // фолы: оба ID дают exact_count
+			if isExactCount {
 				for _, r := range m.Runners {
 					if !r.Open {
 						continue

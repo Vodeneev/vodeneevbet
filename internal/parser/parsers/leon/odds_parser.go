@@ -11,6 +11,13 @@ import (
 
 const bookmakerName = "Leon"
 
+// Main market type IDs из league.sport.mainMarkets (футбол). Используем для однозначного отличия основной линии от угловых/карточек/таймов.
+const (
+	mainHandicapMarketTypeIDSoccer int64 = 1970324836975100 // "Фора" по голам (основное время)
+	mainTotalMarketTypeIDSoccer   int64 = 1970324836974992 // "Тотал" по голам
+	main1X2MarketTypeIDSoccer     int64 = 1970324836974645 // "Победитель" (1X2)
+)
+
 // LeonEventToMatch конвертирует LeonEvent (полный ответ event/all или элемент из events) в models.Match.
 // Включает: main_match (1X2, тотал, фора), corners (тотал угловых, фора, кто больше), fouls (тотал фолов, фора, кто больше, количество по команде).
 // Названия команд всегда берутся из ev.NameDefault (англ.) при наличии — для матчинга с другими конторами.
@@ -170,8 +177,12 @@ func buildMainEvent(matchID string, ev *LeonEvent, now time.Time) models.Event {
 }
 
 func isMainTotalMarket(m LeonMarket) bool {
+	// Надёжно: только тотал по голам (основное время) — по marketTypeId из API.
+	if m.MarketTypeID == mainTotalMarketTypeIDSoccer {
+		return true
+	}
+	// Fallback по имени.
 	lower := strings.ToLower(m.Name)
-	// Сначала исключаем тоталы не по голам матча: таймы, тотал хозяев/гостей, карточки, комбо.
 	if strings.Contains(lower, "1-й тайм") || strings.Contains(lower, "2-й тайм") {
 		return false
 	}
@@ -184,7 +195,6 @@ func isMainTotalMarket(m LeonMarket) bool {
 	if strings.Contains(lower, "победитель и тотал") || strings.Contains(lower, "двойной исход и тотал") || strings.Contains(lower, "в каждом тайме") {
 		return false
 	}
-	// Только простой "Тотал" (голы матча). isMainMarket у "Тотал хозяев" бывает true — не полагаемся.
 	if m.IsMainMarket && lower == "тотал" {
 		return true
 	}
@@ -195,21 +205,35 @@ func isMainTotalMarket(m LeonMarket) bool {
 }
 
 func isMainHandicapMarket(m LeonMarket) bool {
+	// Надёжно: только фора по голам (основное время) — по marketTypeId из API.
+	if m.MarketTypeID == mainHandicapMarketTypeIDSoccer {
+		return true
+	}
+	// Fallback по имени (если API без marketTypeId или другой спорт).
+	lower := strings.ToLower(m.Name)
+	if strings.Contains(lower, "углов") || strings.Contains(lower, "corner") {
+		return false
+	}
+	if strings.Contains(lower, "карточ") || strings.Contains(lower, "фол") {
+		return false
+	}
+	if strings.Contains(lower, "тайм") || strings.Contains(lower, "хозяев") || strings.Contains(lower, "гостей") {
+		return false
+	}
 	if m.IsMainMarket {
 		return true
 	}
 	if m.Primary {
 		return true
 	}
-	lower := strings.ToLower(m.Name)
-	if strings.Contains(lower, "тайм") || strings.Contains(lower, "хозяев") || strings.Contains(lower, "гостей") {
-		return false
-	}
 	return lower == "фора" || strings.HasPrefix(lower, "фора ")
 }
 
 func is1X2Market(m LeonMarket) bool {
-	// "Исход 1Х2 (основное время)" или marketTypeId основного исхода
+	// Надёжно: только исход по голам (основное время) — по marketTypeId из API.
+	if m.MarketTypeID == main1X2MarketTypeIDSoccer {
+		return true
+	}
 	lower := strings.ToLower(m.Name)
 	return strings.Contains(lower, "исход") && (strings.Contains(lower, "1х2") || strings.Contains(lower, "1x2"))
 }

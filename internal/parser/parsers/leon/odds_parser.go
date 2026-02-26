@@ -154,17 +154,8 @@ func buildMainEvent(matchID string, ev *LeonEvent, now time.Time) models.Event {
 				if !r.Open {
 					continue
 				}
-				ot := ""
-				for _, t := range r.Tags {
-					if t == "HOME" {
-						ot = "handicap_home"
-						break
-					}
-					if t == "AWAY" {
-						ot = "handicap_away"
-						break
-					}
-				}
+				// Определяем home/away по имени раннера ("1 (-1)" = хозяева, "2 (+1)" = гости), т.к. в API теги иногда перепутаны.
+				ot := leonHandicapOutcomeType(r)
 				if ot != "" {
 					param := line
 					if r.Handicap != "" {
@@ -232,6 +223,27 @@ func leonTagToOutcomeType(tags []string) string {
 			return "away_win"
 		case "DRAW":
 			return "draw"
+		}
+	}
+	return ""
+}
+
+// leonHandicapOutcomeType возвращает handicap_home или handicap_away. Приоритет — по имени раннера
+// ("1 (-1)", "2 (+1)"), т.к. в API теги HOME/AWAY иногда приходят перепутанными для фор.
+func leonHandicapOutcomeType(r LeonRunner) string {
+	name := strings.TrimSpace(r.Name)
+	if strings.HasPrefix(name, "1 ") || strings.HasPrefix(name, "1(") {
+		return "handicap_home"
+	}
+	if strings.HasPrefix(name, "2 ") || strings.HasPrefix(name, "2(") {
+		return "handicap_away"
+	}
+	for _, t := range r.Tags {
+		if t == "HOME" {
+			return "handicap_home"
+		}
+		if t == "AWAY" {
+			return "handicap_away"
 		}
 	}
 	return ""
@@ -393,17 +405,7 @@ func buildStatisticalEvent(matchID string, ev *LeonEvent, now time.Time, eventTy
 				if !r.Open {
 					continue
 				}
-				ot := ""
-				for _, t := range r.Tags {
-					if t == "HOME" {
-						ot = "handicap_home"
-						break
-					}
-					if t == "AWAY" {
-						ot = "handicap_away"
-						break
-					}
-				}
+				ot := leonHandicapOutcomeType(r)
 				if ot != "" {
 					param := line
 					if r.Handicap != "" {

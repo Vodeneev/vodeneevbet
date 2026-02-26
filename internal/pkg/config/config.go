@@ -40,6 +40,16 @@ type ParserConfig struct {
 	Xbet1             Xbet1Config       `yaml:"xbet1"`
 	Zenit             ZenitConfig       `yaml:"zenit"`
 	Olimp             OlimpConfig       `yaml:"olimp"`
+	Leon              LeonConfig        `yaml:"leon"`
+}
+
+// LeonConfig configures Leon (leon.ru) betline API parser.
+// API: sports → events/all per league → event/all per match (full line with corners, fouls).
+type LeonConfig struct {
+	BaseURL         string        `yaml:"base_url"`          // e.g. "https://leon.ru" (default)
+	Timeout         time.Duration `yaml:"timeout"`          // HTTP timeout (default: use Parser.Timeout)
+	SportFamily string        `yaml:"sport_family"` // "Soccer" (default)
+	MaxLeagues  int           `yaml:"max_leagues"`   // 0 = all football leagues; >0 = limit for one cycle (e.g. 50)
 }
 
 // OlimpConfig configures Olimp (olimp.bet) line API parser.

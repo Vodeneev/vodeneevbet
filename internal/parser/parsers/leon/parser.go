@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/Vodeneev/vodeneevbet/internal/pkg/config"
@@ -33,13 +34,96 @@ func NewParser(cfg *config.Config) *Parser {
 	return &Parser{cfg: cfg, client: client}
 }
 
+// processSingleLeague fetches one league's events and details, adds matches to health store. Returns match count.
+func (p *Parser) processSingleLeague(ctx context.Context, leagueID int64) int {
+	eventsResp, err := p.client.GetLeagueEvents(ctx, leagueID)
+	if err != nil {
+		slog.Warn("Leon: GetLeagueEvents failed", "league_id", leagueID, "error", err)
+		return 0
+	}
+	leagueName := "Leon"
+	if len(eventsResp.Events) > 0 && eventsResp.Events[0].League.Name != "" {
+		leagueName = eventsResp.Events[0].League.Name
+	}
+
+	maxConcurrentEvents := p.cfg.Parser.Leon.MaxConcurrentEventsPerLeague
+	if maxConcurrentEvents < 1 {
+		maxConcurrentEvents = 1
+	}
+	delayEvent := p.cfg.Parser.Leon.DelayPerEvent
+
+	var count int
+	if maxConcurrentEvents == 1 {
+		for _, ev := range eventsResp.Events {
+			select {
+			case <-ctx.Done():
+				return count
+			default:
+			}
+			fullEv, err := p.client.GetEvent(ctx, ev.ID)
+			if err != nil {
+				slog.Debug("Leon: GetEvent failed", "event_id", ev.ID, "error", err)
+				if delayEvent > 0 {
+					time.Sleep(delayEvent)
+				}
+				continue
+			}
+			match := LeonEventToMatch(fullEv, leagueName)
+			if match != nil {
+				health.AddMatch(match)
+				count++
+			}
+			if delayEvent > 0 {
+				time.Sleep(delayEvent)
+			}
+		}
+		return count
+	}
+
+	sem := make(chan struct{}, maxConcurrentEvents)
+	var wg sync.WaitGroup
+	var countMu sync.Mutex
+	for _, ev := range eventsResp.Events {
+		if ctx.Err() != nil {
+			break
+		}
+		ev := ev
+		sem <- struct{}{}
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			defer func() { <-sem }()
+			fullEv, err := p.client.GetEvent(ctx, ev.ID)
+			if err != nil {
+				slog.Debug("Leon: GetEvent failed", "event_id", ev.ID, "error", err)
+				if delayEvent > 0 {
+					time.Sleep(delayEvent)
+				}
+				return
+			}
+			match := LeonEventToMatch(fullEv, leagueName)
+			if match != nil {
+				health.AddMatch(match)
+				countMu.Lock()
+				count++
+				countMu.Unlock()
+			}
+			if delayEvent > 0 {
+				time.Sleep(delayEvent)
+			}
+		}()
+	}
+	wg.Wait()
+	return count
+}
+
 func (p *Parser) runOnce(ctx context.Context) error {
 	runOnceMu.Lock()
 	defer runOnceMu.Unlock()
 	start := time.Now()
-	var totalMatches int
+	var matchesTotal int64
 	defer func() {
-		slog.Info("Leon: цикл парсинга завершён", "matches", totalMatches, "duration", time.Since(start))
+		slog.Info("Leon: цикл парсинга завершён", "matches", matchesTotal, "duration", time.Since(start))
 	}()
 
 	sports, err := p.client.GetSports(ctx)
@@ -55,56 +139,61 @@ func (p *Parser) runOnce(ctx context.Context) error {
 	if maxLeagues > 0 && len(leagueIDs) > maxLeagues {
 		leagueIDs = leagueIDs[:maxLeagues]
 	}
-	slog.Info("Leon: лиги к обработке", "count", len(leagueIDs))
+	totalLeagues := len(leagueIDs)
+	slog.Info("Leon: лиги к обработке", "count", totalLeagues)
 
-	for li, leagueID := range leagueIDs {
-		select {
-		case <-ctx.Done():
-			return nil
-		default:
-		}
-		eventsResp, err := p.client.GetLeagueEvents(ctx, leagueID)
-		if err != nil {
-			slog.Warn("Leon: GetLeagueEvents failed", "league_id", leagueID, "error", err)
-			if d := p.cfg.Parser.Leon.DelayPerLeague; d > 0 {
-				time.Sleep(d)
-			}
-			continue
-		}
-		leagueName := "Leon"
-		if len(eventsResp.Events) > 0 && eventsResp.Events[0].League.Name != "" {
-			leagueName = eventsResp.Events[0].League.Name
-		}
-		for _, ev := range eventsResp.Events {
+	maxConcurrentLeagues := p.cfg.Parser.Leon.MaxConcurrentLeagues
+	if maxConcurrentLeagues <= 0 {
+		maxConcurrentLeagues = 1
+	}
+	delayLeague := p.cfg.Parser.Leon.DelayPerLeague
+
+	if maxConcurrentLeagues == 1 {
+		for li, leagueID := range leagueIDs {
 			select {
 			case <-ctx.Done():
 				return nil
 			default:
 			}
-			fullEv, err := p.client.GetEvent(ctx, ev.ID)
-			if err != nil {
-				slog.Debug("Leon: GetEvent failed", "event_id", ev.ID, "error", err)
-				if d := p.cfg.Parser.Leon.DelayPerEvent; d > 0 {
-					time.Sleep(d)
-				}
-				continue
+			n := p.processSingleLeague(ctx, leagueID)
+			matchesTotal += int64(n)
+			if (li+1)%20 == 0 {
+				slog.Info("Leon: прогресс лиг", "processed", li+1, "total", totalLeagues, "matches", matchesTotal)
 			}
-			match := LeonEventToMatch(fullEv, leagueName)
-			if match != nil {
-				health.AddMatch(match)
-				totalMatches++
-			}
-			if d := p.cfg.Parser.Leon.DelayPerEvent; d > 0 {
-				time.Sleep(d)
+			if delayLeague > 0 {
+				time.Sleep(delayLeague)
 			}
 		}
-		if (li+1)%20 == 0 {
-			slog.Info("Leon: прогресс лиг", "processed", li+1, "total", len(leagueIDs), "matches", totalMatches)
-		}
-		if d := p.cfg.Parser.Leon.DelayPerLeague; d > 0 {
-			time.Sleep(d)
-		}
+		return nil
 	}
+
+	// Parallel leagues: worker pool (like xbet1 MaxConcurrentChampionships)
+	ch := make(chan int64, totalLeagues)
+	for _, id := range leagueIDs {
+		ch <- id
+	}
+	close(ch)
+	var completed atomic.Int64
+	var wg sync.WaitGroup
+	for w := 0; w < maxConcurrentLeagues; w++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for leagueID := range ch {
+				if ctx.Err() != nil {
+					return
+				}
+				n := p.processSingleLeague(ctx, leagueID)
+				atomic.AddInt64(&matchesTotal, int64(n))
+				done := completed.Add(1)
+				if done%20 == 0 {
+					total := atomic.LoadInt64(&matchesTotal)
+					slog.Info("Leon: прогресс лиг", "processed", done, "total", totalLeagues, "matches", total)
+				}
+			}
+		}()
+	}
+	wg.Wait()
 	return nil
 }
 

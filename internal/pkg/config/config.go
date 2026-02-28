@@ -52,6 +52,9 @@ type LeonConfig struct {
 	MaxLeagues       int           `yaml:"max_leagues"`        // 0 = all football leagues; >0 = limit for one cycle (e.g. 50)
 	DelayPerLeague   time.Duration `yaml:"delay_per_league"`   // delay after each league (default: 0)
 	DelayPerEvent    time.Duration `yaml:"delay_per_event"`   // delay after each event (default: 0)
+	// Concurrency: like xbet1 (max_concurrent_championships + max_concurrent_games_per_champ)
+	MaxConcurrentLeagues        int `yaml:"max_concurrent_leagues"`         // leagues processed in parallel (default: 1)
+	MaxConcurrentEventsPerLeague int `yaml:"max_concurrent_events_per_league"` // GetEvent requests in parallel per league (default: 1)
 }
 
 // OlimpConfig configures Olimp (olimp.bet) line API parser.

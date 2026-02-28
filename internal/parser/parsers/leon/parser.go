@@ -12,9 +12,6 @@ import (
 	"github.com/Vodeneev/vodeneevbet/internal/pkg/parserutil"
 )
 
-const defaultDelayPerLeague = 300 * time.Millisecond
-const defaultDelayPerEvent = 200 * time.Millisecond
-
 var runOnceMu sync.Mutex
 
 type Parser struct {
@@ -69,7 +66,9 @@ func (p *Parser) runOnce(ctx context.Context) error {
 		eventsResp, err := p.client.GetLeagueEvents(ctx, leagueID)
 		if err != nil {
 			slog.Warn("Leon: GetLeagueEvents failed", "league_id", leagueID, "error", err)
-			time.Sleep(defaultDelayPerLeague)
+			if d := p.cfg.Parser.Leon.DelayPerLeague; d > 0 {
+				time.Sleep(d)
+			}
 			continue
 		}
 		leagueName := "Leon"
@@ -85,7 +84,9 @@ func (p *Parser) runOnce(ctx context.Context) error {
 			fullEv, err := p.client.GetEvent(ctx, ev.ID)
 			if err != nil {
 				slog.Debug("Leon: GetEvent failed", "event_id", ev.ID, "error", err)
-				time.Sleep(defaultDelayPerEvent)
+				if d := p.cfg.Parser.Leon.DelayPerEvent; d > 0 {
+					time.Sleep(d)
+				}
 				continue
 			}
 			match := LeonEventToMatch(fullEv, leagueName)
@@ -93,12 +94,16 @@ func (p *Parser) runOnce(ctx context.Context) error {
 				health.AddMatch(match)
 				totalMatches++
 			}
-			time.Sleep(defaultDelayPerEvent)
+			if d := p.cfg.Parser.Leon.DelayPerEvent; d > 0 {
+				time.Sleep(d)
+			}
 		}
 		if (li+1)%20 == 0 {
 			slog.Info("Leon: прогресс лиг", "processed", li+1, "total", len(leagueIDs), "matches", totalMatches)
 		}
-		time.Sleep(defaultDelayPerLeague)
+		if d := p.cfg.Parser.Leon.DelayPerLeague; d > 0 {
+			time.Sleep(d)
+		}
 	}
 	return nil
 }

@@ -330,6 +330,8 @@ parser:
     # timeout: 30s                  # таймаут HTTP (по умолчанию — из parser.timeout)
     sport_family: "Soccer"          # вид спорта для парсинга (только футбол)
     max_leagues: 0                  # 0 = все лиги за цикл; >0 = ограничить (напр. 50) для одного цикла
+    # delay_per_league: 0           # задержка после каждой лиги (по умолчанию 0)
+    # delay_per_event: 0            # задержка после каждого матча (по умолчанию 0)
 
   olimp:
     base_url: "https://www.olimp.bet/api/v4/0/line"
